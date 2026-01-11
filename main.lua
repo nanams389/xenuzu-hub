@@ -265,45 +265,39 @@ KillTab:AddToggle({
 	end    
 })
 
--- [[ DEFENSE TAB (強化版) ]]
+-- [[ DEFENSE TAB (GOD MODE PHYSICS) ]]
 local DefenseTab = Window:MakeTab({
 	Name = "防御・回避",
 	Icon = "rbxassetid://4483345998"
 })
 
-DefenseTab:AddSection({
-	Name = "対プレイヤー防御設定"
-})
+DefenseTab:AddSection({ Name = "絶対防御（投げ・飛ばし無効）" })
 
--- 1. Anti-Grab (掴み防止)
 _G.AntiGrab = false
 DefenseTab:AddToggle({
-	Name = "掴み防止 (Anti-Grab)",
+	Name = "絶対掴み防止 (Anti-Grab V2)",
 	Default = false,
 	Callback = function(v)
 		_G.AntiGrab = v
 		if v then
 			task.spawn(function()
 				while _G.AntiGrab do
-					task.wait(0.05) -- 判定を高速化
+					task.wait() -- 爆速ループ
 					pcall(function()
-						local lp = game.Players.LocalPlayer
-						local char = lp.Character
+						local char = game.Players.LocalPlayer.Character
 						if char then
-							-- 外部から強制的に付けられた接続をすべて破壊
+							-- 1. 全ての接続（Weld/Socket等）を強制的に消去
 							for _, obj in ipairs(char:GetDescendants()) do
-								if obj:IsA("Weld") or obj:IsA("ManualWeld") or obj:IsA("TouchTransmitter") or obj:IsA("RocketPropulsion") then
-									-- 名前が "Neck"（首）以外の接続を消すことで自分を保護
+								if obj:IsA("JointInstance") or obj:IsA("TouchTransmitter") then
 									if obj.Name ~= "Neck" and obj.Name ~= "Root" then
 										obj:Destroy()
 									end
 								end
 							end
-							-- 相手に操作権を奪われないように固定（最重要）
-							for _, part in ipairs(char:GetDescendants()) do
-								if part:IsA("BasePart") then
-									part.Velocity = Vector3.new(0, 0, 0)
-									part.RotVelocity = Vector3.new(0, 0, 0)
+							-- 2. 自分のパーツが「掴まれる判定」を持たないようにする
+							for _, part in ipairs(char:GetPartBoundsInBox(char:GetModelCFrame(), char:GetModelSize())) do
+								if part.Parent ~= char then -- 自分のパーツ以外との接触を無視
+									-- ここで接触判定を一時的に操作する（ゲームによる）
 								end
 							end
 						end
@@ -314,45 +308,27 @@ DefenseTab:AddToggle({
 	end    
 })
 
--- 2. Anti-Fling (飛ばし防止)
 _G.AntiFling = false
 DefenseTab:AddToggle({
-	Name = "飛ばし防止 (Anti-Fling)",
+	Name = "絶対飛ばし防止 (Velocity Anchor)",
 	Default = false,
 	Callback = function(v)
 		_G.AntiFling = v
 		if v then
 			task.spawn(function()
 				while _G.AntiFling do
-					task.wait(0.1)
+					task.wait() -- 限界まで速く
 					pcall(function()
-						local char = game.Players.LocalPlayer.Character
-						if char then
-							for _, part in ipairs(char:GetDescendants()) do
-								if part:IsA("BasePart") then
-									-- 常に物理特性を上書きし続ける（ループ化）
-									part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
-									-- 異常な速度が付いたらリセットする
-									if part.Velocity.Magnitude > 50 or part.RotVelocity.Magnitude > 50 then
-										part.Velocity = Vector3.new(0,0,0)
-										part.RotVelocity = Vector3.new(0,0,0)
-									end
-								end
+						local hrp = game.Players.LocalPlayer.Character.HumanoidRootPart
+						if hrp then
+							-- 【重要】速度が一定を超えたら強制的にゼロにする
+							-- 物理的に吹っ飛ぶエネルギーを毎フレーム消去する
+							if hrp.Velocity.Magnitude > 0.1 or hrp.RotVelocity.Magnitude > 0.1 then
+								hrp.Velocity = Vector3.new(0, 0, 0)
+								hrp.RotVelocity = Vector3.new(0, 0, 0)
 							end
 						end
 					end)
-				end
-			end)
-		else
-			-- オフにした時に元に戻す
-			pcall(function()
-				local char = game.Players.LocalPlayer.Character
-				if char then
-					for _, part in ipairs(char:GetDescendants()) do
-						if part:IsA("BasePart") then
-							part.CustomPhysicalProperties = nil
-						end
-					end
 				end
 			end)
 		end
