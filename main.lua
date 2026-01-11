@@ -191,5 +191,52 @@ VisualTab:AddButton({
     end    
 })
 
+-- [[ LOOP KILL TAB ]]
+local KillTab = Window:MakeTab({
+    Name = "全滅・荒らし",
+    Icon = "rbxassetid://4483345998"
+})
+
+KillTab:AddSection({ Name = "一括処理 (Loop Kill)" })
+
+_G.LoopKillAll = false
+
+KillTab:AddToggle({
+    Name = "全員ループキル (Loop Kill All)",
+    Default = false,
+    Callback = function(Value)
+        _G.LoopKillAll = Value
+        if Value then
+            task.spawn(function()
+                while _G.LoopKillAll do
+                    for _, player in ipairs(game.Players:GetPlayers()) do
+                        -- 自分以外 且つ キャラクターが存在する場合
+                        if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            pcall(function()
+                                -- 相手を奈落(-500)に飛ばして即死させる
+                                player.Character.HumanoidRootPart.CFrame = CFrame.new(0, -500, 0)
+                            end)
+                        end
+                    end
+                    task.wait(0.5) -- サーバー負荷を考えて0.5秒おきに実行
+                end
+            end)
+        end
+    end    
+})
+
+KillTab:AddButton({
+    Name = "全員のHPを0にする (脆弱なゲーム用)",
+    Callback = function()
+        for _, player in ipairs(game.Players:GetPlayers()) do
+            if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
+                pcall(function()
+                    player.Character.Humanoid.Health = 0
+                end)
+            end
+        end
+    end
+})
+
 -- 初期化
 OrionLib:Init()
