@@ -335,26 +335,45 @@ DefenseTab:AddToggle({
 	end    
 })
 
--- [[ TRACKER TAB ]]
-local TrackerTab = Window:MakeTab({
-	Name = "プレイヤー追跡",
+-- [[ UTILITY TAB ]]
+local UtilTab = Window:MakeTab({
+	Name = "プレイヤー操作",
 	Icon = "rbxassetid://4483345998"
 })
 
-local targetPlayer = ""
+local selectedPlayer = ""
 
-TrackerTab:AddTextbox({
-	Name = "ターゲット名 (略称可)",
+-- 1. 追跡ターゲットを選択するドロップダウン
+local PlayerList = {}
+for _, v in pairs(game.Players:GetPlayers()) do
+    table.insert(PlayerList, v.Name)
+end
+
+local PlayerDropdown = UtilTab:AddDropdown({
+	Name = "追跡ターゲットを選択",
 	Default = "",
-	TextDisappear = false,
-	Callback = function(t)
-		targetPlayer = t
-	end	  
+	Options = PlayerList,
+	Callback = function(Value)
+		selectedPlayer = Value
+	end    
 })
 
+-- プレイヤーが入退室した時にリストを更新するボタン
+UtilTab:AddButton({
+	Name = "プレイヤーリストを更新",
+	Callback = function()
+		local newList = {}
+		for _, v in pairs(game.Players:GetPlayers()) do
+			table.insert(newList, v.Name)
+		end
+		PlayerDropdown:Refresh(newList, true)
+	end    
+})
+
+-- 2. 追跡（ストーカー）トグル
 _G.Tracking = false
-TrackerTab:AddToggle({
-	Name = "ストーカーモード開始",
+UtilTab:AddToggle({
+	Name = "選んだ相手を追跡",
 	Default = false,
 	Callback = function(v)
 		_G.Tracking = v
@@ -363,16 +382,43 @@ TrackerTab:AddToggle({
 				while _G.Tracking do
 					task.wait()
 					pcall(function()
-						for _, p in pairs(game.Players:GetPlayers()) do
-							if string.find(p.Name:lower(), targetPlayer:lower()) and p.Character then
-								-- 相手の背後1スタッドの位置に張り付く
-								local targetHRP = p.Character.HumanoidRootPart
-								game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 1)
-							end
+						local target = game.Players:FindFirstChild(selectedPlayer)
+						if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+							local lp = game.Players.LocalPlayer
+							-- 相手の背後(1スタッド)に吸着
+							lp.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 1)
 						end
 					end)
 				end
 			end)
+		end
+	end    
+})
+
+UtilTab:AddSection({ Name = "一括操作" })
+
+-- 3. 全員強制テレポート (Bring All)
+UtilTab:AddButton({
+	Name = "全員を自分の元へ引き寄せる (Bring All)",
+	Callback = function()
+		local lp = game.Players.LocalPlayer
+		local GrabEvents = game:GetService("ReplicatedStorage"):WaitForChild("GrabEvents", 5)
+		local SetNetworkOwner = GrabEvents and GrabEvents:FindFirstChild("SetNetworkOwner")
+
+		for _, p in pairs(game.Players:GetPlayers()) do
+			if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+				pcall(function()
+					local targetHRP = p.Character.HumanoidRootPart
+					
+					-- ネットワーク所有権を奪う（これがないと相手の画面で反映されない）
+					if SetNetworkOwner then
+						SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+					end
+					
+					-- 自分の1スタッド前にテレポートさせる
+					targetHRP.CFrame = lp.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3)
+				end)
+			end
 		end
 	end    
 })
