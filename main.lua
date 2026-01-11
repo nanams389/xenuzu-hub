@@ -265,7 +265,7 @@ KillTab:AddToggle({
 	end    
 })
 
--- [[ DEFENSE TAB ]]
+-- [[ DEFENSE TAB (強化版) ]]
 local DefenseTab = Window:MakeTab({
 	Name = "防御・回避",
 	Icon = "rbxassetid://4483345998"
@@ -285,15 +285,25 @@ DefenseTab:AddToggle({
 		if v then
 			task.spawn(function()
 				while _G.AntiGrab do
-					task.wait(0.1)
+					task.wait(0.05) -- 判定を高速化
 					pcall(function()
-						local char = game.Players.LocalPlayer.Character
+						local lp = game.Players.LocalPlayer
+						local char = lp.Character
 						if char then
-							-- 相手から自分に付けられたWeld（接続）を全て強制削除する
+							-- 外部から強制的に付けられた接続をすべて破壊
 							for _, obj in ipairs(char:GetDescendants()) do
-								if obj:IsA("Weld") or obj:IsA("ManualWeld") or obj:IsA("TouchTransmitter") then
-									-- 自分のパーツ同士の接続以外を消去
-									obj:Destroy()
+								if obj:IsA("Weld") or obj:IsA("ManualWeld") or obj:IsA("TouchTransmitter") or obj:IsA("RocketPropulsion") then
+									-- 名前が "Neck"（首）以外の接続を消すことで自分を保護
+									if obj.Name ~= "Neck" and obj.Name ~= "Root" then
+										obj:Destroy()
+									end
+								end
+							end
+							-- 相手に操作権を奪われないように固定（最重要）
+							for _, part in ipairs(char:GetDescendants()) do
+								if part:IsA("BasePart") then
+									part.Velocity = Vector3.new(0, 0, 0)
+									part.RotVelocity = Vector3.new(0, 0, 0)
 								end
 							end
 						end
@@ -305,28 +315,49 @@ DefenseTab:AddToggle({
 })
 
 -- 2. Anti-Fling (飛ばし防止)
+_G.AntiFling = false
 DefenseTab:AddToggle({
 	Name = "飛ばし防止 (Anti-Fling)",
 	Default = false,
 	Callback = function(v)
+		_G.AntiFling = v
 		if v then
-			-- 自分のキャラの物理特性を変えて、ぶつかっても吹っ飛ばないようにする
-			for _, part in ipairs(game.Players.LocalPlayer.Character:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5) -- 重さを100倍にして動かなくする
+			task.spawn(function()
+				while _G.AntiFling do
+					task.wait(0.1)
+					pcall(function()
+						local char = game.Players.LocalPlayer.Character
+						if char then
+							for _, part in ipairs(char:GetDescendants()) do
+								if part:IsA("BasePart") then
+									-- 常に物理特性を上書きし続ける（ループ化）
+									part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
+									-- 異常な速度が付いたらリセットする
+									if part.Velocity.Magnitude > 50 or part.RotVelocity.Magnitude > 50 then
+										part.Velocity = Vector3.new(0,0,0)
+										part.RotVelocity = Vector3.new(0,0,0)
+									end
+								end
+							end
+						end
+					end)
 				end
-			end
+			end)
 		else
-			for _, part in ipairs(game.Players.LocalPlayer.Character:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.CustomPhysicalProperties = nil
+			-- オフにした時に元に戻す
+			pcall(function()
+				local char = game.Players.LocalPlayer.Character
+				if char then
+					for _, part in ipairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CustomPhysicalProperties = nil
+						end
+					end
 				end
-			end
+			end)
 		end
 	end    
 })
-
-DefenseTab:AddLabel("※Anti-Grabは掴まれてからでも振りほどけるぜ！")
 
 -- 初期化
 OrionLib:Init()
