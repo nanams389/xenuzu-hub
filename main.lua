@@ -119,5 +119,61 @@ VisualTab:AddButton({
     end    
 })
 
+-- [[ AURA TAB ]]
+local AuraTab = Window:MakeTab({
+    Name = "Aura",
+    Icon = "rbxassetid://4483345998"
+})
+
+AuraTab:AddSection({
+    Name = "常時発動 Fling 機能"
+})
+
+-- オーラ用の設定変数
+local FLING_VELOCITY = 50 
+local AURA_RANGE = 25 
+_G.isConstantAuraEnabled = false
+
+-- Fling実行関数
+local function doUpFling(targetHRP)
+    local SetNetworkOwner = game:GetService("ReplicatedStorage"):WaitForChild("GrabEvents"):WaitForChild("SetNetworkOwner")
+    if not targetHRP or not SetNetworkOwner then return end
+    pcall(function() SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end)
+    
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "ConstantAuraFling"
+    bv.Parent = targetHRP
+    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    bv.Velocity = Vector3.new(0, FLING_VELOCITY, 0)
+    game:GetService("Debris"):AddItem(bv, 0.15) 
+end
+
+AuraTab:AddToggle({
+    Name = "Fling Aura (上50威力)",
+    Default = false,
+    Callback = function(Value)
+        _G.isConstantAuraEnabled = Value
+        if Value then
+            task.spawn(function()
+                while _G.isConstantAuraEnabled do
+                    task.wait(0.05)
+                    local lp = game.Players.LocalPlayer
+                    local char = lp.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = player.Character.HumanoidRootPart
+                                if (targetHRP.Position - char.HumanoidRootPart.Position).Magnitude <= AURA_RANGE then
+                                    doUpFling(targetHRP)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end    
+})
+
 -- ここが超重要！これがないと表示されないぜ！
 OrionLib:Init()
