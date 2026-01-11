@@ -6,7 +6,7 @@ local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jen
 -- [[ テーマ設定 (Blitz風) ]]
 -- テーマ一覧: Default, Green, Seth, Razor, Jester, Akali (AkaliがBlitzに近いクールな色)
 local Window = OrionLib:MakeWindow({
-    Name = "Xenouzu Hub | Blitz Edition", 
+    Name = "Xenouzu Hub |", 
     HidePremium = false, 
     SaveConfig = true, 
     ConfigFolder = "XenouzuHub",
