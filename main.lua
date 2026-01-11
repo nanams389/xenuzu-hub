@@ -264,5 +264,69 @@ KillTab:AddToggle({
 		end
 	end    
 })
+
+-- [[ DEFENSE TAB ]]
+local DefenseTab = Window:MakeTab({
+	Name = "防御・回避",
+	Icon = "rbxassetid://4483345998"
+})
+
+DefenseTab:AddSection({
+	Name = "対プレイヤー防御設定"
+})
+
+-- 1. Anti-Grab (掴み防止)
+_G.AntiGrab = false
+DefenseTab:AddToggle({
+	Name = "掴み防止 (Anti-Grab)",
+	Default = false,
+	Callback = function(v)
+		_G.AntiGrab = v
+		if v then
+			task.spawn(function()
+				while _G.AntiGrab do
+					task.wait(0.1)
+					pcall(function()
+						local char = game.Players.LocalPlayer.Character
+						if char then
+							-- 相手から自分に付けられたWeld（接続）を全て強制削除する
+							for _, obj in ipairs(char:GetDescendants()) do
+								if obj:IsA("Weld") or obj:IsA("ManualWeld") or obj:IsA("TouchTransmitter") then
+									-- 自分のパーツ同士の接続以外を消去
+									obj:Destroy()
+								end
+							end
+						end
+					end)
+				end
+			end)
+		end
+	end    
+})
+
+-- 2. Anti-Fling (飛ばし防止)
+DefenseTab:AddToggle({
+	Name = "飛ばし防止 (Anti-Fling)",
+	Default = false,
+	Callback = function(v)
+		if v then
+			-- 自分のキャラの物理特性を変えて、ぶつかっても吹っ飛ばないようにする
+			for _, part in ipairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5) -- 重さを100倍にして動かなくする
+				end
+			end
+		else
+			for _, part in ipairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CustomPhysicalProperties = nil
+				end
+			end
+		end
+	end    
+})
+
+DefenseTab:AddLabel("※Anti-Grabは掴まれてからでも振りほどけるぜ！")
+
 -- 初期化
 OrionLib:Init()
