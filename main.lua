@@ -2,16 +2,28 @@ getgenv().gethui = function() return game.CoreGui end
 
 -- Orion Lib 読み込み
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "Xenouzu Hub | FTAP", HidePremium = false, SaveConfig = true, ConfigFolder = "XenouzuHub"})
 
--- [[ MAIN TAB ]]
+-- [[ テーマ設定 (Blitz風) ]]
+-- テーマ一覧: Default, Green, Seth, Razor, Jester, Akali (AkaliがBlitzに近いクールな色)
+local Window = OrionLib:MakeWindow({
+    Name = "Xenouzu Hub | Blitz Edition", 
+    HidePremium = false, 
+    SaveConfig = true, 
+    ConfigFolder = "XenouzuHub",
+    IntroEnabled = true,
+    IntroText = "Xenouzu Hub 起動中..."
+})
+
+-- [[ メインタブ：プレイヤー設定 ]]
 local MainTab = Window:MakeTab({
-    Name = "ホーム",
+    Name = "プレイヤー設定",
     Icon = "rbxassetid://4483345998"
 })
 
+MainTab:AddSection({ Name = "基本ステータス" })
+
 MainTab:AddSlider({
-    Name = "Walk Speed",
+    Name = "歩行速度 (WalkSpeed)",
     Min = 16, Max = 500, Default = 16, Increment = 1,
     Callback = function(v) 
         if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -21,7 +33,7 @@ MainTab:AddSlider({
 })
 
 MainTab:AddSlider({
-    Name = "Jump Power",
+    Name = "ジャンプ力 (JumpPower)",
     Min = 50, Max = 1000, Default = 50, Increment = 1,
     Callback = function(v) 
         if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -30,7 +42,13 @@ MainTab:AddSlider({
     end    
 })
 
-_G.InfJump = false
+MainTab:AddToggle({
+    Name = "無限ジャンプ",
+    Default = false,
+    Callback = function(v) _G.InfJump = v end    
+})
+
+-- 無限ジャンプのロジック
 game:GetService("UserInputService").JumpRequest:Connect(function()
     if _G.InfJump then
         local hum = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -38,19 +56,21 @@ game:GetService("UserInputService").JumpRequest:Connect(function()
     end
 end)
 
-MainTab:AddToggle({
-    Name = "Infinite Jump",
-    Default = false,
-    Callback = function(v) _G.InfJump = v end    
-})
-
--- [[ STEALTH TAB ]]
+-- [[ 移動タブ：特殊移動 ]]
 local StealthTab = Window:MakeTab({
-    Name = "空飛び＆壁貫通",
+    Name = "移動ハック",
     Icon = "rbxassetid://4483345998"
 })
 
-_G.Noclip = false
+StealthTab:AddSection({ Name = "空飛び & 壁抜け" })
+
+StealthTab:AddToggle({
+    Name = "壁抜け (Noclip)",
+    Default = false,
+    Callback = function(v) _G.Noclip = v end    
+})
+
+-- Noclipロジック
 game:GetService("RunService").Stepped:Connect(function()
     if _G.Noclip and game.Players.LocalPlayer.Character then
         for _, v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
@@ -60,14 +80,7 @@ game:GetService("RunService").Stepped:Connect(function()
 end)
 
 StealthTab:AddToggle({
-    Name = "Noclip",
-    Default = false,
-    Callback = function(v) _G.Noclip = v end    
-})
-
-_G.Fly = false
-StealthTab:AddToggle({
-    Name = "Fly (Speed set by WalkSpeed)",
+    Name = "空中飛行 (Fly)",
     Default = false,
     Callback = function(v)
         _G.Fly = v
@@ -101,47 +114,29 @@ StealthTab:AddToggle({
     end    
 })
 
--- [[ VISUAL TAB ]]
-local VisualTab = Window:MakeTab({
-    Name = "Visuals",
-    Icon = "rbxassetid://4483345998"
-})
-
-VisualTab:AddButton({
-    Name = "Enable Player ESP",
-    Callback = function()
-        for _, p in pairs(game.Players:GetPlayers()) do
-            if p ~= game.Players.LocalPlayer and p.Character then
-                local h = p.Character:FindFirstChild("Highlight") or Instance.new("Highlight", p.Character)
-                h.FillColor = Color3.fromRGB(255, 0, 0)
-            end
-        end
-    end    
-})
-
--- [[ AURA TAB ]]
+-- [[ 攻撃タブ：オーラ ]]
 local AuraTab = Window:MakeTab({
-    Name = "Aura",
+    Name = "攻撃オーラ",
     Icon = "rbxassetid://4483345998"
 })
 
-AuraTab:AddSection({
-    Name = "常時発動 Fling 機能"
-})
+AuraTab:AddSection({ Name = "自動吹き飛ばし (Fling)" })
 
--- オーラ用の設定変数
+-- オーラ用変数
 local FLING_VELOCITY = 50 
 local AURA_RANGE = 25 
 _G.isConstantAuraEnabled = false
 
--- Fling実行関数
 local function doUpFling(targetHRP)
-    local SetNetworkOwner = game:GetService("ReplicatedStorage"):WaitForChild("GrabEvents"):WaitForChild("SetNetworkOwner")
+    local rs = game:GetService("ReplicatedStorage")
+    local grab = rs:FindFirstChild("GrabEvents")
+    local SetNetworkOwner = grab and grab:FindFirstChild("SetNetworkOwner")
+    
     if not targetHRP or not SetNetworkOwner then return end
     pcall(function() SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end)
     
     local bv = Instance.new("BodyVelocity")
-    bv.Name = "ConstantAuraFling"
+    bv.Name = "BlitzFling"
     bv.Parent = targetHRP
     bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
     bv.Velocity = Vector3.new(0, FLING_VELOCITY, 0)
@@ -149,7 +144,7 @@ local function doUpFling(targetHRP)
 end
 
 AuraTab:AddToggle({
-    Name = "Fling Aura (上50威力)",
+    Name = "Flingオーラを有効化",
     Default = false,
     Callback = function(Value)
         _G.isConstantAuraEnabled = Value
@@ -175,5 +170,26 @@ AuraTab:AddToggle({
     end    
 })
 
--- ここが超重要！これがないと表示されないぜ！
+-- [[ 視覚タブ：ESP ]]
+local VisualTab = Window:MakeTab({
+    Name = "プレイヤー透視",
+    Icon = "rbxassetid://4483345998"
+})
+
+VisualTab:AddSection({ Name = "視覚サポート" })
+
+VisualTab:AddButton({
+    Name = "プレイヤーESPを起動",
+    Callback = function()
+        for _, p in pairs(game.Players:GetPlayers()) do
+            if p ~= game.Players.LocalPlayer and p.Character then
+                local h = p.Character:FindFirstChild("Highlight") or Instance.new("Highlight", p.Character)
+                h.FillColor = Color3.fromRGB(255, 0, 0)
+                h.OutlineColor = Color3.fromRGB(255, 255, 255)
+            end
+        end
+    end    
+})
+
+-- 初期化
 OrionLib:Init()
