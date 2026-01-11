@@ -192,49 +192,62 @@ VisualTab:AddButton({
 })
 
 -- [[ LOOP KILL TAB ]]
-local LoopKillTab = Window:MakeTab({
+local KillTab = Window:MakeTab({
 	Name = "ループキル",
 	Icon = "rbxassetid://4483345998"
 })
 
-LoopKillTab:AddSection({
-	Name = "物理衝突型・無限殺戮"
+KillTab:AddSection({
+	Name = "物理衝突・無限キル（セーフゾーン対応）"
 })
 
--- ループ管理用の変数
 _G.LoopKillActive = false
 
-LoopKillTab:AddToggle({
-	Name = "全員を地球の彼方へ飛ばす (Loop Kill)",
+KillTab:AddToggle({
+	Name = "全員物理キル (Loop Kill)",
 	Default = false,
-	Callback = function(Value)
-		_G.LoopKillActive = Value
+	Callback = function(v)
+		_G.LoopKillActive = v
+		local lp = game.Players.LocalPlayer
+		local GrabEvents = game:GetService("ReplicatedStorage"):WaitForChild("GrabEvents", 5)
+		local SetNetworkOwner = GrabEvents and GrabEvents:FindFirstChild("SetNetworkOwner")
 		
-		if Value then
+		if v then
 			task.spawn(function()
-				local lp = game.Players.LocalPlayer
-				
 				while _G.LoopKillActive do
-					task.wait(0.01) -- 高速ループ
+					task.wait(0.01)
 					pcall(function()
 						local char = lp.Character
 						local hrp = char and char:FindFirstChild("HumanoidRootPart")
 						
 						if hrp then
-							-- 1. 体を「超高速回転する弾丸」に変える
-							-- これにより、触れた瞬間に相手に巨大な衝撃力が伝わる
-							hrp.RotVelocity = Vector3.new(0, 50000, 0)
+							-- 飛ばす力を極限まで高める（回転 + 横方向の速度）
+							hrp.RotVelocity = Vector3.new(0, 100000, 0)
+							hrp.Velocity = Vector3.new(0, 50, 0) -- 少し浮かせると飛びやすくなる
 							
-							-- 2. 全プレイヤーをスキャンして激突しに行く
 							for _, player in ipairs(game.Players:GetPlayers()) do
 								if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 									if not _G.LoopKillActive then break end
 									
-									local targetHRP = player.Character.HumanoidRootPart
+									local targetChar = player.Character
+									local targetHRP = targetChar.HumanoidRootPart
 									
-									-- 相手の背後に一瞬でテレポート
-									hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 1)
-									task.wait(0.02) -- 物理判定を発生させるための一瞬の溜め
+									-- ✅ 【セーフゾーン回避】
+									-- 1. ForceField（無敵オーラ）がある人はスキップ
+									-- 2. 特定の場所（家の中など）を避けたい場合はここで判定
+									if targetChar:FindFirstChildOfClass("ForceField") then
+										continue -- 次のプレイヤーへ
+									end
+
+									-- ✅ 【飛ばすための核心】
+									-- 相手のネットワーク権限を奪う（Fling Auraと同じ理屈）
+									if SetNetworkOwner then
+										SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+									end
+									
+									-- 相手に重なって弾き飛ばす
+									hrp.CFrame = targetHRP.CFrame
+									task.wait(0.02)
 								end
 							end
 						end
@@ -242,17 +255,14 @@ LoopKillTab:AddToggle({
 				end
 			end)
 		else
-			-- OFFにした時は回転を止める
 			pcall(function()
-				if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-					game.Players.LocalPlayer.Character.HumanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+				if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+					lp.Character.HumanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+					lp.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
 				end
 			end)
 		end
 	end    
 })
-
-LoopKillTab:AddLabel("※使用前に移動ハックの『Noclip』をONにしてくれ！")
-
 -- 初期化
 OrionLib:Init()
