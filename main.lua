@@ -192,51 +192,67 @@ VisualTab:AddButton({
 })
 
 -- [[ LOOP KILL TAB ]]
-local KillTab = Window:MakeTab({
-    Name = "全滅・荒らし",
-    Icon = "rbxassetid://4483345998"
+local LoopKillTab = Window:MakeTab({
+	Name = "ループキル",
+	Icon = "rbxassetid://4483345998"
 })
 
-KillTab:AddSection({ Name = "一括処理 (Loop Kill)" })
-
-_G.LoopKillAll = false
-
-KillTab:AddToggle({
-    Name = "全員ループキル (Loop Kill All)",
-    Default = false,
-    Callback = function(Value)
-        _G.LoopKillAll = Value
-        if Value then
-            task.spawn(function()
-                while _G.LoopKillAll do
-                    for _, player in ipairs(game.Players:GetPlayers()) do
-                        -- 自分以外 且つ キャラクターが存在する場合
-                        if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            pcall(function()
-                                -- 相手を奈落(-500)に飛ばして即死させる
-                                player.Character.HumanoidRootPart.CFrame = CFrame.new(0, -500, 0)
-                            end)
-                        end
-                    end
-                    task.wait(0.5) -- サーバー負荷を考えて0.5秒おきに実行
-                end
-            end)
-        end
-    end    
+LoopKillTab:AddSection({
+	Name = "物理衝突型・無限殺戮"
 })
 
-KillTab:AddButton({
-    Name = "全員のHPを0にする (脆弱なゲーム用)",
-    Callback = function()
-        for _, player in ipairs(game.Players:GetPlayers()) do
-            if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
-                pcall(function()
-                    player.Character.Humanoid.Health = 0
-                end)
-            end
-        end
-    end
+-- ループ管理用の変数
+_G.LoopKillActive = false
+
+LoopKillTab:AddToggle({
+	Name = "全員を地球の彼方へ飛ばす (Loop Kill)",
+	Default = false,
+	Callback = function(Value)
+		_G.LoopKillActive = Value
+		
+		if Value then
+			task.spawn(function()
+				local lp = game.Players.LocalPlayer
+				
+				while _G.LoopKillActive do
+					task.wait(0.01) -- 高速ループ
+					pcall(function()
+						local char = lp.Character
+						local hrp = char and char:FindFirstChild("HumanoidRootPart")
+						
+						if hrp then
+							-- 1. 体を「超高速回転する弾丸」に変える
+							-- これにより、触れた瞬間に相手に巨大な衝撃力が伝わる
+							hrp.RotVelocity = Vector3.new(0, 50000, 0)
+							
+							-- 2. 全プレイヤーをスキャンして激突しに行く
+							for _, player in ipairs(game.Players:GetPlayers()) do
+								if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+									if not _G.LoopKillActive then break end
+									
+									local targetHRP = player.Character.HumanoidRootPart
+									
+									-- 相手の背後に一瞬でテレポート
+									hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 1)
+									task.wait(0.02) -- 物理判定を発生させるための一瞬の溜め
+								end
+							end
+						end
+					end)
+				end
+			end)
+		else
+			-- OFFにした時は回転を止める
+			pcall(function()
+				if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+					game.Players.LocalPlayer.Character.HumanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+				end
+			end)
+		end
+	end    
 })
+
+LoopKillTab:AddLabel("※使用前に移動ハックの『Noclip』をONにしてくれ！")
 
 -- 初期化
 OrionLib:Init()
