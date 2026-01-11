@@ -335,5 +335,47 @@ DefenseTab:AddToggle({
 	end    
 })
 
+-- [[ TRACKER TAB ]]
+local TrackerTab = Window:MakeTab({
+	Name = "プレイヤー追跡",
+	Icon = "rbxassetid://4483345998"
+})
+
+local targetPlayer = ""
+
+TrackerTab:AddTextbox({
+	Name = "ターゲット名 (略称可)",
+	Default = "",
+	TextDisappear = false,
+	Callback = function(t)
+		targetPlayer = t
+	end	  
+})
+
+_G.Tracking = false
+TrackerTab:AddToggle({
+	Name = "ストーカーモード開始",
+	Default = false,
+	Callback = function(v)
+		_G.Tracking = v
+		if v then
+			task.spawn(function()
+				while _G.Tracking do
+					task.wait()
+					pcall(function()
+						for _, p in pairs(game.Players:GetPlayers()) do
+							if string.find(p.Name:lower(), targetPlayer:lower()) and p.Character then
+								-- 相手の背後1スタッドの位置に張り付く
+								local targetHRP = p.Character.HumanoidRootPart
+								game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 1)
+							end
+						end
+					end)
+				end
+			end)
+		end
+	end    
+})
+
 -- 初期化
 OrionLib:Init()
