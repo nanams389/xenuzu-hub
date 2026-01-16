@@ -213,35 +213,56 @@ LoopTab:AddSection({
 	Name = "Actions"
 })
 
--- 2. Loop Kill の切り替えトグル
+local RunService = game:GetService("RunService")
+local LocalPlayer = game.Players.LocalPlayer
+
+-- 内部変数
+local SelectedPlayer = nil
+local LoopFlingEnabled = false
+local FlingConnection = nil
+
+-- --- Loop Fling の処理 ---
 LoopTab:AddToggle({
-	Name = "Loop Kill (ON / OFF)",
+	Name = "Loop Fling (ON / OFF)",
 	Default = false,
 	Callback = function(Value)
-		LoopKillEnabled = Value
+		LoopFlingEnabled = Value
 		
-		if LoopKillEnabled then
-			-- ループ開始（1フレームごとにチェック）
-			LoopKillConnection = RunService.Heartbeat:Connect(function()
-				if SelectedPlayer and SelectedPlayer.Character then
-					local hum = SelectedPlayer.Character:FindFirstChildOfClass("Humanoid")
-					if hum and hum.Health > 0 then
-						hum.Health = 0 -- キル実行
+		if LoopFlingEnabled then
+			-- 1フレームごとに実行（物理演算をバグらせて飛ばす）
+			FlingConnection = RunService.Heartbeat:Connect(function()
+				if SelectedPlayer and SelectedPlayer.Character and LocalPlayer.Character then
+					local myRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+					local targetRoot = SelectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+					
+					if myRoot and targetRoot then
+						-- 自分の動きを物理的に「異常」な速度にする（これが飛ばすコツ）
+						local oldVelocity = myRoot.Velocity
+						myRoot.Velocity = Vector3.new(10000, 10000, 10000) -- 超高速回転/移動
+						
+						-- 相手の場所に一瞬で移動してぶつかる
+						myRoot.CFrame = targetRoot.CFrame
+						
+						-- すぐに速度を戻さないと自分もどこかへ行くので注意
+						RunService.RenderStepped:Wait()
+						myRoot.Velocity = oldVelocity
 					end
 				end
 			end)
+			
+			OrionLib:MakeNotification({
+				Name = "Fling Start",
+				Content = SelectedPlayer.Name .. " を追放中...",
+				Time = 3
+			})
 		else
 			-- ループ停止
-			if LoopKillConnection then
-				LoopKillConnection:Disconnect()
-				LoopKillConnection = nil
+			if FlingConnection then
+				FlingConnection:Disconnect()
+				FlingConnection = nil
 			end
 		end
 	end    
 })
-
--- 初期化
-OrionLib:Init()
-
 -- 初期化
 OrionLib:Init()
