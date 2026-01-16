@@ -264,5 +264,86 @@ LoopTab:AddToggle({
 		end
 	end    
 })
+
+-- --- 貫通（Noclip）用変数 ---
+local NoclipLoop = nil
+local RunService = game:GetService("RunService")
+local LocalPlayer = game.Players.LocalPlayer
+
+-- --- タブ作成 ---
+local HouseTab = Window:MakeTab({
+	Name = "Bring House",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+HouseTab:AddSection({
+	Name = "Infiltration (建物貫通・侵入設定)"
+})
+
+-- 1. 貫通（Noclip）切り替え
+HouseTab:AddToggle({
+	Name = "Noclip Mode (壁・家を貫通)",
+	Default = false,
+	Callback = function(Value)
+		if Value then
+			-- 貫通開始：全パーツの衝突判定を毎フレーム消す
+			NoclipLoop = RunService.Stepped:Connect(function()
+				if LocalPlayer.Character then
+					for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CanCollide = false
+						end
+					end
+				end
+			end)
+			OrionLib:MakeNotification({Name = "System", Content = "貫通モード有効。Blobmanのように家に入れます。", Time = 3})
+		else
+			-- 貫通解除
+			if NoclipLoop then
+				NoclipLoop:Disconnect()
+				NoclipLoop = nil
+			end
+			OrionLib:MakeNotification({Name = "System", Content = "貫通モード解除。", Time = 3})
+		end
+	end    
+})
+
+-- 2. ターゲットの家の中へ瞬間移動
+HouseTab:AddButton({
+	Name = "Bring to House (ターゲットへ突撃)",
+	Callback = function()
+		if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			local targetPos = SelectedPlayer.Character.HumanoidRootPart.CFrame
+			LocalPlayer.Character.HumanoidRootPart.CFrame = targetPos
+			OrionLib:MakeNotification({
+				Name = "Success",
+				Content = SelectedPlayer.Name .. " の目の前に現れたぜ。",
+				Time = 3
+			})
+		else
+			OrionLib:MakeNotification({
+				Name = "Error",
+				Content = "Loopタブでプレイヤーを先に選んでくれ！",
+				Time = 3
+			})
+		end
+	end
+})
+
+HouseTab:AddSection({
+	Name = "Banished (エラー落ち)"
+})
+
+-- 3. エラーコード風キック
+HouseTab:AddButton({
+	Name = "Kick Target (エラーコード 267)",
+	Callback = function()
+		if SelectedPlayer then
+			SelectedPlayer:Kick("Disconnected: You have been kicked from the server. (Error Code: 267)")
+		end
+	end
+})
+
 -- 初期化
 OrionLib:Init()
