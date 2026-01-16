@@ -148,5 +148,100 @@ UtilTab:AddButton({
     end    
 })
 
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+-- 内部変数
+local SelectedPlayer = nil
+local LoopKillEnabled = false
+local LoopKillConnection = nil
+
+-- --- Loop タブの作成 ---
+local LoopTab = Window:MakeTab({
+	Name = "Loop",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+LoopTab:AddSection({
+	Name = "Target Selection"
+})
+
+-- 1. ターゲット選択用のドロップダウン
+-- プレイヤーが入退室するたびに更新するのが理想だが、まずは簡易版で実装
+local function GetPlayerList()
+	local plrs = {}
+	for _, v in pairs(Players:GetPlayers()) do
+		table.insert(plrs, v.Name)
+	end
+	return plrs
+end
+
+local PlayerDropdown = LoopTab:AddDropdown({
+	Name = "Select Player (ターゲット選択)",
+	Default = "None",
+	Options = GetPlayerList(),
+	Callback = function(Value)
+		SelectedPlayer = Players:FindFirstChild(Value)
+		
+		-- プレイヤーが選ばれたら通知とアイコン表示（コンソールで確認用）
+		if SelectedPlayer then
+			local userId = SelectedPlayer.UserId
+			local thumbType = Enum.ThumbnailType.HeadShot
+			local thumbSize = Enum.ThumbnailSize.Size150x150
+			local content, isReady = Players:GetUserThumbnailAsync(userId, thumbType, thumbSize)
+			
+			OrionLib:MakeNotification({
+				Name = "Target Locked",
+				Content = Value .. " を選択したぜ。",
+				Image = content, -- プレイヤーのアイコンを表示！
+				Time = 5
+			})
+		end
+	end    
+})
+
+-- リスト更新ボタン
+LoopTab:AddButton({
+	Name = "Refresh Player List (リスト更新)",
+	Callback = function()
+		PlayerDropdown:Refresh(GetPlayerList(), true)
+	end
+})
+
+LoopTab:AddSection({
+	Name = "Actions"
+})
+
+-- 2. Loop Kill の切り替えトグル
+LoopTab:AddToggle({
+	Name = "Loop Kill (ON / OFF)",
+	Default = false,
+	Callback = function(Value)
+		LoopKillEnabled = Value
+		
+		if LoopKillEnabled then
+			-- ループ開始（1フレームごとにチェック）
+			LoopKillConnection = RunService.Heartbeat:Connect(function()
+				if SelectedPlayer and SelectedPlayer.Character then
+					local hum = SelectedPlayer.Character:FindFirstChildOfClass("Humanoid")
+					if hum and hum.Health > 0 then
+						hum.Health = 0 -- キル実行
+					end
+				end
+			end)
+		else
+			-- ループ停止
+			if LoopKillConnection then
+				LoopKillConnection:Disconnect()
+				LoopKillConnection = nil
+			end
+		end
+	end    
+})
+
+-- 初期化
+OrionLib:Init()
+
 -- 初期化
 OrionLib:Init()
