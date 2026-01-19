@@ -266,60 +266,12 @@ LoopTab:AddToggle({
 })
 
 --==============================
--- 【決定版】Bling House (超遠隔・両手掴み)
+-- Bling House タブ
 --==============================
 local BlingTab = Window:MakeTab({
 	Name = "Bling House",
-	Icon = "rbxassetid://4483345998",
-	PremiumOnly = false
+	Icon = "rbxassetid://4483345998"
 })
-
-local TargetPlayer = nil
-local HouseBypass = false
-local RemoteGrab = false
-local VIM = game:GetService("VirtualInputManager")
-
--- [1] 貫通ロジック（自分と乗り物）
-game:GetService("RunService").Stepped:Connect(function()
-    if HouseBypass then
-        local char = game.Players.LocalPlayer.Character
-        if char then
-            for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-        end
-    end
-end)
-
--- [2] 遠隔・両手掴みループ
-task.spawn(function()
-    while true do
-        if RemoteGrab and TargetPlayer and TargetPlayer.Character then
-            local myChar = game.Players.LocalPlayer.Character
-            local tRoot = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
-            
-            if tRoot then
-                -- 【重要】自分は動かず、マウスの右クリック（掴み）を相手の座標で発生させる
-                -- 画面中央（相手がいる方向）に向かって右クリックを連打するシミュレーション
-                -- 物人の仕様上、相手を画面に捉えていればこの「右クリ連打」で吸い付く
-                
-                -- 右クリック（掴み）
-                VIM:SendMouseButtonEvent(0, 0, 1, true, game, 0) 
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(0, 0, 1, false, game, 0)
-                
-                -- 両手で掴むために、右クリックの合間に少しだけ間隔を空けて再送
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(0, 0, 1, true, game, 0)
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(0, 0, 1, false, game, 0)
-            end
-        end
-        task.wait(0.05)
-    end
-end)
-
--- --- UIコンポーネント ---
 
 local function getPlayers()
     local pList = {}
@@ -330,12 +282,10 @@ local function getPlayers()
 end
 
 local PlayerSelect = BlingTab:AddDropdown({
-	Name = "1. Target Player",
+	Name = "Target Player",
 	Default = "",
 	Options = getPlayers(),
-	Callback = function(Value)
-		TargetPlayer = game.Players:FindFirstChild(Value)
-	end
+	Callback = function(Value) TargetPlayer = game.Players:FindFirstChild(Value) end
 })
 
 BlingTab:AddButton({
@@ -344,26 +294,63 @@ BlingTab:AddButton({
 })
 
 BlingTab:AddToggle({
-	Name = "2. House Bypass (Noclip)",
+	Name = "House Bypass (Noclip)",
 	Default = false,
 	Callback = function(Value)
 		HouseBypass = Value
-        if not Value and game.Players.LocalPlayer.Character then
-            pcall(function()
-                for _, part in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = true end
-                end
-            end)
+        local root = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if Value then
+            if root and not BV then
+                BV = Instance.new("BodyVelocity")
+                BV.Velocity = Vector3.new(0, 0, 0)
+                BV.MaxForce = Vector3.new(0, math.huge, 0)
+                BV.Parent = root
+            end
+        else
+            if BV then BV:Destroy() BV = nil end
         end
 	end    
 })
 
 BlingTab:AddToggle({
-	Name = "3. Remote Both-Hands Grab",
+	Name = "Auto Magnetic Grab",
 	Default = false,
-	Callback = function(Value)
-		RemoteGrab = Value
-	end
+	Callback = function(Value) MagneticGrab = Value end
 })
--- 初期化
+
+--==============================
+-- Kick タブ
+--==============================
+local KickTab = Window:MakeTab({
+	Name = "Kick",
+	Icon = "rbxassetid://4483345998"
+})
+
+KickTab:AddToggle({
+	Name = "Kick Aura (Auto Attack)",
+	Default = false,
+	Callback = function(Value) KickAura = Value end
+})
+
+KickTab:AddDropdown({
+	Name = "Kick Type",
+	Default = "Float",
+	Options = {"Float", "Normal", "Heavy"},
+	Callback = function(Value) KickType = Value end
+})
+
+KickTab:AddSlider({
+	Name = "Grab Speed (ms)",
+	Min = 10,
+	Max = 100,
+	Default = 25,
+	Color = Color3.fromRGB(255, 255, 255),
+	Increment = 1,
+	ValueName = "ms",
+	Callback = function(Value)
+		GrabSpeed = Value / 1000
+	end    
+})
+
+---初期化---
 OrionLib:Init()
