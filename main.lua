@@ -265,85 +265,84 @@ LoopTab:AddToggle({
 	end    
 })
 
--- --- 貫通（Noclip）用変数 ---
-local NoclipLoop = nil
-local RunService = game:GetService("RunService")
-local LocalPlayer = game.Players.LocalPlayer
-
--- --- タブ作成 ---
-local HouseTab = Window:MakeTab({
-	Name = "Bring House",
+--==============================
+-- Bling House タブ
+--==============================
+local BlingTab = Window:MakeTab({
+	Name = "Bling House",
 	Icon = "rbxassetid://4483345998",
 	PremiumOnly = false
 })
 
-HouseTab:AddSection({
-	Name = "Infiltration (建物貫通・侵入設定)"
+local TargetPlayer = nil
+local HouseBypass = false
+
+-- 貫通（Noclip）のループ処理（これがないと貫通しない）
+game:GetService("RunService").Stepped:Connect(function()
+    if HouseBypass and game.Players.LocalPlayer.Character then
+        for _, part in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- プレイヤーリスト取得関数
+local function getPlayers()
+    local pList = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            table.insert(pList, p.Name)
+        end
+    end
+    return pList
+end
+
+-- 1. プレイヤー選択
+local PlayerSelect = BlingTab:AddDropdown({
+	Name = "Select Target Player",
+	Default = "",
+	Options = getPlayers(),
+	Callback = function(Value)
+		TargetPlayer = game.Players:FindFirstChild(Value)
+	end
 })
 
--- 1. 貫通（Noclip）切り替え
-HouseTab:AddToggle({
-	Name = "Noclip Mode (壁・家を貫通)",
+-- 2. リスト更新（人が入れ替わった時用）
+BlingTab:AddButton({
+	Name = "Refresh Player List",
+	Callback = function()
+		PlayerSelect:Refresh(getPlayers(), true)
+	end
+})
+
+-- 3. 貫通オンオフ（家を通り抜けてキックしに行く用）
+BlingTab:AddToggle({
+	Name = "House Pass-through (ON/OFF)",
 	Default = false,
 	Callback = function(Value)
-		if Value then
-			-- 貫通開始：全パーツの衝突判定を毎フレーム消す
-			NoclipLoop = RunService.Stepped:Connect(function()
-				if LocalPlayer.Character then
-					for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-						if part:IsA("BasePart") then
-							part.CanCollide = false
-						end
-					end
-				end
-			end)
-			OrionLib:MakeNotification({Name = "System", Content = "貫通モード有効。Blobmanのように家に入れます。", Time = 3})
-		else
-			-- 貫通解除
-			if NoclipLoop then
-				NoclipLoop:Disconnect()
-				NoclipLoop = nil
-			end
-			OrionLib:MakeNotification({Name = "System", Content = "貫通モード解除。", Time = 3})
-		end
+		HouseBypass = Value
+        if not Value then
+            -- オフにした時は当たり判定を戻す
+            local char = game.Players.LocalPlayer.Character
+            if char then
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = true end
+                end
+            end
+        end
 	end    
 })
 
--- 2. ターゲットの家の中へ瞬間移動
-HouseTab:AddButton({
-	Name = "Bring to House (ターゲットへ突撃)",
+-- 4. ターゲットに急接近（キック用）
+BlingTab:AddButton({
+	Name = "Go to Target (Inside House)",
 	Callback = function()
-		if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-			local targetPos = SelectedPlayer.Character.HumanoidRootPart.CFrame
-			LocalPlayer.Character.HumanoidRootPart.CFrame = targetPos
-			OrionLib:MakeNotification({
-				Name = "Success",
-				Content = SelectedPlayer.Name .. " の目の前に現れたぜ。",
-				Time = 3
-			})
-		else
-			OrionLib:MakeNotification({
-				Name = "Error",
-				Content = "Loopタブでプレイヤーを先に選んでくれ！",
-				Time = 3
-			})
-		end
+		if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = TargetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
+        end
 	end
 })
-
-HouseTab:AddSection({
-	Name = "Banished (エラー落ち)"
-})
-
--- 3. エラーコード風キック
-HouseTab:AddButton({
-	Name = "Kick Target (エラーコード 267)",
-	Callback = function()
-		if SelectedPlayer then
-			SelectedPlayer:Kick("Disconnected: You have been kicked from the server. (Error Code: 267)")
-		end
-	end
-})
-
 -- 初期化
 OrionLib:Init()
