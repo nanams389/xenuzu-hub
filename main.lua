@@ -266,7 +266,7 @@ LoopTab:AddToggle({
 })
 
 --==============================
--- Bling House (落下防止 + 自動掴み)
+-- 【物人専用】Bling House タブ (右クリック掴み対応)
 --==============================
 local BlingTab = Window:MakeTab({
 	Name = "Bling House",
@@ -276,36 +276,51 @@ local BlingTab = Window:MakeTab({
 
 local TargetPlayer = nil
 local HouseBypass = false
+local MagneticGrab = false
+local BV = nil
+local VIM = game:GetService("VirtualInputManager")
 
--- 貫通（Noclip）+ 落下防止ロジック
+-- [1] 貫通 & 落下防止（ブロブマン対応）
 game:GetService("RunService").Stepped:Connect(function()
     if HouseBypass then
         local char = game.Players.LocalPlayer.Character
         if char then
-            -- 自分の体の判定を消す（ただし地面との接触は維持したいが、Noclip時はRaycastで地面を検知するのが一般的）
-            -- ここではシンプルに「足元より下の判定」を維持するか、
-            -- 落ちないように高さを固定する（Velocityを0にする）のが確実
             for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
+                if part:IsA("BasePart") then part.CanCollide = false end
             end
-            
-            -- ブロブマンの判定を消す
             local humanoid = char:FindFirstChild("Humanoid")
-            if humanoid and humanoid.SeatPart then
-                local vehicle = humanoid.SeatPart.Parent
-                for _, vPart in pairs(vehicle:GetDescendants()) do
-                    if vPart:IsA("BasePart") and vPart.Name ~= "Baseplate" then -- 地面は除外を試みる
-                        vPart.CanCollide = false
-                    end
+            if humanoid and humanoid.SeatPart and humanoid.SeatPart.Parent then
+                for _, vPart in pairs(humanoid.SeatPart.Parent:GetDescendants()) do
+                    if vPart:IsA("BasePart") then vPart.CanCollide = false end
                 end
             end
         end
     end
 end)
 
--- プレイヤーリスト更新
+-- [2] 吸い付き & 右クリック掴み連打ロジック
+task.spawn(function()
+    while true do
+        if MagneticGrab and TargetPlayer and TargetPlayer.Character then
+            local myRoot = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local tRoot = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            
+            if myRoot and tRoot then
+                -- 相手の目の前に張り付く (距離1.5で固定)
+                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -1.5) * CFrame.Angles(0, math.rad(180), 0)
+                
+                -- 【物人仕様】マウス右クリック (MouseButton2) を高速連打
+                VIM:SendMouseButtonEvent(0, 0, 1, true, game, 0) -- 右クリ押し
+                task.wait(0.01)
+                VIM:SendMouseButtonEvent(0, 0, 1, false, game, 0) -- 右クリ離し
+            end
+        end
+        task.wait(0.02) -- 掴み判定をさらに濃密に
+    end
+end)
+
+-- --- UIコンポーネント ---
+
 local function getPlayers()
     local pList = {}
     for _, p in pairs(game.Players:GetPlayers()) do
@@ -315,7 +330,7 @@ local function getPlayers()
 end
 
 local PlayerSelect = BlingTab:AddDropdown({
-	Name = "Select Target",
+	Name = "1. Target: Select Player",
 	Default = "",
 	Options = getPlayers(),
 	Callback = function(Value)
@@ -328,45 +343,35 @@ BlingTab:AddButton({
 	Callback = function() PlayerSelect:Refresh(getPlayers(), true) end
 })
 
--- 貫通スイッチ
 BlingTab:AddToggle({
-	Name = "House Bypass (No Fall)",
+	Name = "2. House Bypass (Noclip)",
 	Default = false,
 	Callback = function(Value)
 		HouseBypass = Value
-        -- 落下防止の対策：Noclip中は重力を無視する設定を入れると落ちない
-        if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+        local root = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if Value then
+            if root and not BV then
+                BV = Instance.new("BodyVelocity")
+                BV.Velocity = Vector3.new(0, 0, 0)
+                BV.MaxForce = Vector3.new(0, math.huge, 0)
+                BV.Parent = root
+            end
+        else
+            if BV then BV:Destroy() BV = nil end
+            pcall(function()
+                for _, part in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = true end
+                end
+            end)
         end
 	end    
 })
 
--- 【自動掴みキック】
-BlingTab:AddButton({
-	Name = "Auto Grab & Kick Target",
-	Callback = function()
-		if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local myChar = game.Players.LocalPlayer.Character
-            local root = myChar.HumanoidRootPart
-            
-            -- 1. 相手の場所に瞬間移動（ブロブマンごと）
-            root.CFrame = TargetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
-            
-            -- 2. ブロブマンの掴み判定（物人の仕様に合わせた遠隔イベントやキー入力送信）
-            -- ほとんどのゲームではキー入力（Eキーなど）で掴むので、入力をシミュレート
-            task.wait(0.1)
-            local VirtualInputManager = game:GetService("VirtualInputManager")
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game) -- Eキー押し
-            task.wait(0.1)
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) -- Eキー離し
-            
-            -- 3. キック（攻撃）の実行
-            task.wait(0.2)
-            -- ここに君の持っているキック用コードか、左クリック入力を入れる
-            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0) -- 左クリ押し
-            task.wait(0.1)
-            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0) -- 左クリ離し
-        end
+BlingTab:AddToggle({
+	Name = "3. Auto Magnetic Grab (Right Click)",
+	Default = false,
+	Callback = function(Value)
+		MagneticGrab = Value
 	end
 })
 -- 初期化
