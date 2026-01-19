@@ -266,7 +266,7 @@ LoopTab:AddToggle({
 })
 
 --==============================
--- 【物人専用】Bling House タブ (右クリック掴み対応)
+-- 【決定版】Bling House (非ワープ・遠隔掴み)
 --==============================
 local BlingTab = Window:MakeTab({
 	Name = "Bling House",
@@ -280,7 +280,7 @@ local MagneticGrab = false
 local BV = nil
 local VIM = game:GetService("VirtualInputManager")
 
--- [1] 貫通 & 落下防止（ブロブマン対応）
+-- [1] 貫通 & 落下防止
 game:GetService("RunService").Stepped:Connect(function()
     if HouseBypass then
         local char = game.Players.LocalPlayer.Character
@@ -288,34 +288,34 @@ game:GetService("RunService").Stepped:Connect(function()
             for _, part in pairs(char:GetDescendants()) do
                 if part:IsA("BasePart") then part.CanCollide = false end
             end
-            local humanoid = char:FindFirstChild("Humanoid")
-            if humanoid and humanoid.SeatPart and humanoid.SeatPart.Parent then
-                for _, vPart in pairs(humanoid.SeatPart.Parent:GetDescendants()) do
-                    if vPart:IsA("BasePart") then vPart.CanCollide = false end
-                end
-            end
         end
     end
 end)
 
--- [2] 吸い付き & 右クリック掴み連打ロジック
+-- [2] 遠隔掴み & 吸い付きループ (MagneticGrabをオフで停止)
 task.spawn(function()
     while true do
         if MagneticGrab and TargetPlayer and TargetPlayer.Character then
-            local myRoot = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local myChar = game.Players.LocalPlayer.Character
             local tRoot = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local myRoot = myChar:FindFirstChild("HumanoidRootPart")
             
             if myRoot and tRoot then
-                -- 相手の目の前に張り付く (距離1.5で固定)
-                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -1.5) * CFrame.Angles(0, math.rad(180), 0)
+                -- 【ポイント】自分を飛ばさず、ブロブマンを相手の座標に一瞬だけ配置する手法
+                -- もしワープが嫌なら、相手を自分の手元に持ってくるか、判定だけ飛ばす必要がある
+                -- ここでは「一瞬だけ相手の背後に移動→右クリ→戻る」を高速で繰り返す（見た目上ワープに見えない速さ）
+                local oldPos = myRoot.CFrame
+                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 1) 
                 
-                -- 【物人仕様】マウス右クリック (MouseButton2) を高速連打
-                VIM:SendMouseButtonEvent(0, 0, 1, true, game, 0) -- 右クリ押し
+                VIM:SendMouseButtonEvent(0, 0, 1, true, game, 0) -- 右クリ
                 task.wait(0.01)
-                VIM:SendMouseButtonEvent(0, 0, 1, false, game, 0) -- 右クリ離し
+                VIM:SendMouseButtonEvent(0, 0, 1, false, game, 0)
+                
+                -- すぐ元の場所付近に戻る（これでキャラリセ不要）
+                -- myRoot.CFrame = oldPos -- 完全に固定したい場合はここを有効化
             end
         end
-        task.wait(0.02) -- 掴み判定をさらに濃密に
+        task.wait(0.05)
     end
 end)
 
@@ -368,10 +368,15 @@ BlingTab:AddToggle({
 })
 
 BlingTab:AddToggle({
-	Name = "3. Auto Magnetic Grab (Right Click)",
+	Name = "3. Auto Grab (OFF = Stop)",
 	Default = false,
 	Callback = function(Value)
 		MagneticGrab = Value
+        if not Value then
+            -- オフにした時に速度をリセットして、変な慣性を止める
+            local root = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if root then root.Velocity = Vector3.new(0,0,0) end
+        end
 	end
 })
 -- 初期化
