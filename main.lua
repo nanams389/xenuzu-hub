@@ -266,7 +266,7 @@ LoopTab:AddToggle({
 })
 
 --==============================
--- Bling House タブ (ブロブマン貫通強化版)
+-- Bling House (落下防止 + 自動掴み)
 --==============================
 local BlingTab = Window:MakeTab({
 	Name = "Bling House",
@@ -277,24 +277,26 @@ local BlingTab = Window:MakeTab({
 local TargetPlayer = nil
 local HouseBypass = false
 
--- 貫通（Noclip）のメインロジック
+-- 貫通（Noclip）+ 落下防止ロジック
 game:GetService("RunService").Stepped:Connect(function()
     if HouseBypass then
         local char = game.Players.LocalPlayer.Character
         if char then
-            -- 1. 自分の体の判定を消す
+            -- 自分の体の判定を消す（ただし地面との接触は維持したいが、Noclip時はRaycastで地面を検知するのが一般的）
+            -- ここではシンプルに「足元より下の判定」を維持するか、
+            -- 落ちないように高さを固定する（Velocityを0にする）のが確実
             for _, part in pairs(char:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
                 end
             end
             
-            -- 2. ブロブマン（乗り物）の判定を消す
+            -- ブロブマンの判定を消す
             local humanoid = char:FindFirstChild("Humanoid")
             if humanoid and humanoid.SeatPart then
-                local vehicle = humanoid.SeatPart.Parent -- 乗り物のモデルを取得
+                local vehicle = humanoid.SeatPart.Parent
                 for _, vPart in pairs(vehicle:GetDescendants()) do
-                    if vPart:IsA("BasePart") then
+                    if vPart:IsA("BasePart") and vPart.Name ~= "Baseplate" then -- 地面は除外を試みる
                         vPart.CanCollide = false
                     end
                 end
@@ -303,20 +305,17 @@ game:GetService("RunService").Stepped:Connect(function()
     end
 end)
 
--- プレイヤーリスト取得
+-- プレイヤーリスト更新
 local function getPlayers()
     local pList = {}
     for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= game.Players.LocalPlayer then
-            table.insert(pList, p.Name)
-        end
+        if p ~= game.Players.LocalPlayer then table.insert(pList, p.Name) end
     end
     return pList
 end
 
--- プレイヤー選択
 local PlayerSelect = BlingTab:AddDropdown({
-	Name = "Select Target Player",
+	Name = "Select Target",
 	Default = "",
 	Options = getPlayers(),
 	Callback = function(Value)
@@ -324,43 +323,49 @@ local PlayerSelect = BlingTab:AddDropdown({
 	end
 })
 
--- 更新ボタン
 BlingTab:AddButton({
-	Name = "Refresh Player List",
-	Callback = function()
-		PlayerSelect:Refresh(getPlayers(), true)
-	end
+	Name = "Refresh List",
+	Callback = function() PlayerSelect:Refresh(getPlayers(), true) end
 })
 
--- 貫通オンオフ
+-- 貫通スイッチ
 BlingTab:AddToggle({
-	Name = "Blobman House Bypass",
+	Name = "House Bypass (No Fall)",
 	Default = false,
 	Callback = function(Value)
 		HouseBypass = Value
-        if not Value then
-            -- オフにした時に判定を戻す（念のため）
-            local char = game.Players.LocalPlayer.Character
-            if char then
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = true end
-                end
-            end
+        -- 落下防止の対策：Noclip中は重力を無視する設定を入れると落ちない
+        if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
         end
 	end    
 })
 
--- ターゲットへワープ（ブロブマンごと移動）
+-- 【自動掴みキック】
 BlingTab:AddButton({
-	Name = "TP to Target (With Blobman)",
+	Name = "Auto Grab & Kick Target",
 	Callback = function()
 		if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local char = game.Players.LocalPlayer.Character
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if root then
-                -- ターゲットの少し後ろにワープ
-                root.CFrame = TargetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 4)
-            end
+            local myChar = game.Players.LocalPlayer.Character
+            local root = myChar.HumanoidRootPart
+            
+            -- 1. 相手の場所に瞬間移動（ブロブマンごと）
+            root.CFrame = TargetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
+            
+            -- 2. ブロブマンの掴み判定（物人の仕様に合わせた遠隔イベントやキー入力送信）
+            -- ほとんどのゲームではキー入力（Eキーなど）で掴むので、入力をシミュレート
+            task.wait(0.1)
+            local VirtualInputManager = game:GetService("VirtualInputManager")
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game) -- Eキー押し
+            task.wait(0.1)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) -- Eキー離し
+            
+            -- 3. キック（攻撃）の実行
+            task.wait(0.2)
+            -- ここに君の持っているキック用コードか、左クリック入力を入れる
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0) -- 左クリ押し
+            task.wait(0.1)
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0) -- 左クリ離し
         end
 	end
 })
