@@ -266,7 +266,7 @@ LoopTab:AddToggle({
 })
 
 --==============================
--- Bling House タブ
+-- Bling House タブ (ブロブマン貫通強化版)
 --==============================
 local BlingTab = Window:MakeTab({
 	Name = "Bling House",
@@ -277,18 +277,33 @@ local BlingTab = Window:MakeTab({
 local TargetPlayer = nil
 local HouseBypass = false
 
--- 貫通（Noclip）のループ処理（これがないと貫通しない）
+-- 貫通（Noclip）のメインロジック
 game:GetService("RunService").Stepped:Connect(function()
-    if HouseBypass and game.Players.LocalPlayer.Character then
-        for _, part in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
+    if HouseBypass then
+        local char = game.Players.LocalPlayer.Character
+        if char then
+            -- 1. 自分の体の判定を消す
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+            
+            -- 2. ブロブマン（乗り物）の判定を消す
+            local humanoid = char:FindFirstChild("Humanoid")
+            if humanoid and humanoid.SeatPart then
+                local vehicle = humanoid.SeatPart.Parent -- 乗り物のモデルを取得
+                for _, vPart in pairs(vehicle:GetDescendants()) do
+                    if vPart:IsA("BasePart") then
+                        vPart.CanCollide = false
+                    end
+                end
             end
         end
     end
 end)
 
--- プレイヤーリスト取得関数
+-- プレイヤーリスト取得
 local function getPlayers()
     local pList = {}
     for _, p in pairs(game.Players:GetPlayers()) do
@@ -299,7 +314,7 @@ local function getPlayers()
     return pList
 end
 
--- 1. プレイヤー選択
+-- プレイヤー選択
 local PlayerSelect = BlingTab:AddDropdown({
 	Name = "Select Target Player",
 	Default = "",
@@ -309,7 +324,7 @@ local PlayerSelect = BlingTab:AddDropdown({
 	end
 })
 
--- 2. リスト更新（人が入れ替わった時用）
+-- 更新ボタン
 BlingTab:AddButton({
 	Name = "Refresh Player List",
 	Callback = function()
@@ -317,14 +332,14 @@ BlingTab:AddButton({
 	end
 })
 
--- 3. 貫通オンオフ（家を通り抜けてキックしに行く用）
+-- 貫通オンオフ
 BlingTab:AddToggle({
-	Name = "House Pass-through (ON/OFF)",
+	Name = "Blobman House Bypass",
 	Default = false,
 	Callback = function(Value)
 		HouseBypass = Value
         if not Value then
-            -- オフにした時は当たり判定を戻す
+            -- オフにした時に判定を戻す（念のため）
             local char = game.Players.LocalPlayer.Character
             if char then
                 for _, part in pairs(char:GetDescendants()) do
@@ -335,12 +350,17 @@ BlingTab:AddToggle({
 	end    
 })
 
--- 4. ターゲットに急接近（キック用）
+-- ターゲットへワープ（ブロブマンごと移動）
 BlingTab:AddButton({
-	Name = "Go to Target (Inside House)",
+	Name = "TP to Target (With Blobman)",
 	Callback = function()
 		if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = TargetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
+            local char = game.Players.LocalPlayer.Character
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                -- ターゲットの少し後ろにワープ
+                root.CFrame = TargetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 4)
+            end
         end
 	end
 })
