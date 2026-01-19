@@ -266,68 +266,132 @@ LoopTab:AddToggle({
 })
 
 --==============================
--- 【心臓部移植版】Bling House & Kick
+-- 変数宣言（心臓部）
 --==============================
 local TargetPlayer = nil
 local HouseBypass = false
 local MagneticGrab = false
+local KickAura = false
 local GrabSpeed = 0.005 -- 君が見つけた爆速設定
+local BV = nil
+local VIM = game:GetService("VirtualInputManager")
 
--- ゲーム内のフォルダ名を定義（君のコードにあったもの）
-local PlayerToysFolder = "PlayerToys" -- もしエラーならここを調整
-
--- [最強の掴み関数] 君が見つけたFireServerロジック
+-- [最強の強制掴み関数]
 local function blobGrabPlayer(target)
-    local char = game.Players.LocalPlayer.Character
-    local blobman = workspace:FindFirstChild(PlayerToysFolder) and workspace[PlayerToysFolder]:FindFirstChild("CreatureBlobman")
-    
-    -- ブロブマンが見つからない場合、自分の周りからも探す
+    local blobman = workspace:FindFirstChild("PlayerToys") and workspace.PlayerToys:FindFirstChild("CreatureBlobman")
     if not blobman then
-        for _, v in pairs(workspace:GetChildren()) do
+        for _, v in pairs(workspace:GetDescendants()) do
             if v.Name == "CreatureBlobman" then blobman = v break end
         end
     end
 
     if blobman and target and target.Character then
-        local args = {
-            [1] = blobman:FindFirstChild("RightDetector"),
-            [3] = blobman:FindFirstChild("RightDetector"):FindFirstChild("RightWeld")
-        }
-        -- これがゲームに直接送る「掴み信号」だ！
         local script = blobman:FindFirstChild("BlobmanSeatAndOwnerScript")
         if script and script:FindFirstChild("CreatureGrab") then
+            local args = {
+                [1] = blobman:FindFirstChild("RightDetector"),
+                [3] = blobman:FindFirstChild("RightDetector"):FindFirstChild("RightWeld")
+            }
             script.CreatureGrab:FireServer(unpack(args))
         end
     end
 end
 
--- 実行ループ
+-- [実行メインループ]
 task.spawn(function()
     while true do
-        if MagneticGrab and TargetPlayer then
-            -- 1. 相手の場所に一瞬で吸い付く
+        if MagneticGrab and TargetPlayer and TargetPlayer.Character then
             local myRoot = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            local tRoot = TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
-            
+            local tRoot = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
             if myRoot and tRoot then
-                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -1.5)
-                -- 2. 直接信号を送って掴む！
+                -- 相手に張り付く
+                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -1.8)
+                -- 強制掴み
                 blobGrabPlayer(TargetPlayer)
             end
+        end
+        if KickAura then
+            VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0) -- 左クリック連打
+            task.wait(0.05)
+            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
         end
         task.wait(GrabSpeed)
     end
 end)
 
--- --- タブ部分 (Orion UIに組み込み) ---
+--==============================
+-- UI構築: Bling House タブ
+--==============================
 local BlingTab = Window:MakeTab({Name = "Bling House", Icon = "rbxassetid://4483345998"})
 
+local function getPlayers()
+    local pList = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then table.insert(pList, p.Name) end
+    end
+    return pList
+end
+
+-- 🌟 プレイヤーリスト（ここで選ぶ！）
+local PlayerSelect = BlingTab:AddDropdown({
+	Name = "1. Select Target Player",
+	Default = "",
+	Options = getPlayers(),
+	Callback = function(Value)
+		TargetPlayer = game.Players:FindFirstChild(Value)
+	end
+})
+
+BlingTab:AddButton({
+	Name = "Refresh Player List",
+	Callback = function() PlayerSelect:Refresh(getPlayers(), true) end
+})
+
 BlingTab:AddToggle({
-	Name = "Auto Magnetic Grab (FireServer)",
+	Name = "2. House Bypass (Noclip)",
+	Default = false,
+	Callback = function(Value)
+		HouseBypass = Value
+        local root = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if Value then
+            if root and not BV then
+                BV = Instance.new("BodyVelocity")
+                BV.Velocity = Vector3.new(0, 0, 0)
+                BV.MaxForce = Vector3.new(0, math.huge, 0)
+                BV.Parent = root
+            end
+        else
+            if BV then BV:Destroy() BV = nil end
+        end
+	end    
+})
+
+BlingTab:AddToggle({
+	Name = "3. Auto Magnetic Grab (FireServer)",
 	Default = false,
 	Callback = function(Value) MagneticGrab = Value end
 })
 
--- ※ 他のDropdownやNoclipはそのまま残してOKだぜ！
+--==============================
+-- UI構築: Kick タブ
+--==============================
+local KickTab = Window:MakeTab({Name = "Kick", Icon = "rbxassetid://4483345998"})
+
+KickTab:AddToggle({
+	Name = "Kick Aura (Auto Attack)",
+	Default = false,
+	Callback = function(Value) KickAura = Value end
+})
+
+KickTab:AddSlider({
+	Name = "Grab Delay (ms)",
+	Min = 5,
+	Max = 100,
+	Default = 25,
+	Color = Color3.fromRGB(255, 255, 255),
+	Increment = 1,
+	ValueName = "ms",
+	Callback = function(Value) GrabSpeed = Value / 1000 end    
+})
 ---初期化---
 OrionLib:Init()
