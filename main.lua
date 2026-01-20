@@ -319,88 +319,69 @@ task.spawn(function()
     end
 end)
 
--- タブの作成
-local AuraTab = Window:MakeTab({
-	Name = "Aura",
-	Icon = "rbxassetid://4483362458", -- 以前のコードにあったアイコンID
-	PremiumOnly = false
-})
+-- 変数
+local kickAuraEnabled = false
+local auraRadius = 25
+-- FTAPの攻撃用リモート（ReplicatedStorage内を探る）
+local combatEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
 
--- セクション: Offensive (攻撃系)
-AuraTab:AddSection({
-	Name = "Offensive Auras"
+-- Auraタブ
+local AuraTab = Window:MakeTab({
+    Name = "Aura",
+    Icon = "rbxassetid://4483362458",
+    PremiumOnly = false
 })
 
 AuraTab:AddToggle({
-	Name = "Poison / Death Aura",
-	Default = false,
-	Callback = function(Value)
-		-- auraToggle = 1 / 0 のロジックをここに反映
-		_G.AuraEnabled = Value
-		if _G.AuraEnabled then
-			print("Aura Activated")
-			-- ここに送ってもらったオーラのループ処理（task.spawn等）を入れる
-		end
-	end    
+    Name = "Kick Aura (FTAP Edition)",
+    Default = false,
+    Callback = function(Value)
+        kickAuraEnabled = Value
+        
+        if kickAuraEnabled then
+            task.spawn(function()
+                while kickAuraEnabled do
+                    local lp = game.Players.LocalPlayer
+                    local char = lp.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        for _, v in pairs(game.Players:GetPlayers()) do
+                            if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = v.Character.HumanoidRootPart
+                                local dist = (char.HumanoidRootPart.Position - targetHRP.Position).Magnitude
+                                
+                                if dist <= auraRadius then
+                                    -- 1. 物理的な座標飛ばし（ローカル側で位置をバグらせる）
+                                    targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 5000, 0)
+                                    
+                                    -- 2. サーバーへの攻撃通知（FTAPのキック・掴み判定を強制発火）
+                                    -- ※ここが「ガチ」の部分だ。Remote名はお前の環境のXenuzuに合わせて調整してくれ
+                                    pcall(function()
+                                        -- 相手を掴んで(Grab)からキック(Kick)の状態を強制送信
+                                        combatEvent:FireServer("Kick", v.Character)
+                                        combatEvent:FireServer("Grab", v.Character)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.05) -- 物人の判定速度に合わせる
+                end
+            end)
+        end
+    end    
 })
 
 AuraTab:AddSlider({
-	Name = "Aura Radius",
-	Min = 0,
-	Max = 100,
-	Default = 20, -- コード内の auraRadius = 20 を反映
-	Color = Color3.fromRGB(255,255,255),
-	Increment = 1,
-	ValueName = "Studs",
-	Callback = function(Value)
-		_G.AuraRadius = Value
-	end    
-})
-
--- セクション: Kick / Grab (拘束系)
-AuraTab:AddSection({
-	Name = "Kick & Grab"
-})
-
-AuraTab:AddToggle({
-	Name = "Kick Grab Aura",
-	Default = false,
-	Callback = function(Value)
-		-- kickGrab / anchorKickGrab のロジック切り替え
-		_G.KickGrabEnabled = Value
-		if Value then
-			Rayfield:Notify({Title = "Venom X", Content = "Kick Grab Activated", Duration = 2})
-		end
-	end    
-})
-
-AuraTab:AddDropdown({
-	Name = "Kick Mode",
-	Default = "Mode 1",
-	Options = {"Mode 1", "Mode 2", "Anchor"}, -- kickMode = 1 等を反映
-	Callback = function(Option)
-		if Option == "Mode 1" then
-			_G.KickMode = 1
-		elseif Option == "Mode 2" then
-			_G.KickMode = 2
-		elseif Option == "Anchor" then
-			_G.KickMode = "Anchor"
-		end
-	end    
-})
-
--- セクション: Defense (防衛系)
-AuraTab:AddSection({
-	Name = "Defense"
-})
-
-AuraTab:AddToggle({
-	Name = "Self Defense / Anti Kick",
-	Default = false,
-	Callback = function(Value)
-		-- antiKickCoroutinelocal のフラグをここに反映
-		_G.AntiKick = Value
-	end    
+    Name = "Aura Range",
+    Min = 5,
+    Max = 100,
+    Default = 25,
+    Color = Color3.fromRGB(255, 0, 0),
+    Increment = 1,
+    ValueName = "Studs",
+    Callback = function(Value)
+        auraRadius = Value
+    end    
 })
 ---初期化---
 OrionLib:Init()
