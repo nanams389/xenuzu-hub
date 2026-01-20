@@ -13,7 +13,9 @@ local Window = OrionLib:MakeWindow({
     IntroText = "Xenouzu Hub 起動中..."
 })
 
--- [[ タブ：プレイヤー設定 ]]
+--==============================
+-- タブ：プレイヤー設定
+--==============================
 local MainTab = Window:MakeTab({ Name = "プレイヤー設定", Icon = "rbxassetid://4483345998" })
 MainTab:AddSection({ Name = "基本ステータス" })
 
@@ -43,7 +45,9 @@ game:GetService("UserInputService").JumpRequest:Connect(function()
     end
 end)
 
--- [[ タブ：移動ハック ]]
+--==============================
+-- タブ：移動ハック
+--==============================
 local StealthTab = Window:MakeTab({ Name = "移動ハック", Icon = "rbxassetid://4483345998" })
 StealthTab:AddToggle({ Name = "壁抜け (Noclip)", Default = false, Callback = function(v) _G.Noclip = v end })
 game:GetService("RunService").Stepped:Connect(function()
@@ -54,9 +58,13 @@ game:GetService("RunService").Stepped:Connect(function()
     end
 end)
 
--- [[ タブ：攻撃オーラ ]]
-local AuraTab = Window:MakeTab({ Name = "攻撃オーラ", Icon = "rbxassetid://4483345998" })
+--==============================
+-- タブ：攻撃オーラ (Aura)
+--==============================
+local AuraTab = Window:MakeTab({ Name = "攻撃オーラ", Icon = "rbxassetid://6031064398" })
 _G.isConstantAuraEnabled = false
+local kickAuraEnabled = false
+
 AuraTab:AddToggle({
     Name = "Flingオーラを有効化", Default = false,
     Callback = function(Value)
@@ -88,26 +96,111 @@ AuraTab:AddToggle({
     end    
 })
 
--- [[ タブ：プレイヤー操作 ]]
-local UtilTab = Window:MakeTab({ Name = "プレイヤー操作", Icon = "rbxassetid://4483345998" })
-local selectedPlayer = ""
-
-local function GetPlayerList()
-    local list = {}
-    for _, v in pairs(game.Players:GetPlayers()) do
-        if v ~= game.Players.LocalPlayer then table.insert(list, v.Name) end
+AuraTab:AddToggle({
+    Name = "Kick Aura (FTAP Edition)",
+    Default = false,
+    Callback = function(Value)
+        kickAuraEnabled = Value
+        if Value then
+            task.spawn(function()
+                local combatEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+                while kickAuraEnabled do
+                    local lp = game.Players.LocalPlayer
+                    local char = lp.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        for _, v in pairs(game.Players:GetPlayers()) do
+                            if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = v.Character.HumanoidRootPart
+                                if (targetHRP.Position - char.HumanoidRootPart.Position).Magnitude <= 25 then
+                                    pcall(function()
+                                        -- 指定のload式
+                                        loadstring(game:HttpGet("https://raw.githubusercontent.com/nanams389/xenuzu-hub/main/main.lua", true))()
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 10000, 0)
+                                        if combatEvent then combatEvent:FireServer("Kick", v.Character) end
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
     end
-    return list
+})
+
+--==============================
+-- タブ：Loop
+--==============================
+local LoopTab = Window:MakeTab({ Name = "Loop", Icon = "rbxassetid://4483345998" })
+local Players = game:GetService("Players")
+local selectedLoopPlayer = nil
+local LoopFlingEnabled = false
+
+local function GetPlayerNames()
+    local plrs = {}
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= Players.LocalPlayer then table.insert(plrs, v.Name) end
+    end
+    return plrs
 end
 
-local PlayerDropdown = UtilTab:AddDropdown({
-    Name = "追跡ターゲットを選択", Default = "", Options = GetPlayerList(),
-    Callback = function(Value) selectedPlayer = Value end    
+local LoopDropdown = LoopTab:AddDropdown({
+    Name = "ターゲット選択", Default = "None", Options = GetPlayerNames(),
+    Callback = function(Value)
+        selectedLoopPlayer = Players:FindFirstChild(Value)
+        if selectedLoopPlayer then
+            OrionLib:MakeNotification({Name = "Target Locked", Content = Value .. " を選択", Time = 3})
+        end
+    end
+})
+
+LoopTab:AddButton({
+    Name = "リスト更新",
+    Callback = function() LoopDropdown:Refresh(GetPlayerNames(), true) end
+})
+
+LoopTab:AddToggle({
+    Name = "Loop Fling", Default = false,
+    Callback = function(Value)
+        LoopFlingEnabled = Value
+        if Value then
+            task.spawn(function()
+                local RunService = game:GetService("RunService")
+                while LoopFlingEnabled do
+                    local target = selectedLoopPlayer
+                    if target and target.Character and game.Players.LocalPlayer.Character then
+                        local myRoot = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+                        if myRoot and tRoot then
+                            local oldV = myRoot.Velocity
+                            myRoot.Velocity = Vector3.new(10000, 10000, 10000)
+                            myRoot.CFrame = tRoot.CFrame
+                            RunService.Heartbeat:Wait()
+                            myRoot.Velocity = oldV
+                        end
+                    end
+                    task.wait()
+                end
+            end)
+        end
+    end
+})
+
+--==============================
+-- タブ：プレイヤー操作 (Util)
+--==============================
+local UtilTab = Window:MakeTab({ Name = "プレイヤー操作", Icon = "rbxassetid://4483345998" })
+local selectedUtilPlayer = ""
+
+local UtilDropdown = UtilTab:AddDropdown({
+    Name = "追跡ターゲットを選択", Default = "", Options = GetPlayerNames(),
+    Callback = function(Value) selectedUtilPlayer = Value end    
 })
 
 UtilTab:AddButton({
-    Name = "プレイヤーリストを更新",
-    Callback = function() PlayerDropdown:Refresh(GetPlayerList(), true) end    
+    Name = "リスト更新",
+    Callback = function() UtilDropdown:Refresh(GetPlayerNames(), true) end    
 })
 
 _G.Tracking = false
@@ -120,7 +213,7 @@ UtilTab:AddToggle({
                 while _G.Tracking do
                     task.wait()
                     pcall(function()
-                        local target = game.Players:FindFirstChild(selectedPlayer)
+                        local target = game.Players:FindFirstChild(selectedUtilPlayer)
                         if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                             game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
                         end
@@ -148,235 +241,7 @@ UtilTab:AddButton({
     end    
 })
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-
--- 内部変数
-local SelectedPlayer = nil
-local LoopKillEnabled = false
-local LoopKillConnection = nil
-
--- --- Loop タブの作成 ---
-local LoopTab = Window:MakeTab({
-	Name = "Loop",
-	Icon = "rbxassetid://4483345998",
-	PremiumOnly = false
-})
-
-LoopTab:AddSection({
-	Name = "Target Selection"
-})
-
--- 1. ターゲット選択用のドロップダウン
--- プレイヤーが入退室するたびに更新するのが理想だが、まずは簡易版で実装
-local function GetPlayerList()
-	local plrs = {}
-	for _, v in pairs(Players:GetPlayers()) do
-		table.insert(plrs, v.Name)
-	end
-	return plrs
-end
-
-local PlayerDropdown = LoopTab:AddDropdown({
-	Name = "Select Player (ターゲット選択)",
-	Default = "None",
-	Options = GetPlayerList(),
-	Callback = function(Value)
-		SelectedPlayer = Players:FindFirstChild(Value)
-		
-		-- プレイヤーが選ばれたら通知とアイコン表示（コンソールで確認用）
-		if SelectedPlayer then
-			local userId = SelectedPlayer.UserId
-			local thumbType = Enum.ThumbnailType.HeadShot
-			local thumbSize = Enum.ThumbnailSize.Size150x150
-			local content, isReady = Players:GetUserThumbnailAsync(userId, thumbType, thumbSize)
-			
-			OrionLib:MakeNotification({
-				Name = "Target Locked",
-				Content = Value .. " を選択したぜ。",
-				Image = content, -- プレイヤーのアイコンを表示！
-				Time = 5
-			})
-		end
-	end    
-})
-
--- リスト更新ボタン
-LoopTab:AddButton({
-	Name = "Refresh Player List (リスト更新)",
-	Callback = function()
-		PlayerDropdown:Refresh(GetPlayerList(), true)
-	end
-})
-
-LoopTab:AddSection({
-	Name = "Actions"
-})
-
-local RunService = game:GetService("RunService")
-local LocalPlayer = game.Players.LocalPlayer
-
--- 内部変数
-local SelectedPlayer = nil
-local LoopFlingEnabled = false
-local FlingConnection = nil
-
--- --- Loop Fling の処理 ---
-LoopTab:AddToggle({
-	Name = "Loop Fling (ON / OFF)",
-	Default = false,
-	Callback = function(Value)
-		LoopFlingEnabled = Value
-		
-		if LoopFlingEnabled then
-			-- 1フレームごとに実行（物理演算をバグらせて飛ばす）
-			FlingConnection = RunService.Heartbeat:Connect(function()
-				if SelectedPlayer and SelectedPlayer.Character and LocalPlayer.Character then
-					local myRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-					local targetRoot = SelectedPlayer.Character:FindFirstChild("HumanoidRootPart")
-					
-					if myRoot and targetRoot then
-						-- 自分の動きを物理的に「異常」な速度にする（これが飛ばすコツ）
-						local oldVelocity = myRoot.Velocity
-						myRoot.Velocity = Vector3.new(10000, 10000, 10000) -- 超高速回転/移動
-						
-						-- 相手の場所に一瞬で移動してぶつかる
-						myRoot.CFrame = targetRoot.CFrame
-						
-						-- すぐに速度を戻さないと自分もどこかへ行くので注意
-						RunService.RenderStepped:Wait()
-						myRoot.Velocity = oldVelocity
-					end
-				end
-			end)
-			
-			OrionLib:MakeNotification({
-				Name = "Fling Start",
-				Content = SelectedPlayer.Name .. " を追放中...",
-				Time = 3
-			})
-		else
-			-- ループ停止
-			if FlingConnection then
-				FlingConnection:Disconnect()
-				FlingConnection = nil
-			end
-		end
-	end    
-})
-
 --==============================
--- 変数宣言（心臓部）
+-- 初期化
 --==============================
-local TargetPlayer = nil
-local HouseBypass = false
-local MagneticGrab = false
-local KickAura = false
-local GrabSpeed = 0.005 -- 君が見つけた爆速設定
-local BV = nil
-local VIM = game:GetService("VirtualInputManager")
-
--- [最強の強制掴み関数]
-local function blobGrabPlayer(target)
-    local blobman = workspace:FindFirstChild("PlayerToys") and workspace.PlayerToys:FindFirstChild("CreatureBlobman")
-    if not blobman then
-        for _, v in pairs(workspace:GetDescendants()) do
-            if v.Name == "CreatureBlobman" then blobman = v break end
-        end
-    end
-
-    if blobman and target and target.Character then
-        local script = blobman:FindFirstChild("BlobmanSeatAndOwnerScript")
-        if script and script:FindFirstChild("CreatureGrab") then
-            local args = {
-                [1] = blobman:FindFirstChild("RightDetector"),
-                [3] = blobman:FindFirstChild("RightDetector"):FindFirstChild("RightWeld")
-            }
-            script.CreatureGrab:FireServer(unpack(args))
-        end
-    end
-end
-
--- [実行メインループ]
-task.spawn(function()
-    while true do
-        if MagneticGrab and TargetPlayer and TargetPlayer.Character then
-            local myRoot = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            local tRoot = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if myRoot and tRoot then
-                -- 相手に張り付く
-                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -1.8)
-                -- 強制掴み
-                blobGrabPlayer(TargetPlayer)
-            end
-        end
-        if KickAura then
-            VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0) -- 左クリック連打
-            task.wait(0.05)
-            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-        end
-        task.wait(GrabSpeed)
-    end
-end)
-
--- 変数
-local kickAuraEnabled = false
-local auraRadius = 25
--- FTAPの攻撃用リモート（ReplicatedStorage内を探る）
-local combatEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-
--- Auraタブの作成
-local AuraTab = Window:MakeTab({
-	Name = "Aura",
-	Icon = "rbxassetid://6031064398",
-	PremiumOnly = false
-})
-
--- Kick Auraのオン・オフ用変数
-local kickAuraEnabled = false
-
--- Auraタブの中にKick Auraのトグルのみを作成
-AuraTab:AddToggle({
-	Name = "Kick Aura (FTAP Edition)",
-	Default = false,
-	Callback = function(Value)
-		kickAuraEnabled = Value
-		
-		if kickAuraEnabled then
-			task.spawn(function()
-				-- 物人（FTAP）の攻撃用リモートを定義
-				local combatEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-				
-				while kickAuraEnabled do
-					local lp = game.Players.LocalPlayer
-					local char = lp.Character
-					if char and char:FindFirstChild("HumanoidRootPart") then
-						for _, v in pairs(game.Players:GetPlayers()) do
-							if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-								local targetHRP = v.Character.HumanoidRootPart
-								local dist = (char.HumanoidRootPart.Position - targetHRP.Position).Magnitude
-								
-								-- 射程内なら処理
-								if dist <= 25 then
-									pcall(function()
-										-- GitHubのメインロジックを読み込みつつ実行
-										loadstring(game:HttpGet("https://raw.githubusercontent.com/nanams389/xenuzu-hub/main/main.lua", true))()
-										
-										-- 座標を飛ばしてキック判定を飛ばす
-										targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 10000, 0)
-										if combatEvent then
-											combatEvent:FireServer("Kick", v.Character)
-										end
-									end)
-								end
-							end
-						end
-					end
-					task.wait(0.1)
-				end
-			end)
-		end
-	end    
-})
----初期化---
 OrionLib:Init()
