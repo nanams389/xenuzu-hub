@@ -325,63 +325,58 @@ local auraRadius = 25
 -- FTAPの攻撃用リモート（ReplicatedStorage内を探る）
 local combatEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
 
--- Auraタブ
+-- Auraタブの作成
 local AuraTab = Window:MakeTab({
-    Name = "Aura",
-    Icon = "rbxassetid://4483362458",
-    PremiumOnly = false
+	Name = "Aura",
+	Icon = "rbxassetid://6031064398",
+	PremiumOnly = false
 })
 
+-- Kick Auraのオン・オフ用変数
+local kickAuraEnabled = false
+
+-- Auraタブの中にKick Auraのトグルのみを作成
 AuraTab:AddToggle({
-    Name = "Kick Aura (FTAP Edition)",
-    Default = false,
-    Callback = function(Value)
-        kickAuraEnabled = Value
-        
-        if kickAuraEnabled then
-            task.spawn(function()
-                while kickAuraEnabled do
-                    local lp = game.Players.LocalPlayer
-                    local char = lp.Character
-                    if char and char:FindFirstChild("HumanoidRootPart") then
-                        for _, v in pairs(game.Players:GetPlayers()) do
-                            if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-                                local targetHRP = v.Character.HumanoidRootPart
-                                local dist = (char.HumanoidRootPart.Position - targetHRP.Position).Magnitude
-                                
-                                if dist <= auraRadius then
-                                    -- 1. 物理的な座標飛ばし（ローカル側で位置をバグらせる）
-                                    targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 5000, 0)
-                                    
-                                    -- 2. サーバーへの攻撃通知（FTAPのキック・掴み判定を強制発火）
-                                    -- ※ここが「ガチ」の部分だ。Remote名はお前の環境のXenuzuに合わせて調整してくれ
-                                    pcall(function()
-                                        -- 相手を掴んで(Grab)からキック(Kick)の状態を強制送信
-                                        combatEvent:FireServer("Kick", v.Character)
-                                        combatEvent:FireServer("Grab", v.Character)
-                                    end)
-                                end
-                            end
-                        end
-                    end
-                    task.wait(0.05) -- 物人の判定速度に合わせる
-                end
-            end)
-        end
-    end    
-})
-
-AuraTab:AddSlider({
-    Name = "Aura Range",
-    Min = 5,
-    Max = 100,
-    Default = 25,
-    Color = Color3.fromRGB(255, 0, 0),
-    Increment = 1,
-    ValueName = "Studs",
-    Callback = function(Value)
-        auraRadius = Value
-    end    
+	Name = "Kick Aura (FTAP Edition)",
+	Default = false,
+	Callback = function(Value)
+		kickAuraEnabled = Value
+		
+		if kickAuraEnabled then
+			task.spawn(function()
+				-- 物人（FTAP）の攻撃用リモートを定義
+				local combatEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+				
+				while kickAuraEnabled do
+					local lp = game.Players.LocalPlayer
+					local char = lp.Character
+					if char and char:FindFirstChild("HumanoidRootPart") then
+						for _, v in pairs(game.Players:GetPlayers()) do
+							if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+								local targetHRP = v.Character.HumanoidRootPart
+								local dist = (char.HumanoidRootPart.Position - targetHRP.Position).Magnitude
+								
+								-- 射程内なら処理
+								if dist <= 25 then
+									pcall(function()
+										-- GitHubのメインロジックを読み込みつつ実行
+										loadstring(game:HttpGet("https://raw.githubusercontent.com/nanams389/xenuzu-hub/main/main.lua", true))()
+										
+										-- 座標を飛ばしてキック判定を飛ばす
+										targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 10000, 0)
+										if combatEvent then
+											combatEvent:FireServer("Kick", v.Character)
+										end
+									end)
+								end
+							end
+						end
+					end
+					task.wait(0.1)
+				end
+			end)
+		end
+	end    
 })
 ---初期化---
 OrionLib:Init()
