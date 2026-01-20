@@ -319,79 +319,88 @@ task.spawn(function()
     end
 end)
 
---==============================
--- UI構築: Bling House タブ
---==============================
-local BlingTab = Window:MakeTab({Name = "Bling House", Icon = "rbxassetid://4483345998"})
-
-local function getPlayers()
-    local pList = {}
-    for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= game.Players.LocalPlayer then table.insert(pList, p.Name) end
-    end
-    return pList
-end
-
--- 🌟 プレイヤーリスト（ここで選ぶ！）
-local PlayerSelect = BlingTab:AddDropdown({
-	Name = "1. Select Target Player",
-	Default = "",
-	Options = getPlayers(),
-	Callback = function(Value)
-		TargetPlayer = game.Players:FindFirstChild(Value)
-	end
+-- タブの作成
+local AuraTab = Window:MakeTab({
+	Name = "Aura",
+	Icon = "rbxassetid://4483362458", -- 以前のコードにあったアイコンID
+	PremiumOnly = false
 })
 
-BlingTab:AddButton({
-	Name = "Refresh Player List",
-	Callback = function() PlayerSelect:Refresh(getPlayers(), true) end
+-- セクション: Offensive (攻撃系)
+AuraTab:AddSection({
+	Name = "Offensive Auras"
 })
 
-BlingTab:AddToggle({
-	Name = "2. House Bypass (Noclip)",
+AuraTab:AddToggle({
+	Name = "Poison / Death Aura",
 	Default = false,
 	Callback = function(Value)
-		HouseBypass = Value
-        local root = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if Value then
-            if root and not BV then
-                BV = Instance.new("BodyVelocity")
-                BV.Velocity = Vector3.new(0, 0, 0)
-                BV.MaxForce = Vector3.new(0, math.huge, 0)
-                BV.Parent = root
-            end
-        else
-            if BV then BV:Destroy() BV = nil end
-        end
+		-- auraToggle = 1 / 0 のロジックをここに反映
+		_G.AuraEnabled = Value
+		if _G.AuraEnabled then
+			print("Aura Activated")
+			-- ここに送ってもらったオーラのループ処理（task.spawn等）を入れる
+		end
 	end    
 })
 
-BlingTab:AddToggle({
-	Name = "3. Auto Magnetic Grab (FireServer)",
-	Default = false,
-	Callback = function(Value) MagneticGrab = Value end
-})
-
---==============================
--- UI構築: Kick タブ
---==============================
-local KickTab = Window:MakeTab({Name = "Kick", Icon = "rbxassetid://4483345998"})
-
-KickTab:AddToggle({
-	Name = "Kick Aura (Auto Attack)",
-	Default = false,
-	Callback = function(Value) KickAura = Value end
-})
-
-KickTab:AddSlider({
-	Name = "Grab Delay (ms)",
-	Min = 5,
+AuraTab:AddSlider({
+	Name = "Aura Radius",
+	Min = 0,
 	Max = 100,
-	Default = 25,
-	Color = Color3.fromRGB(255, 255, 255),
+	Default = 20, -- コード内の auraRadius = 20 を反映
+	Color = Color3.fromRGB(255,255,255),
 	Increment = 1,
-	ValueName = "ms",
-	Callback = function(Value) GrabSpeed = Value / 1000 end    
+	ValueName = "Studs",
+	Callback = function(Value)
+		_G.AuraRadius = Value
+	end    
+})
+
+-- セクション: Kick / Grab (拘束系)
+AuraTab:AddSection({
+	Name = "Kick & Grab"
+})
+
+AuraTab:AddToggle({
+	Name = "Kick Grab Aura",
+	Default = false,
+	Callback = function(Value)
+		-- kickGrab / anchorKickGrab のロジック切り替え
+		_G.KickGrabEnabled = Value
+		if Value then
+			Rayfield:Notify({Title = "Venom X", Content = "Kick Grab Activated", Duration = 2})
+		end
+	end    
+})
+
+AuraTab:AddDropdown({
+	Name = "Kick Mode",
+	Default = "Mode 1",
+	Options = {"Mode 1", "Mode 2", "Anchor"}, -- kickMode = 1 等を反映
+	Callback = function(Option)
+		if Option == "Mode 1" then
+			_G.KickMode = 1
+		elseif Option == "Mode 2" then
+			_G.KickMode = 2
+		elseif Option == "Anchor" then
+			_G.KickMode = "Anchor"
+		end
+	end    
+})
+
+-- セクション: Defense (防衛系)
+AuraTab:AddSection({
+	Name = "Defense"
+})
+
+AuraTab:AddToggle({
+	Name = "Self Defense / Anti Kick",
+	Default = false,
+	Callback = function(Value)
+		-- antiKickCoroutinelocal のフラグをここに反映
+		_G.AntiKick = Value
+	end    
 })
 ---初期化---
 OrionLib:Init()
