@@ -149,53 +149,53 @@ AuraTab:AddToggle({
     end    
 })
 AuraTab:AddToggle({
-    Name = "Void Bringer (対人同期版)",
-    Default = false,
-    Callback = function(Value)
-        _G.VoidBringerEnabled = Value
-        if Value then
-            task.spawn(function()
-                while _G.VoidBringerEnabled do
-                    task.wait(0.1)
-                    local lp = game.Players.LocalPlayer
-                    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+	Name = "Ultra Fling Aura (衝突即死)",
+	Default = false,
+	Callback = function(Value)
+		_G.UltraFlingEnabled = Value
+		if Value then
+			task.spawn(function()
+				local lp = game.Players.LocalPlayer
+				local RunService = game:GetService("RunService")
+				
+				while _G.UltraFlingEnabled do
+					local char = lp.Character
+					local hrp = char and char:FindFirstChild("HumanoidRootPart")
+					
+					if hrp then
+						-- 1. 自分の物理特性を「弾丸」に変える
+						for _, v in pairs(char:GetDescendants()) do
+							if v:IsA("BasePart") then
+								v.CanCollide = true -- 衝突を有効化
+								v.Velocity = Vector3.new(99999, 99999, 99999) -- 物理的な圧力を最大化
+							end
+						end
 
-                    if hrp then
-                        for _, player in ipairs(game.Players:GetPlayers()) do
-                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                                local tHrp = player.Character.HumanoidRootPart
-                                local tHum = player.Character:FindFirstChildOfClass("Humanoid")
-                                local dist = (tHrp.Position - hrp.Position).Magnitude
+						-- 2. 近くの敵を探して「衝突」しに行く
+						for _, player in ipairs(game.Players:GetPlayers()) do
+							if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+								local tHrp = player.Character.HumanoidRootPart
+								local dist = (tHrp.Position - hrp.Position).Magnitude
 
-                                if dist <= 25 and tHum and tHum.Health > 0 then
-                                    pcall(function()
-                                        -- 1. 相手のネットワーク所有権を奪いやすくするために一瞬重ねる
-                                        tHrp.CFrame = hrp.CFrame * CFrame.new(0, 0, -1)
-
-                                        -- 2. サーバー側でも「下に落ちている」と認識させるための速度注入
-                                        -- Velocityは座標書き換えより同期されやすい
-                                        tHrp.Velocity = Vector3.new(0, -2000, 0)
-                                        
-                                        -- 3. BodyVelocity（物理オブジェクト）を強制挿入
-                                        local bv = Instance.new("BodyVelocity")
-                                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                                        bv.Velocity = Vector3.new(0, -2000, 0)
-                                        bv.Parent = tHrp
-                                        
-                                        -- 4. 0.1秒だけ待って消去（これで物理の勢いだけ残る）
-                                        game:GetService("Debris"):AddItem(bv, 0.1)
-                                        
-                                        -- 5. 仕上げに座標をVoid（奈落）へ飛ばす
-                                        tHrp.CFrame = CFrame.new(tHrp.Position.X, -500, tHrp.Position.Z)
-                                    end)
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
+								if dist <= 20 then -- 射程距離
+									-- 相手に一瞬で重なり、物理エンジンを爆発させる
+									local oldCF = hrp.CFrame
+									
+									-- 超高速回転しながら相手に突っ込む
+									hrp.CFrame = tHrp.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), 0)
+									hrp.Velocity = Vector3.new(500000, 500000, 500000)
+									
+									task.wait(0.05) -- 衝突判定が出るまでの一瞬
+									hrp.CFrame = oldCF -- すぐ元の位置に戻る（自分は飛ばされないように）
+								end
+							end
+						end
+					end
+					RunService.Heartbeat:Wait()
+				end
+			end)
+		end
+	end    
 })
 
 --==============================
