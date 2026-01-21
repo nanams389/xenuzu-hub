@@ -148,8 +148,9 @@ AuraTab:AddToggle({
         end
     end    
 })
+
 AuraTab:AddToggle({
-	Name = "Ultra Fling Aura (衝突即死)",
+	Name = "Ultra Fling Aura (自分固定版)",
 	Default = false,
 	Callback = function(Value)
 		_G.UltraFlingEnabled = Value
@@ -163,30 +164,40 @@ AuraTab:AddToggle({
 					local hrp = char and char:FindFirstChild("HumanoidRootPart")
 					
 					if hrp then
-						-- 1. 自分の物理特性を「弾丸」に変える
+						-- 1. 自分のパーツを「物理的な凶器」にする設定
 						for _, v in pairs(char:GetDescendants()) do
 							if v:IsA("BasePart") then
-								v.CanCollide = true -- 衝突を有効化
-								v.Velocity = Vector3.new(99999, 99999, 99999) -- 物理的な圧力を最大化
+								v.CanCollide = false -- 通常時はすり抜ける（自分が飛ばないため）
+								v.Velocity = Vector3.new(200000, 200000, 200000) -- 常に高圧力を維持
 							end
 						end
 
-						-- 2. 近くの敵を探して「衝突」しに行く
 						for _, player in ipairs(game.Players:GetPlayers()) do
 							if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 								local tHrp = player.Character.HumanoidRootPart
 								local dist = (tHrp.Position - hrp.Position).Magnitude
 
-								if dist <= 20 then -- 射程距離
-									-- 相手に一瞬で重なり、物理エンジンを爆発させる
+								if dist <= 20 then
+									-- 2. 相手に重なった瞬間だけ自分を「固定(Anchor)」して「衝突」を有効化
 									local oldCF = hrp.CFrame
 									
-									-- 超高速回転しながら相手に突っ込む
+									-- 相手の座標に高速回転しながら突入
 									hrp.CFrame = tHrp.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), 0)
-									hrp.Velocity = Vector3.new(500000, 500000, 500000)
 									
-									task.wait(0.05) -- 衝突判定が出るまでの一瞬
-									hrp.CFrame = oldCF -- すぐ元の位置に戻る（自分は飛ばされないように）
+									-- 【重要】自分を固定して相手の反動を受けないようにする
+									hrp.Anchored = true 
+									for _, p in pairs(char:GetChildren()) do
+										if p:IsA("BasePart") then p.CanCollide = true end
+									end
+
+									task.wait(0.05) -- この0.05秒の間に相手が吹っ飛ぶ
+
+									-- 3. 固定を解除して元の位置に戻る
+									hrp.Anchored = false
+									hrp.CFrame = oldCF
+									for _, p in pairs(char:GetChildren()) do
+										if p:IsA("BasePart") then p.CanCollide = false end
+									end
 								end
 							end
 						end
