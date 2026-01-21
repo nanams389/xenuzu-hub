@@ -209,52 +209,9 @@ AuraTab:AddToggle({
 	end    
 })
 
--- [[ Kill All ボタン：グラブ経由ネットワーク奪取仕様 ]]
-BlobTab:AddButton({
-	Name = "Kill All (Grab Method)",
-	Callback = function()
-		local lp = game.Players.LocalPlayer
-		local char = lp.Character
-		
-		-- 全プレイヤーをループ
-		for _, v in pairs(game.Players:GetPlayers()) do
-			if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-				task.spawn(function()
-					local tHrp = v.Character.HumanoidRootPart
-					
-					-- 1. グラブ（ひも）の代わり：強制的に一瞬自分の手の位置へ
-					-- FTAPの仕様上、極至近距離にパーツが重なるとネットワーク権限が移りやすい
-					local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
-					if rArm then
-						-- 権限を奪うための高速テレポート
-						tHrp.CFrame = rArm.CFrame
-						task.wait(0.1) -- 権限が移るわずかなラグを待機
-						
-						-- 2. ネットワーク権限を利用した破壊
-						-- 権限が自分にある状態なら、この速度変更が相手に強制反映される
-						tHrp.Velocity = Vector3.new(1000000, 1000000, 1000000)
-						tHrp.RotVelocity = Vector3.new(1000000, 1000000, 1000000)
-						
-						-- 3. 物理爆発を確実にするための振動
-						local bav = Instance.new("BodyAngularVelocity", tHrp)
-						bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-						bav.AngularVelocity = Vector3.new(1000, 1000, 1000)
-						game:GetService("Debris"):AddItem(bav, 0.5) -- 0.5秒後に削除
-					end
-				end)
-			end
-		end
-		
-		-- 実行通知
-		OrionLib:MakeNotification({
-			Name = "Nazu Hub",
-			Content = "Attempting to Kill All Players via Grab/Network...",
-			Time = 3
-		})
-	end    
-})
-
--- [[ Nazu Hub - FTAP Double Arm Infinite Fling ]]
+--==============================
+-- タブ：Blobman Fling & Kill All
+--==============================
 local BlobTab = Window:MakeTab({
 	Name = "Blobman Fling",
 	Icon = "rbxassetid://4483345998",
@@ -264,69 +221,41 @@ local BlobTab = Window:MakeTab({
 local selectedPlayer = nil
 _G.FlingActive = false
 
-task.spawn(function()
-    while task.wait() do
-        local lp = game.Players.LocalPlayer
-        local char = lp.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        
-        -- ブロブマン判定（パーツの大きさでチェック）
-        local isBlob = false
-        if char then
-            for _, v in pairs(char:GetChildren()) do
-                if v:IsA("BasePart") and v.Size.Magnitude > 5 then
-                    isBlob = true; break
-                end
-            end
-        end
-
-        if _G.FlingActive and selectedPlayer and selectedPlayer.Character and isBlob then
-            local tChar = selectedPlayer.Character
-            local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
-            
-            -- 両手を取得
-            local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
-            local lArm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
-
-            if tHrp and (rArm or lArm) then
-                -- 自分を固定して反動死を防ぐ
-                hrp.Anchored = true
-                
-                -- 同期用BodyMoverの生成（なければ作る）
-                if not tHrp:FindFirstChild("FlingPosing") then
-                    local bp = Instance.new("BodyPosition", tHrp)
-                    bp.Name = "FlingPosing"
-                    bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    bp.P = 20000
-                    
-                    local bav = Instance.new("BodyAngularVelocity", tHrp)
-                    bav.Name = "FlingSpin"
-                    bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                    -- XYZ超高速回転でFling状態を維持
-                    bav.AngularVelocity = Vector3.new(1000, 1000, 1000)
-                end
-
-                -- 右手と左手の間を高速で行き来させる（これで物理を破壊する）
-                local targetArm = (tick() % 0.2 > 0.1) and rArm or lArm
-                if targetArm then
-                    tHrp.BodyPosition.Position = targetArm.Position
-                    -- 相手を常に回転させてFlingを継続
-                    tHrp.CFrame = targetArm.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), math.rad(math.random(0,360)))
-                end
-            end
-        else
-            -- 解除処理
-            if hrp then hrp.Anchored = false end
-            if selectedPlayer and selectedPlayer.Character then
-                local tHrp = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if tHrp then
-                    if tHrp:FindFirstChild("FlingPosing") then tHrp.FlingPosing:Destroy() end
-                    if tHrp:FindFirstChild("FlingSpin") then tHrp.FlingSpin:Destroy() end
-                end
-            end
-        end
-    end
-end)
+-- 【修正：ボタン類をタブ作成の直後に配置】
+-- Kill All ボタン
+BlobTab:AddButton({
+	Name = "Kill All (Grab Method)",
+	Callback = function()
+		local lp = game.Players.LocalPlayer
+		local char = lp.Character
+		
+		for _, v in pairs(game.Players:GetPlayers()) do
+			if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+				task.spawn(function()
+					local tHrp = v.Character.HumanoidRootPart
+					local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
+					if rArm then
+						tHrp.CFrame = rArm.CFrame
+						task.wait(0.1)
+						tHrp.Velocity = Vector3.new(1000000, 1000000, 1000000)
+						tHrp.RotVelocity = Vector3.new(1000000, 1000000, 1000000)
+						
+						local bav = Instance.new("BodyAngularVelocity", tHrp)
+						bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+						bav.AngularVelocity = Vector3.new(1000, 1000, 1000)
+						game:GetService("Debris"):AddItem(bav, 0.5)
+					end
+				end)
+			end
+		end
+		
+		OrionLib:MakeNotification({
+			Name = "Nazu Hub",
+			Content = "Attempting to Kill All Players via Grab/Network...",
+			Time = 3
+		})
+	end    
+})
 
 -- プレイヤーリスト更新関数
 local function updatePlayerList()
@@ -337,7 +266,7 @@ local function updatePlayerList()
     return p
 end
 
--- UI要素の配置
+-- ターゲット選択
 local PlayerDropdown = BlobTab:AddDropdown({
 	Name = "Select Target",
 	Default = "None",
@@ -354,6 +283,7 @@ BlobTab:AddButton({
 	end    
 })
 
+-- 無限Flingトグル
 BlobTab:AddToggle({
 	Name = "Enable Infinite Fling",
 	Default = false,
@@ -361,6 +291,62 @@ BlobTab:AddToggle({
 		_G.FlingActive = Value
 	end    
 })
+
+-- 物理ロジック（バックグラウンド動作）
+task.spawn(function()
+    while task.wait() do
+        local lp = game.Players.LocalPlayer
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        
+        local isBlob = false
+        if char then
+            for _, v in pairs(char:GetChildren()) do
+                if v:IsA("BasePart") and v.Size.Magnitude > 5 then
+                    isBlob = true; break
+                end
+            end
+        end
+
+        if _G.FlingActive and selectedPlayer and selectedPlayer.Character and isBlob then
+            local tChar = selectedPlayer.Character
+            local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+            local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
+            local lArm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
+
+            if tHrp and (rArm or lArm) then
+                hrp.Anchored = true
+                
+                if not tHrp:FindFirstChild("FlingPosing") then
+                    local bp = Instance.new("BodyPosition", tHrp)
+                    bp.Name = "FlingPosing"
+                    bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bp.P = 20000
+                    
+                    local bav = Instance.new("BodyAngularVelocity", tHrp)
+                    bav.Name = "FlingSpin"
+                    bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                    bav.AngularVelocity = Vector3.new(1000, 1000, 1000)
+                end
+
+                local targetArm = (tick() % 0.2 > 0.1) and rArm or lArm
+                if targetArm then
+                    tHrp.BodyPosition.Position = targetArm.Position
+                    tHrp.CFrame = targetArm.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), math.rad(math.random(0,360)))
+                end
+            end
+        else
+            if hrp then hrp.Anchored = false end
+            if selectedPlayer and selectedPlayer.Character then
+                local tHrp = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if tHrp then
+                    if tHrp:FindFirstChild("FlingPosing") then tHrp.FlingPosing:Destroy() end
+                    if tHrp:FindFirstChild("FlingSpin") then tHrp.FlingSpin:Destroy() end
+                end
+            end
+        end
+    end
+end)
 
 --==============================
 -- 初期化
