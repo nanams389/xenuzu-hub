@@ -209,58 +209,74 @@ AuraTab:AddToggle({
 	end    
 })
 
---==============================
--- タブ：プレイヤー操作 (Util)
---==============================
-local UtilTab = Window:MakeTab({ Name = "プレイヤー操作", Icon = "rbxassetid://4483345998" })
-local selectedUtilPlayer = ""
-
-local UtilDropdown = UtilTab:AddDropdown({
-    Name = "追跡ターゲットを選択", Default = "", Options = GetPlayerNames(),
-    Callback = function(Value) selectedUtilPlayer = Value end    
+-- [[ Blobman Kick Tab ]]
+local BlobTab = Window:MakeTab({
+	Name = "Blobman Kick",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
 })
 
-UtilTab:AddButton({
-    Name = "リスト更新",
-    Callback = function() UtilDropdown:Refresh(GetPlayerNames(), true) end    
-})
+local selectedPlayer = nil
+_G.BlobmanKick = false
 
-_G.Tracking = false
-UtilTab:AddToggle({
-    Name = "選んだ相手を追跡", Default = false,
-    Callback = function(v)
-        _G.Tracking = v
-        if v then
-            task.spawn(function()
-                while _G.Tracking do
-                    task.wait()
-                    pcall(function()
-                        local target = game.Players:FindFirstChild(selectedUtilPlayer)
-                        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
-                        end
-                    end)
+-- 物理ループ (ターゲットを手に吸い寄せて回転爆破)
+task.spawn(function()
+    while task.wait() do
+        if _G.BlobmanKick and selectedPlayer and selectedPlayer.Character then
+            local char = game.Players.LocalPlayer.Character
+            local tChar = selectedPlayer.Character
+            local rArm = char and (char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand"))
+            local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+
+            if rArm and tHrp then
+                -- ブロブマン化（巨大化）
+                for _, v in pairs(char:GetChildren()) do
+                    if v:IsA("BasePart") then
+                        v.Size = Vector3.new(10, 10, 10)
+                        v.CanCollide = false
+                        v.Velocity = Vector3.new(500000, 500000, 500000)
+                        v.RotVelocity = Vector3.new(500000, 500000, 500000) -- XYZ回転
+                    end
                 end
-            end)
-        end
-    end    
-})
-
-UtilTab:AddButton({
-    Name = "全員を自分の元へ引き寄せる (Bring All)",
-    Callback = function()
-        local lp = game.Players.LocalPlayer
-        local rs = game:GetService("ReplicatedStorage")
-        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-        for _, p in pairs(game.Players:GetPlayers()) do
-            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                pcall(function()
-                    if SetNetworkOwner then SetNetworkOwner:FireServer(p.Character.HumanoidRootPart, p.Character.HumanoidRootPart.CFrame) end
-                    p.Character.HumanoidRootPart.CFrame = lp.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3)
-                end)
+                -- 手の位置に強制吸着 (Bring)
+                tHrp.CFrame = rArm.CFrame * CFrame.new(0, -1, 0)
             end
         end
-    end    
+    end
+end)
+
+-- プレイヤーリスト更新用
+local function getPlayers()
+    local p = {}
+    for _, v in pairs(game.Players:GetPlayers()) do
+        if v ~= game.Players.LocalPlayer then table.insert(p, v.Name) end
+    end
+    return p
+end
+
+-- UI要素
+local PlayerDropdown = BlobTab:AddDropdown({
+	Name = "Select Target",
+	Default = "None",
+	Options = getPlayers(),
+	Callback = function(Value)
+		selectedPlayer = game.Players:FindFirstChild(Value)
+	end    
+})
+
+BlobTab:AddButton({
+	Name = "Refresh List",
+	Callback = function()
+		PlayerDropdown:Refresh(getPlayers(), true)
+	end    
+})
+
+BlobTab:AddToggle({
+	Name = "Enable Blobman Kick",
+	Default = false,
+	Callback = function(Value)
+		_G.BlobmanKick = Value
+	end    
 })
 
 --==============================
