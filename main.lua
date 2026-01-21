@@ -209,7 +209,7 @@ AuraTab:AddToggle({
 	end    
 })
 
--- [[ Blobman Kick Tab ]]
+-- [[ 修正版：Blobman Kick Tab (自分固定 & 同期重視) ]]
 local BlobTab = Window:MakeTab({
 	Name = "Blobman Kick",
 	Icon = "rbxassetid://4483345998",
@@ -219,33 +219,44 @@ local BlobTab = Window:MakeTab({
 local selectedPlayer = nil
 _G.BlobmanKick = false
 
--- 物理ループ (ターゲットを手に吸い寄せて回転爆破)
 task.spawn(function()
     while task.wait() do
         if _G.BlobmanKick and selectedPlayer and selectedPlayer.Character then
-            local char = game.Players.LocalPlayer.Character
+            local lp = game.Players.LocalPlayer
+            local char = lp.Character
             local tChar = selectedPlayer.Character
             local rArm = char and (char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand"))
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
 
-            if rArm and tHrp then
-                -- ブロブマン化（巨大化）
+            if rArm and tHrp and hrp then
+                -- 1. 自分をその場に完全に固定（自分だけ飛んでいくのを防ぐ）
+                hrp.Velocity = Vector3.new(0, 0, 0)
+                hrp.RotVelocity = Vector3.new(0, 0, 0)
+                
+                -- 2. 自分を「物理的な壁」にする（サイズをデカくするが衝突は最小限に）
                 for _, v in pairs(char:GetChildren()) do
                     if v:IsA("BasePart") then
                         v.Size = Vector3.new(10, 10, 10)
-                        v.CanCollide = false
-                        v.Velocity = Vector3.new(500000, 500000, 500000)
-                        v.RotVelocity = Vector3.new(500000, 500000, 500000) -- XYZ回転
+                        v.CanCollide = false -- 自分への反動を消すために一旦false
                     end
                 end
-                -- 手の位置に強制吸着 (Bring)
-                tHrp.CFrame = rArm.CFrame * CFrame.new(0, -1, 0)
+
+                -- 3. 相手を手に「物理同期」させる (強制テレポート + 振動)
+                -- 座標を少しだけランダムに揺らすことでNetworkOwnerを奪いやすくする
+                local shake = Vector3.new(math.random(-1,1)/100, 0, math.random(-1,1)/100)
+                tHrp.CFrame = rArm.CFrame * CFrame.new(0, -1, 0) * CFrame.new(shake)
+                
+                -- 4. 相手にだけ物理的な「回転爆弾」を仕込む
+                -- 相手のパーツを直接いじることで相手の画面でも吹っ飛ぶようにする
+                tHrp.Velocity = Vector3.new(1000000, 1000000, 1000000)
+                tHrp.RotVelocity = Vector3.new(1000000, 1000000, 1000000)
             end
         end
     end
 end)
 
--- プレイヤーリスト更新用
+-- UI部分は変更なし
 local function getPlayers()
     local p = {}
     for _, v in pairs(game.Players:GetPlayers()) do
@@ -254,7 +265,6 @@ local function getPlayers()
     return p
 end
 
--- UI要素
 local PlayerDropdown = BlobTab:AddDropdown({
 	Name = "Select Target",
 	Default = "None",
@@ -278,7 +288,6 @@ BlobTab:AddToggle({
 		_G.BlobmanKick = Value
 	end    
 })
-
 --==============================
 -- 初期化
 --==============================
