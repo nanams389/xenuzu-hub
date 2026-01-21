@@ -148,54 +148,90 @@ AuraTab:AddToggle({
         end
     end    
 })
-
+-- 1. Void Bringer Aura (奈落送り)
 AuraTab:AddToggle({
-    Name = "Void Bringer Aura (奈落送り)",
-    Default = false,
-    Callback = function(Value)
-        _G.VoidBringerEnabled = Value
-        if Value then
-            task.spawn(function()
-                while _G.VoidBringerEnabled do
-                    task.wait(0.1) -- 判定の間隔
-                    local lp = game.Players.LocalPlayer
-                    local char = lp.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	Name = "Void Bringer Aura (奈落送り)",
+	Default = false,
+	Callback = function(Value)
+		_G.VoidBringerEnabled = Value
+		if Value then
+			task.spawn(function()
+				while _G.VoidBringerEnabled do
+					task.wait(0.1)
+					local lp = game.Players.LocalPlayer
+					local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 
-                    if hrp then
-                        for _, player in ipairs(game.Players:GetPlayers()) do
-                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                                local targetHRP = player.Character.HumanoidRootPart
-                                local targetHum = player.Character:FindFirstChild("Humanoid")
-                                local distance = (targetHRP.Position - hrp.Position).Magnitude
+					if hrp then
+						for _, player in ipairs(game.Players:GetPlayers()) do
+							if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+								local targetHRP = player.Character.HumanoidRootPart
+								local targetHum = player.Character:FindFirstChildOfClass("Humanoid")
+								local distance = (targetHRP.Position - hrp.Position).Magnitude
 
-                                -- 射程内（20スタッド）かつ生存している場合
-                                if distance <= 20 and targetHum and targetHum.Health > 0 then
-                                    pcall(function()
-                                        -- 1. 相手を一瞬だけ自分の目の前に固定（Grab判定を作る）
-                                        targetHRP.CFrame = hrp.CFrame * CFrame.new(0, 0, -3)
+								if distance <= 25 and targetHum and targetHum.Health > 0 then
+									pcall(function()
+										-- 相手の速度を下向きに固定
+										local bv = Instance.new("BodyVelocity")
+										bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+										bv.Velocity = Vector3.new(0, -1000, 0) 
+										bv.Parent = targetHRP
+										
+										-- 座標を地下へ（床抜けを誘発）
+										targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -20, 0)
+										
+										game:GetService("Debris"):AddItem(bv, 0.1)
+									end)
+								end
+							end
+						end
+					end
+				end
+			end)
+		end
+	end    
+})
 
-                                        -- 2. 物理演算をバグらせて奈落へ突き落とす
-                                        -- 相手のVelocity（速度）を真下に固定
-                                        local bv = Instance.new("BodyVelocity")
-                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                        bv.Velocity = Vector3.new(0, -500, 0) -- 超高速で奈落へ
-                                        bv.Parent = targetHRP
-                                        
-                                        -- 3. 相手の座標を強制的にマップ外（地下）へ飛ばす
-                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -100, 0)
+-- 2. Scatter Kill Aura (関節粉砕)
+AuraTab:AddToggle({
+	Name = "Scatter Kill Aura (関節粉砕)",
+	Default = false,
+	Callback = function(Value)
+		_G.ScatterAuraEnabled = Value
+		if Value then
+			task.spawn(function()
+				while _G.ScatterAuraEnabled do
+					task.wait(0.1)
+					local lp = game.Players.LocalPlayer
+					local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 
-                                        -- ゴミ掃除
-                                        game:GetService("Debris"):AddItem(bv, 0.2)
-                                    end)
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
+					if hrp then
+						for _, player in ipairs(game.Players:GetPlayers()) do
+							if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+								local targetHRP = player.Character.HumanoidRootPart
+								local distance = (targetHRP.Position - hrp.Position).Magnitude
+
+								if distance <= 15 then
+									pcall(function()
+										-- 超回転トルクでパーツを分解
+										local torque = Instance.new("BodyAngularVelocity")
+										torque.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+										torque.P = 10^10
+										torque.AngularVelocity = Vector3.new(0, 800000, 0)
+										torque.Parent = targetHRP
+										
+										-- 正面に引き寄せて固定
+										targetHRP.CFrame = hrp.CFrame * CFrame.new(0, 0, -3)
+										
+										game:GetService("Debris"):AddItem(torque, 0.2)
+									end)
+								end
+							end
+						end
+					end
+				end
+			end)
+		end
+	end    
 })
 
 --==============================
