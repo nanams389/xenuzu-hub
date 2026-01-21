@@ -209,15 +209,15 @@ AuraTab:AddToggle({
 	end    
 })
 
--- [[ Nazu Hub - FTAP Pro Grab Logic ]]
+-- [[ Nazu Hub - FTAP Double Arm Infinite Fling ]]
 local BlobTab = Window:MakeTab({
-	Name = "Blobman Kick",
+	Name = "Blobman Fling",
 	Icon = "rbxassetid://4483345998",
 	PremiumOnly = false
 })
 
 local selectedPlayer = nil
-_G.BlobmanKick = false
+_G.FlingActive = false
 
 task.spawn(function()
     while task.wait() do
@@ -225,62 +225,97 @@ task.spawn(function()
         local char = lp.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         
-        -- 【修正1】ブロブマン判定（サイズが通常より大きいかチェック）
+        -- ブロブマン判定（パーツの大きさでチェック）
         local isBlob = false
-        if char and char:FindFirstChild("Humanoid") then
-            -- パーツのどれかが一定以上の大きさならブロブマンとみなす
+        if char then
             for _, v in pairs(char:GetChildren()) do
                 if v:IsA("BasePart") and v.Size.Magnitude > 5 then
-                    isBlob = true
-                    break
+                    isBlob = true; break
                 end
             end
         end
 
-        if _G.BlobmanKick and selectedPlayer and selectedPlayer.Character and hrp and isBlob then
-            -- ブロブマン時のみ実行
+        if _G.FlingActive and selectedPlayer and selectedPlayer.Character and isBlob then
             local tChar = selectedPlayer.Character
             local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
-            local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand") or char:FindFirstChild("BlobArm")
+            
+            -- 両手を取得
+            local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
+            local lArm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
 
-            if tHrp and rArm then
-                -- 自分を固定（自爆防止）
+            if tHrp and (rArm or lArm) then
+                -- 自分を固定して反動死を防ぐ
                 hrp.Anchored = true
                 
-                -- 【修正2】実体化（物理同期）
-                -- CFrameだけでなく、BodyMoverを使ってサーバーに物理を強制認識させる
-                if not tHrp:FindFirstChild("NazuPosing") then
+                -- 同期用BodyMoverの生成（なければ作る）
+                if not tHrp:FindFirstChild("FlingPosing") then
                     local bp = Instance.new("BodyPosition", tHrp)
-                    bp.Name = "NazuPosing"
+                    bp.Name = "FlingPosing"
                     bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    bp.P = 10000
+                    bp.P = 20000
                     
                     local bav = Instance.new("BodyAngularVelocity", tHrp)
-                    bav.Name = "NazuSpin"
+                    bav.Name = "FlingSpin"
                     bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                    bav.AngularVelocity = Vector3.new(500, 500, 500) -- XYZ超高速回転
+                    -- XYZ超高速回転でFling状態を維持
+                    bav.AngularVelocity = Vector3.new(1000, 1000, 1000)
                 end
 
-                -- 手の位置へ吸着
-                tHrp.BodyPosition.Position = rArm.Position
-                tHrp.CFrame = rArm.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), math.rad(math.random(0,360)))
+                -- 右手と左手の間を高速で行き来させる（これで物理を破壊する）
+                local targetArm = (tick() % 0.2 > 0.1) and rArm or lArm
+                if targetArm then
+                    tHrp.BodyPosition.Position = targetArm.Position
+                    -- 相手を常に回転させてFlingを継続
+                    tHrp.CFrame = targetArm.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), math.rad(math.random(0,360)))
+                end
             end
         else
-            -- オフ、またはブロブマンじゃない時は解除
+            -- 解除処理
             if hrp then hrp.Anchored = false end
             if selectedPlayer and selectedPlayer.Character then
                 local tHrp = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if tHrp then
-                    if tHrp:FindFirstChild("NazuPosing") then tHrp.NazuPosing:Destroy() end
-                    if tHrp:FindFirstChild("NazuSpin") then tHrp.NazuSpin:Destroy() end
+                    if tHrp:FindFirstChild("FlingPosing") then tHrp.FlingPosing:Destroy() end
+                    if tHrp:FindFirstChild("FlingSpin") then tHrp.FlingSpin:Destroy() end
                 end
             end
         end
     end
 end)
 
--- UI（ドロップダウン等は以前のコードと同じ）
--- [ここにお前の既存のPlayerDropdownコードを維持してくれ]
+-- プレイヤーリスト更新関数
+local function updatePlayerList()
+    local p = {}
+    for _, v in pairs(game.Players:GetPlayers()) do
+        if v ~= game.Players.LocalPlayer then table.insert(p, v.Name) end
+    end
+    return p
+end
+
+-- UI要素の配置
+local PlayerDropdown = BlobTab:AddDropdown({
+	Name = "Select Target",
+	Default = "None",
+	Options = updatePlayerList(),
+	Callback = function(Value)
+		selectedPlayer = game.Players:FindFirstChild(Value)
+	end    
+})
+
+BlobTab:AddButton({
+	Name = "Refresh Player List",
+	Callback = function()
+		PlayerDropdown:Refresh(updatePlayerList(), true)
+	end    
+})
+
+BlobTab:AddToggle({
+	Name = "Enable Infinite Fling",
+	Default = false,
+	Callback = function(Value)
+		_G.FlingActive = Value
+	end    
+})
 
 --==============================
 -- 初期化
