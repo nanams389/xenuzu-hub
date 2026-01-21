@@ -209,6 +209,51 @@ AuraTab:AddToggle({
 	end    
 })
 
+-- [[ Kill All ボタン：グラブ経由ネットワーク奪取仕様 ]]
+BlobTab:AddButton({
+	Name = "Kill All (Grab Method)",
+	Callback = function()
+		local lp = game.Players.LocalPlayer
+		local char = lp.Character
+		
+		-- 全プレイヤーをループ
+		for _, v in pairs(game.Players:GetPlayers()) do
+			if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+				task.spawn(function()
+					local tHrp = v.Character.HumanoidRootPart
+					
+					-- 1. グラブ（ひも）の代わり：強制的に一瞬自分の手の位置へ
+					-- FTAPの仕様上、極至近距離にパーツが重なるとネットワーク権限が移りやすい
+					local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
+					if rArm then
+						-- 権限を奪うための高速テレポート
+						tHrp.CFrame = rArm.CFrame
+						task.wait(0.1) -- 権限が移るわずかなラグを待機
+						
+						-- 2. ネットワーク権限を利用した破壊
+						-- 権限が自分にある状態なら、この速度変更が相手に強制反映される
+						tHrp.Velocity = Vector3.new(1000000, 1000000, 1000000)
+						tHrp.RotVelocity = Vector3.new(1000000, 1000000, 1000000)
+						
+						-- 3. 物理爆発を確実にするための振動
+						local bav = Instance.new("BodyAngularVelocity", tHrp)
+						bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+						bav.AngularVelocity = Vector3.new(1000, 1000, 1000)
+						game:GetService("Debris"):AddItem(bav, 0.5) -- 0.5秒後に削除
+					end
+				end)
+			end
+		end
+		
+		-- 実行通知
+		OrionLib:MakeNotification({
+			Name = "Nazu Hub",
+			Content = "Attempting to Kill All Players via Grab/Network...",
+			Time = 3
+		})
+	end    
+})
+
 -- [[ Nazu Hub - FTAP Double Arm Infinite Fling ]]
 local BlobTab = Window:MakeTab({
 	Name = "Blobman Fling",
