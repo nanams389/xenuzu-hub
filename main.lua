@@ -149,31 +149,54 @@ AuraTab:AddToggle({
     end    
 })
 
-local function startScatterAura(targetPlayer)
-    local char = lp.Character
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local tChar = targetPlayer.Character
-    local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+AuraTab:AddToggle({
+    Name = "Void Bringer Aura (奈落送り)",
+    Default = false,
+    Callback = function(Value)
+        _G.VoidBringerEnabled = Value
+        if Value then
+            task.spawn(function()
+                while _G.VoidBringerEnabled do
+                    task.wait(0.1) -- 判定の間隔
+                    local lp = game.Players.LocalPlayer
+                    local char = lp.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
-    if hrp and tHrp then
-        -- 相手の関節を破壊するための「超・超回転」設定
-        local torque = Instance.new("BodyAngularVelocity")
-        torque.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        torque.P = 10^10 -- パワーを物理限界まで上げる
-        torque.AngularVelocity = Vector3.new(0, 500000, 0) -- 垂直軸に超回転
-        torque.Parent = tHrp -- 相手の体に直接ブチ込む（NetworkOwnerが取れていれば最強）
+                    if hrp then
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = player.Character.HumanoidRootPart
+                                local targetHum = player.Character:FindFirstChild("Humanoid")
+                                local distance = (targetHRP.Position - hrp.Position).Magnitude
 
-        -- 相手を固定して逃がさない
-        task.spawn(function()
-            local startTime = tick()
-            while tick() - startTime < 1.5 do -- 1.5秒間だけ発動
-                tHrp.CFrame = hrp.CFrame * CFrame.new(0, 0, -2) -- 自分の目の前に固定
-                task.wait()
-            end
-            torque:Destroy()
-        end)
+                                -- 射程内（20スタッド）かつ生存している場合
+                                if distance <= 20 and targetHum and targetHum.Health > 0 then
+                                    pcall(function()
+                                        -- 1. 相手を一瞬だけ自分の目の前に固定（Grab判定を作る）
+                                        targetHRP.CFrame = hrp.CFrame * CFrame.new(0, 0, -3)
+
+                                        -- 2. 物理演算をバグらせて奈落へ突き落とす
+                                        -- 相手のVelocity（速度）を真下に固定
+                                        local bv = Instance.new("BodyVelocity")
+                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                        bv.Velocity = Vector3.new(0, -500, 0) -- 超高速で奈落へ
+                                        bv.Parent = targetHRP
+                                        
+                                        -- 3. 相手の座標を強制的にマップ外（地下）へ飛ばす
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -100, 0)
+
+                                        -- ゴミ掃除
+                                        game:GetService("Debris"):AddItem(bv, 0.2)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
     end
-end
+})
 
 --==============================
 -- タブ：プレイヤー操作 (Util)
