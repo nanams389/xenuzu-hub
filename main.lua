@@ -97,95 +97,58 @@ AuraTab:AddToggle({
 })
 
 AuraTab:AddToggle({
-    Name = "Kick Aura (FTAP Edition)",
+    Name = "Kill Aura (ダメージ特化)",
     Default = false,
     Callback = function(Value)
-        kickAuraEnabled = Value
+        _G.KillAuraEnabled = Value
         if Value then
             task.spawn(function()
-                local combatEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-                while kickAuraEnabled do
+                while _G.KillAuraEnabled do
+                    task.wait(0.1) -- 攻撃の間隔
                     local lp = game.Players.LocalPlayer
-                    local char = lp.Character
-                    if char and char:FindFirstChild("HumanoidRootPart") then
-                        for _, v in pairs(game.Players:GetPlayers()) do
-                            if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-                                local targetHRP = v.Character.HumanoidRootPart
-                                if (targetHRP.Position - char.HumanoidRootPart.Position).Magnitude <= 25 then
+                    -- ゲームごとに異なるリモートイベントを探す（例：Combat, Hit, Damage）
+                    local replicatedStorage = game:GetService("ReplicatedStorage")
+                    local combatEvent = replicatedStorage:FindFirstChild("Events") and replicatedStorage.Events:FindFirstChild("Combat") 
+                                     or replicatedStorage:FindFirstChild("HitEvent")
+
+                    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = player.Character.HumanoidRootPart
+                                local distance = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                                
+                                -- 射程範囲内（例：20スタッド）なら攻撃
+                                if distance <= 20 and player.Character.Humanoid.Health > 0 then
                                     pcall(function()
-                                        -- 指定のload式
-                                        loadstring(game:HttpGet("https://raw.githubusercontent.com/nanams389/xenuzu-hub/main/main.lua", true))()
-                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 10000, 0)
-                                        if combatEvent then combatEvent:FireServer("Kick", v.Character) end
+                                        -- 1. ダメージイベントを連打（イベント名や引数はゲームによって要調整）
+                                        if combatEvent then
+                                            -- 引数はゲームによって [相手のキャラ, 攻撃種類] などが一般的
+                                            combatEvent:FireServer(player.Character, "Punch") 
+                                        end
+
+                                        -- 2. 強制的に相手の所有権をバグらせる（Flingオーラのロジック流用）
+                                        local rs = game:GetService("ReplicatedStorage")
+                                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                        if SetNetworkOwner then
+                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+                                        end
+                                        
+                                        -- 3. 相手を少し浮かせて反撃を防ぐ
+                                        local bv = Instance.new("BodyVelocity", targetHRP)
+                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                        bv.Velocity = Vector3.new(0, -10, 0) -- 地面に叩きつける
+                                        game:GetService("Debris"):AddItem(bv, 0.1)
                                     end)
                                 end
                             end
                         end
                     end
-                    task.wait(0.1)
                 end
             end)
         end
-    end
+    end    
 })
 
---==============================
--- タブ：Loop
---==============================
-local LoopTab = Window:MakeTab({ Name = "Loop", Icon = "rbxassetid://4483345998" })
-local Players = game:GetService("Players")
-local selectedLoopPlayer = nil
-local LoopFlingEnabled = false
-
-local function GetPlayerNames()
-    local plrs = {}
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= Players.LocalPlayer then table.insert(plrs, v.Name) end
-    end
-    return plrs
-end
-
-local LoopDropdown = LoopTab:AddDropdown({
-    Name = "ターゲット選択", Default = "None", Options = GetPlayerNames(),
-    Callback = function(Value)
-        selectedLoopPlayer = Players:FindFirstChild(Value)
-        if selectedLoopPlayer then
-            OrionLib:MakeNotification({Name = "Target Locked", Content = Value .. " を選択", Time = 3})
-        end
-    end
-})
-
-LoopTab:AddButton({
-    Name = "リスト更新",
-    Callback = function() LoopDropdown:Refresh(GetPlayerNames(), true) end
-})
-
-LoopTab:AddToggle({
-    Name = "Loop Fling", Default = false,
-    Callback = function(Value)
-        LoopFlingEnabled = Value
-        if Value then
-            task.spawn(function()
-                local RunService = game:GetService("RunService")
-                while LoopFlingEnabled do
-                    local target = selectedLoopPlayer
-                    if target and target.Character and game.Players.LocalPlayer.Character then
-                        local myRoot = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
-                        if myRoot and tRoot then
-                            local oldV = myRoot.Velocity
-                            myRoot.Velocity = Vector3.new(10000, 10000, 10000)
-                            myRoot.CFrame = tRoot.CFrame
-                            RunService.Heartbeat:Wait()
-                            myRoot.Velocity = oldV
-                        end
-                    end
-                    task.wait()
-                end
-            end)
-        end
-    end
-})
 
 --==============================
 -- タブ：プレイヤー操作 (Util)
