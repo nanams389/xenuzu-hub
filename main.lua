@@ -149,6 +149,31 @@ AuraTab:AddToggle({
     end    
 })
 
+local function startScatterAura(targetPlayer)
+    local char = lp.Character
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local tChar = targetPlayer.Character
+    local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+
+    if hrp and tHrp then
+        -- 相手の関節を破壊するための「超・超回転」設定
+        local torque = Instance.new("BodyAngularVelocity")
+        torque.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        torque.P = 10^10 -- パワーを物理限界まで上げる
+        torque.AngularVelocity = Vector3.new(0, 500000, 0) -- 垂直軸に超回転
+        torque.Parent = tHrp -- 相手の体に直接ブチ込む（NetworkOwnerが取れていれば最強）
+
+        -- 相手を固定して逃がさない
+        task.spawn(function()
+            local startTime = tick()
+            while tick() - startTime < 1.5 do -- 1.5秒間だけ発動
+                tHrp.CFrame = hrp.CFrame * CFrame.new(0, 0, -2) -- 自分の目の前に固定
+                task.wait()
+            end
+            torque:Destroy()
+        end)
+    end
+end
 
 --==============================
 -- タブ：プレイヤー操作 (Util)
