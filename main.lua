@@ -209,7 +209,7 @@ AuraTab:AddToggle({
 	end    
 })
 
--- [[ Nazu Hub - FTAP Official Blobman Grab ]]
+-- [[ Nazu Hub - FTAP Pro Grab Logic ]]
 local BlobTab = Window:MakeTab({
 	Name = "Blobman Kick",
 	Icon = "rbxassetid://4483345998",
@@ -223,77 +223,64 @@ task.spawn(function()
     while task.wait() do
         local lp = game.Players.LocalPlayer
         local char = lp.Character
-        
-        -- ブロブマン状態でも通常状態でも対応できるように腕を探す
-        local rArm = char and (char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand") or char:FindFirstChild("BlobArm")) 
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-
-        if _G.BlobmanKick and selectedPlayer and selectedPlayer.Character and rArm and hrp then
-            -- 1. 自爆防止：自分を固定
-            -- これがないと相手を掴んだ瞬間に反動で自分が死ぬ
-            hrp.Anchored = true
-            
-            -- 2. ターゲットの取得
-            local tChar = selectedPlayer.Character
-            local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
-            
-            if tHrp then
-                -- 3. 強制吸着（Bring）
-                -- 相手をブロブマンの手の「中」に埋め込むことで物理爆発を誘発させる
-                tHrp.CFrame = rArm.CFrame * CFrame.new(0, -1, 0)
-                
-                -- 4. 相手だけに殺人的な回転速度を与える
-                -- これにより、相手の画面でも「ブロブマンに触れた瞬間に爆散」したように見える
-                tHrp.Velocity = Vector3.new(1000000, 1000000, 1000000)
-                tHrp.RotVelocity = Vector3.new(1000000, 1000000, 1000000)
-                
-                -- 5. 相手の物理ネットワークをバグらせる
-                -- 無理やり自分の物理管理下に置く
-                for _, part in pairs(tChar:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = true -- 衝突をオンにして「キック」を確定させる
-                    end
+        
+        -- 【修正1】ブロブマン判定（サイズが通常より大きいかチェック）
+        local isBlob = false
+        if char and char:FindFirstChild("Humanoid") then
+            -- パーツのどれかが一定以上の大きさならブロブマンとみなす
+            for _, v in pairs(char:GetChildren()) do
+                if v:IsA("BasePart") and v.Size.Magnitude > 5 then
+                    isBlob = true
+                    break
                 end
             end
+        end
+
+        if _G.BlobmanKick and selectedPlayer and selectedPlayer.Character and hrp and isBlob then
+            -- ブロブマン時のみ実行
+            local tChar = selectedPlayer.Character
+            local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+            local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand") or char:FindFirstChild("BlobArm")
+
+            if tHrp and rArm then
+                -- 自分を固定（自爆防止）
+                hrp.Anchored = true
+                
+                -- 【修正2】実体化（物理同期）
+                -- CFrameだけでなく、BodyMoverを使ってサーバーに物理を強制認識させる
+                if not tHrp:FindFirstChild("NazuPosing") then
+                    local bp = Instance.new("BodyPosition", tHrp)
+                    bp.Name = "NazuPosing"
+                    bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bp.P = 10000
+                    
+                    local bav = Instance.new("BodyAngularVelocity", tHrp)
+                    bav.Name = "NazuSpin"
+                    bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                    bav.AngularVelocity = Vector3.new(500, 500, 500) -- XYZ超高速回転
+                end
+
+                -- 手の位置へ吸着
+                tHrp.BodyPosition.Position = rArm.Position
+                tHrp.CFrame = rArm.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), math.rad(math.random(0,360)))
+            end
         else
-            -- OFFの時はアンカー解除
-            if hrp and hrp.Anchored then hrp.Anchored = false end
+            -- オフ、またはブロブマンじゃない時は解除
+            if hrp then hrp.Anchored = false end
+            if selectedPlayer and selectedPlayer.Character then
+                local tHrp = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if tHrp then
+                    if tHrp:FindFirstChild("NazuPosing") then tHrp.NazuPosing:Destroy() end
+                    if tHrp:FindFirstChild("NazuSpin") then tHrp.NazuSpin:Destroy() end
+                end
+            end
         end
     end
 end)
 
--- UI設定（ドロップダウン等は前回と同じ）
-local function getPlayers()
-    local p = {}
-    for _, v in pairs(game.Players:GetPlayers()) do
-        if v ~= game.Players.LocalPlayer then table.insert(p, v.Name) end
-    end
-    return p
-end
-
-local PlayerDropdown = BlobTab:AddDropdown({
-	Name = "Select Target",
-	Default = "None",
-	Options = getPlayers(),
-	Callback = function(Value)
-		selectedPlayer = game.Players:FindFirstChild(Value)
-	end    
-})
-
-BlobTab:AddButton({
-	Name = "Refresh List",
-	Callback = function()
-		PlayerDropdown:Refresh(getPlayers(), true)
-	end    
-})
-
-BlobTab:AddToggle({
-	Name = "Enable Blobman Kick",
-	Default = false,
-	Callback = function(Value)
-		_G.BlobmanKick = Value
-	end    
-})
+-- UI（ドロップダウン等は以前のコードと同じ）
+-- [ここにお前の既存のPlayerDropdownコードを維持してくれ]
 
 --==============================
 -- 初期化
