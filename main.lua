@@ -209,7 +209,7 @@ AuraTab:AddToggle({
 	end    
 })
 
--- [[ 修正版：Blobman Kick Tab (自分固定 & 同期重視) ]]
+-- [[ Nazu Hub - FTAP Official Blobman Grab ]]
 local BlobTab = Window:MakeTab({
 	Name = "Blobman Kick",
 	Icon = "rbxassetid://4483345998",
@@ -221,42 +221,48 @@ _G.BlobmanKick = false
 
 task.spawn(function()
     while task.wait() do
-        if _G.BlobmanKick and selectedPlayer and selectedPlayer.Character then
-            local lp = game.Players.LocalPlayer
-            local char = lp.Character
+        local lp = game.Players.LocalPlayer
+        local char = lp.Character
+        
+        -- ブロブマン状態でも通常状態でも対応できるように腕を探す
+        local rArm = char and (char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand") or char:FindFirstChild("BlobArm")) 
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if _G.BlobmanKick and selectedPlayer and selectedPlayer.Character and rArm and hrp then
+            -- 1. 自爆防止：自分を固定
+            -- これがないと相手を掴んだ瞬間に反動で自分が死ぬ
+            hrp.Anchored = true
+            
+            -- 2. ターゲットの取得
             local tChar = selectedPlayer.Character
-            local rArm = char and (char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand"))
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
-
-            if rArm and tHrp and hrp then
-                -- 1. 自分をその場に完全に固定（自分だけ飛んでいくのを防ぐ）
-                hrp.Velocity = Vector3.new(0, 0, 0)
-                hrp.RotVelocity = Vector3.new(0, 0, 0)
+            
+            if tHrp then
+                -- 3. 強制吸着（Bring）
+                -- 相手をブロブマンの手の「中」に埋め込むことで物理爆発を誘発させる
+                tHrp.CFrame = rArm.CFrame * CFrame.new(0, -1, 0)
                 
-                -- 2. 自分を「物理的な壁」にする（サイズをデカくするが衝突は最小限に）
-                for _, v in pairs(char:GetChildren()) do
-                    if v:IsA("BasePart") then
-                        v.Size = Vector3.new(10, 10, 10)
-                        v.CanCollide = false -- 自分への反動を消すために一旦false
-                    end
-                end
-
-                -- 3. 相手を手に「物理同期」させる (強制テレポート + 振動)
-                -- 座標を少しだけランダムに揺らすことでNetworkOwnerを奪いやすくする
-                local shake = Vector3.new(math.random(-1,1)/100, 0, math.random(-1,1)/100)
-                tHrp.CFrame = rArm.CFrame * CFrame.new(0, -1, 0) * CFrame.new(shake)
-                
-                -- 4. 相手にだけ物理的な「回転爆弾」を仕込む
-                -- 相手のパーツを直接いじることで相手の画面でも吹っ飛ぶようにする
+                -- 4. 相手だけに殺人的な回転速度を与える
+                -- これにより、相手の画面でも「ブロブマンに触れた瞬間に爆散」したように見える
                 tHrp.Velocity = Vector3.new(1000000, 1000000, 1000000)
                 tHrp.RotVelocity = Vector3.new(1000000, 1000000, 1000000)
+                
+                -- 5. 相手の物理ネットワークをバグらせる
+                -- 無理やり自分の物理管理下に置く
+                for _, part in pairs(tChar:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = true -- 衝突をオンにして「キック」を確定させる
+                    end
+                end
             end
+        else
+            -- OFFの時はアンカー解除
+            if hrp and hrp.Anchored then hrp.Anchored = false end
         end
     end
 end)
 
--- UI部分は変更なし
+-- UI設定（ドロップダウン等は前回と同じ）
 local function getPlayers()
     local p = {}
     for _, v in pairs(game.Players:GetPlayers()) do
@@ -288,6 +294,7 @@ BlobTab:AddToggle({
 		_G.BlobmanKick = Value
 	end    
 })
+
 --==============================
 -- 初期化
 --==============================
