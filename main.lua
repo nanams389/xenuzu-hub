@@ -213,6 +213,78 @@ AuraTab:AddToggle({
 local selectedPlayer = nil
 _G.FlingActive = false
 
+-- Kick Aura タブの追加
+local AuraTab = Window:MakeTab({
+	Name = "Kick Aura",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+local kickAuraEnabled = false
+local auraRange = 20
+local useExplosion = false
+
+AuraTab:AddSection({
+	Name = "Main Settings"
+})
+
+AuraTab:AddToggle({
+	Name = "Kick Aura Enabled",
+	Default = false,
+	Callback = function(Value)
+		kickAuraEnabled = Value
+	end    
+})
+
+AuraTab:AddSlider({
+	Name = "Aura Range",
+	Min = 5,
+	Max = 50,
+	Default = 20,
+	Color = Color3.fromRGB(255, 255, 255),
+	Increment = 1,
+	ValueName = "Studs",
+	Callback = function(Value)
+		auraRange = Value
+	end    
+})
+
+AuraTab:AddToggle({
+	Name = "Use Bomb Explosion (Violent)",
+	Default = false,
+	Callback = function(Value)
+		useExplosion = Value
+	end    
+})
+
+-- メインループ（既存のコードの末尾などに追加してください）
+task.spawn(function()
+	while task.wait(0.1) do
+		if kickAuraEnabled then
+			local lp = game.Players.LocalPlayer
+			if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
+			local myRoot = lp.Character.HumanoidRootPart
+
+			for _, player in pairs(game.Players:GetPlayers()) do
+				if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+					local targetRoot = player.Character.HumanoidRootPart
+					local dist = (targetRoot.Position - myRoot.Position).Magnitude
+					
+					if dist <= auraRange then
+						-- 1. ラグドール化（無力化）
+						game.ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(true)
+						
+						-- 2. 爆発オプション
+						if useExplosion then
+							game.ReplicatedStorage.BombEvents.BombExplode:FireServer(targetRoot.Position)
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+
 --==============================
 -- 初期化
 --==============================
