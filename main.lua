@@ -287,81 +287,59 @@ task.spawn(function()
     end
 end)
 
--- [[ 制御用変数 ]]
+-- [[ Kick All 専用設定 ]]
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
-local selectedTarget = ""
-local isTargetKickEnabled = false
-local isKickAllEnabled = false
+local kickAllActive = false
 
--- [[ Blobman Kick タブ ]]
+-- [[ タブ生成 ]]
 local KickTab = Window:MakeTab({
-    Name = "Blobman Kick Pro",
+    Name = "Kick All Mode",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
--- 1. ターゲット選択 & 個別Kick
-local TargetDropdown = KickTab:AddDropdown({
-    Name = "Select Target",
-    Default = "",
-    Options = {}, 
-    Callback = function(Value) selectedTarget = Value end    
-})
-
 KickTab:AddToggle({
-    Name = "Target: Blackhole Loop",
+    Name = "Ultimate Kick All (Auto-Grab & Fling)",
     Default = false,
-    Callback = function(Value) isTargetKickEnabled = Value end    
+    Callback = function(Value)
+        kickAllActive = Value
+    end    
 })
 
--- 2. 全員排除 (Kick All)
-KickTab:AddToggle({
-    Name = "Kick All (Void Fling Mode)",
-    Default = false,
-    Callback = function(Value) isKickAllEnabled = Value end    
-})
-
--- [[ 最強排除ロジック ]]
+-- [[ Kick All メインロジック ]]
 task.spawn(function()
-    while task.wait() do
-        local char = lp.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
-        local myRoot = char.HumanoidRootPart
-
-        -- 特定ターゲットへの拉致 & ブラックホール送り
-        if isTargetKickEnabled and selectedTarget ~= "" then
-            local p = Players:FindFirstChild(selectedTarget)
-            if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local tRoot = p.Character.HumanoidRootPart
-                
-                -- 拉致: 自分の手元に引き寄せ
-                tRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -5)
-                
-                -- 破壊的吹き飛ばし: 下方向（Void）へ超高速で射出
-                tRoot.Velocity = Vector3.new(0, -100000, 0) 
-                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
-                game.ReplicatedStorage.HoldEvents.Hold:FireServer(p.Character)
-            end
-        end
-
-        -- Kick All: 周囲をテレポートしながら全員飛ばす
-        if isKickAllEnabled then
+    while task.wait(0.3) do -- 連続で処理するための間隔
+        if kickAllActive then
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                     local tRoot = p.Character.HumanoidRootPart
+                    local mRoot = lp.Character.HumanoidRootPart
                     
-                    -- 高速テレポート & 射出コンボ
-                    tRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -5)
-                    tRoot.Velocity = (tRoot.Position - myRoot.Position).Unit * 50000 + Vector3.new(0, 50000, 0)
+                    -- 1. 相手をBlobmanの「手」の目の前に強制テレポート
+                    -- どこにいても自分の位置（腕の範囲内）に引き寄せます
+                    tRoot.CFrame = mRoot.CFrame * CFrame.new(0, 2, -6)
                     
+                    -- 2. 掴み判定を強制発生（Dexで確認したHoldイベント）
+                    -- これにより「自動で掴む」動作をシミュレートします
+                    game.ReplicatedStorage.HoldEvents.Hold:FireServer(p.Character)
+                    
+                    -- 3. 相手をラグドール化して抵抗不能にする
                     game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
-                    game.ReplicatedStorage.HoldEvents.Drop:FireServer() -- 掴みを解除して飛ばす
+                    
+                    -- 4. 空の彼方（ブラックホール）へ投げ飛ばす
+                    -- 上方向（Y軸）と前方向へ爆速の力を加えます
+                    task.wait(0.1) -- 掴んだ瞬間に投げるための微小な待ち
+                    tRoot.Velocity = Vector3.new(0, 100000, 0) + (mRoot.CFrame.LookVector * 50000)
+                    
+                    -- 5. 投げた瞬間に掴みを解除（次のターゲットへ移るため）
+                    game.ReplicatedStorage.HoldEvents.Drop:FireServer()
                 end
             end
         end
     end
 end)
+
 
 --==============================
 -- 初期化
