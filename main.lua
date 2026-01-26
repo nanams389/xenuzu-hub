@@ -417,6 +417,540 @@ BlobTab:AddToggle({
     end
 })
 
+-- ========== タブ作成 ==========
+-- Blobman関連タブ
+local BlobmanBasicTab = window:MakeTab({
+    Name = "Blobman Basic",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local BlobmanAdvancedTab = window:MakeTab({
+    Name = "Blobman Advanced",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local BlobmanAurasTab = window:MakeTab({
+    Name = "Blobman Auras",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Snipes関連タブ
+local SnipesBasicTab = window:MakeTab({
+    Name = "Snipes Basic",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local SnipesLoopsTab = window:MakeTab({
+    Name = "Snipes Loops",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- 設定タブ
+local SettingsTab = window:MakeTab({
+    Name = "Settings",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- ========== Blobman Basic Tab ==========
+BlobmanBasicTab:AddDropdown({
+    Name = "Target",
+    Default = getLocalPlayer().Name,
+    Options = playerList,
+    Callback = function(Value)
+        config.Blobman.Target.Value = Value
+    end
+})
+
+BlobmanBasicTab:AddDropdown({
+    Name = "Arm Side",
+    Default = "Left",
+    Options = {"Left", "Right"},
+    Callback = function(Value)
+        config.Blobman.ArmSide.Value = Value
+    end
+})
+
+BlobmanBasicTab:AddButton({
+    Name = "Spawn Blobman",
+    Callback = function()
+        spawnBlobman()
+    end
+})
+
+BlobmanBasicTab:AddButton({
+    Name = "Kick",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                local pos=getLocalRoot().CFrame
+                task.wait(.5)
+                getLocalRoot().CFrame=root.CFrame
+                task.wait()
+                blobKick(b,root,config.Blobman.ArmSide.Value)
+                task.wait(.5)
+                getLocalRoot().CFrame=pos
+            end)
+        end
+    end
+})
+
+BlobmanBasicTab:AddButton({
+    Name = "Bring",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                if(not root or not b)then return end
+                local pos=getLocalRoot().CFrame
+                getLocalRoot().CFrame=root.CFrame
+                blobBring(b,root,config.Blobman.ArmSide.Value)
+                task.wait()
+                getLocalRoot().CFrame=pos
+            end)
+        end
+    end
+})
+
+BlobmanBasicTab:AddButton({
+    Name = "Void",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                local pos=getLocalRoot().CFrame
+                blobGrab(b,getLocalRoot(),config.Blobman.ArmSide.Value)
+                task.wait()
+                blobBring(b,root,config.Blobman.ArmSide.Value)
+                task.wait()
+                getLocalRoot().CFrame=CFrame.new(1e32,-16,1e32)
+                task.wait(1)
+                getLocalHum().Sit=false
+                task.wait(.1)
+                getLocalRoot().CFrame=pos
+                task.wait()
+                destroyToy(b)
+            end)
+        end
+    end
+})
+
+BlobmanBasicTab:AddButton({
+    Name = "Slide",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                local pos=getLocalRoot().CFrame
+                blobGrab(b,getLocalRoot(),config.Blobman.ArmSide.Value)
+                task.wait()
+                blobBring(b,root,config.Blobman.ArmSide.Value)
+                task.wait()
+                getLocalRoot().CFrame=pos
+                task.wait(.5)
+                destroyToy(b)
+            end)
+        end
+    end
+})
+
+BlobmanBasicTab:AddToggle({
+    Name = "Noclip",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.Noclip.Value = Value
+    end
+})
+
+-- ========== Blobman Advanced Tab ==========
+BlobmanAdvancedTab:AddButton({
+    Name = "OP-Blobman",
+    Callback = function()
+        local blob=getBlobman()
+        if(not blob)then
+            blob=spawnBlobman()
+        end
+        if(not getLocalHum().Sit)then
+            blob.VehicleSeat:Sit(getLocalHum())
+        end
+        local pos=getLocalRoot().CFrame
+        task.wait()
+        if(blob and getLocalHum())then
+            --// RIGHT
+            if(blob:IsDescendantOf(workspace.PlotItems))then
+                getLocalRoot().CFrame=CFrame.new(0,0,0)
+                task.wait(.5)
+            end
+            local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+            SetNetworkOwner(Toy.HumanoidRootPart)
+            Toy.HumanoidRootPart.CFrame=blob.RightDetector.CFrame
+            task.wait()
+            blobGrab(blob,Toy.HumanoidRootPart,"Right")
+            task.wait(1.25)
+            destroyToy(Toy)
+            task.wait(.1)
+
+            --// LEFT
+            local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+            SetNetworkOwner(Toy.HumanoidRootPart)
+            Toy.HumanoidRootPart.CFrame=blob.LeftDetector.CFrame
+            task.wait()
+            blobGrab(blob,Toy.HumanoidRootPart,"Left")
+            task.wait(1.25)
+            destroyToy(Toy)
+            task.wait(.1)
+        end
+        getLocalRoot().CFrame=pos
+    end
+})
+
+BlobmanAdvancedTab:AddButton({
+    Name = "Kick All",
+    Callback = function()
+        local blob=getBlobman()
+        if(not blob)then
+            blob=spawnBlobman()
+        end
+        if(not getLocalHum().Sit)then
+            blob.VehicleSeat:Sit(getLocalHum())
+        end
+        task.wait()
+        local pos=getLocalRoot().CFrame
+        if(blob and getLocalHum().Sit)then
+            blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
+            for _,v in ipairs(service.Players:GetPlayers())do
+                if(v==getLocalPlayer())then continue end
+                if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
+                if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
+                local character=v.Character
+                if(not character)then continue end
+                local root=get(character,"HumanoidRootPart")
+                if(not root)then continue end
+                getLocalRoot().CFrame=root.CFrame
+                task.wait(.25)
+                blobKick(blob,root,config.Blobman.ArmSide.Value)
+            end
+            task.wait(.1)
+            getLocalRoot().CFrame=pos
+            destroyToy(blob)
+        end
+    end
+})
+
+BlobmanAdvancedTab:AddButton({
+    Name = "Slide All",
+    Callback = function()
+        local blob=getBlobman()
+        if(not blob)then
+            blob=spawnBlobman()
+        end
+        if(not getLocalHum().Sit)then
+            blob.VehicleSeat:Sit(getLocalHum())
+        end
+        task.wait()
+        local pos=getLocalRoot().CFrame
+        if(blob and getLocalHum().Sit)then
+            blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
+            for _,v in ipairs(service.Players:GetPlayers())do
+                if(v==getLocalPlayer())then continue end
+                if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
+                if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
+                local character=v.Character
+                if(not character)then continue end
+                local root=get(character,"HumanoidRootPart")
+                if(not root)then continue end
+                getLocalRoot().CFrame=root.CFrame
+                task.wait(.2)
+                blobGrab(blob,root,config.Blobman.ArmSide.Value)
+            end
+            task.wait(.1)
+            getLocalRoot().CFrame=pos
+            destroyToy(blob)
+        end
+    end
+})
+
+BlobmanAdvancedTab:AddToggle({
+    Name = "Loop Kick All",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.LoopKickAll.Value = Value
+    end
+})
+
+-- ========== Blobman Auras Tab ==========
+BlobmanAurasTab:AddToggle({
+    Name = "Kick Aura",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.KickAura.Value = Value
+    end
+})
+
+BlobmanAurasTab:AddToggle({
+    Name = "Grab Aura",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.GrabAura.Value = Value
+    end
+})
+
+-- ========== Snipes Basic Tab ==========
+SnipesBasicTab:AddDropdown({
+    Name = "Target",
+    Default = getLocalPlayer().Name,
+    Options = playerList,
+    Callback = function(Value)
+        config.Snipes.Target.Value = Value
+    end
+})
+
+SnipesBasicTab:AddButton({
+    Name = "Bring",
+    Callback = function()
+        local pos=getLocalRoot().CFrame
+        local t=getPlayerFromName(config.Snipes.Target.Value)
+        if(not t)then return end
+        local root=get(t.Character,"HumanoidRootPart")
+        if(not root)then return end
+        task.spawn(function()
+            Snipefunc(root,function()
+                task.wait(.01)
+                root.CFrame=pos
+                task.wait(.5)
+                ungrab(root)
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesBasicTab:AddButton({
+    Name = "Void",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                Velocity(root,Vector3.new(0,1e4,0))
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesBasicTab:AddButton({
+    Name = "Kill",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                MoveTo(root,CFrame.new(4096,-75,4096))
+                Velocity(root,Vector3.new(0,-1e3,0))
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesBasicTab:AddButton({
+    Name = "Poison",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                MoveTo(root,CFrame.new(58,-70,271))
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesBasicTab:AddButton({
+    Name = "Ragdoll",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                local rpos=root.CFrame
+                Velocity(root,Vector3.new(0,-64,0))
+                task.wait(.1)
+                getLocalRoot().CFrame=rpos
+                Velocity(root,Vector3.zero)
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesBasicTab:AddButton({
+    Name = "Death",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                local hum = cget(root.Parent,"Humanoid")
+                if hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Dead)
+                end
+                task.wait(.5)
+                ungrab(root)
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesBasicTab:AddButton({
+    Name = "Fling",
+    Callback = function()
+        local pos=getLocalRoot().CFrame
+        local t=getPlayerFromName(config.Snipes.Target.Value)
+        if(not t)then return end
+        local root=get(t.Character,"HumanoidRootPart")
+        if(not root)then return end
+        local toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+        task.wait(.3)
+        getLocalRoot().CFrame=toy.PrimaryPart.CFrame
+        task.wait(.1)
+        SetNetworkOwner(toy.PrimaryPart)
+        for _=1,256 do
+            SetNetworkOwner(toy.PrimaryPart)
+            task.wait()
+            local rx=math.rad(math.random(0,360*32768))
+            local ry=math.rad(math.random(0,360*32768))
+            local rz=math.rad(math.random(0,360*32768))
+            local rr=1.5
+            toy.PrimaryPart.CFrame=CFrame.new(root.Position+Vector3.one*math.random(-rr,rr))*CFrame.Angles(rx,ry,rz)
+            Velocity(toy.PrimaryPart,Vector3.one*1e16)
+        end
+        task.wait(.5)
+        getLocalRoot().CFrame=pos
+        task.wait(.5)
+        destroyToy(toy)
+    end
+})
+
+-- ========== Snipes Loops Tab ==========
+SnipesLoopsTab:AddToggle({
+    Name = "Loop Void",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopVoid.Value = Value
+    end
+})
+
+SnipesLoopsTab:AddToggle({
+    Name = "Loop Kill",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopKill.Value = Value
+    end
+})
+
+SnipesLoopsTab:AddToggle({
+    Name = "Loop Poison",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopPoison.Value = Value
+    end
+})
+
+SnipesLoopsTab:AddToggle({
+    Name = "Loop Ragdoll",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopRagdoll.Value = Value
+    end
+})
+
+SnipesLoopsTab:AddToggle({
+    Name = "Loop Death",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopDeath.Value = Value
+    end
+})
+
+-- ========== Settings Tab ==========
+SettingsTab:AddSlider({
+    Name = "Aura Radius",
+    Min = 0,
+    Max = 128,
+    Default = 32,
+    Color = Color3.fromRGB(255,255,255),
+    Increment = 1,
+    ValueName = "studs",
+    Callback = function(Value)
+        config.Settings.AuraRadius.Value = Value
+    end
+})
+
+SettingsTab:AddButton({
+    Name = "Infinite Aura Radius (NetworkOwner)",
+    Callback = function()
+        config.Settings.AuraRadius.Value = 10000
+    end
+})
+
+SettingsTab:AddToggle({
+    Name = "Ignore Friend",
+    Default = false,
+    Callback = function(Value)
+        config.Settings.IgnoreFriend.Value = Value
+    end
+})
+
+SettingsTab:AddToggle({
+    Name = "Ignore IsInPlot",
+    Default = false,
+    Callback = function(Value)
+        config.Settings.IgnoreIsInPlot.Value = Value
+    end
+})
+
+SettingsTab:AddTextbox({
+    Name = "Toggle Keybind",
+    Default = "C",
+    TextDisappear = false,
+    Callback = function(Value)
+        ToggleKeybind = Enum.KeyCode[Value]
+    end
+})
+
 
 --==============================
 -- 初期化
