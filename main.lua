@@ -290,45 +290,68 @@ end)
 -- [[ Kill All 設定 ]]
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
-local killAllActive = false
+local killAllRunning = false
+local purgePower = 50000 -- 射出パワー（調整可能）
 
--- [[ タブ生成 ]]
-local KillTab = Window:MakeTab({
-    Name = "Kill All Pro",
+-- [[ Kill All タブ生成 ]]
+local PurgeTab = Window:MakeTab({
+    Name = "Kill All Ultra",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-KillTab:AddToggle({
-    Name = "Enable Kill All (Teleport & Void)",
+PurgeTab:AddToggle({
+    Name = "Execute Ultimate Kill All",
     Default = false,
     Callback = function(Value)
-        killAllActive = Value
+        killAllRunning = Value
     end    
 })
 
--- [[ Kill All ロジック ]]
+-- [[ メイン・パージ・ロジック ]]
 task.spawn(function()
-    while task.wait(0.1) do
-        if killAllActive then
+    while task.wait(0.2) do -- 安定して全滅させるためのループ間隔
+        if killAllRunning then
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                     local tRoot = p.Character.HumanoidRootPart
-                    local char = p.Character
+                    local tChar = p.Character
+                    local mRoot = lp.Character.HumanoidRootPart
                     
-                    -- 1. 相手の頭上にテレポート（攻撃準備）
-                    lp.Character.HumanoidRootPart.CFrame = tRoot.CFrame * CFrame.new(0, 5, 0)
+                    -- 1. 相手の場所に瞬時に移動（背後にテレポート）
+                    mRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 3)
                     
-                    -- 2. 相手を強制ラグドール化（抵抗不能にする）
-                    game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(char)
+                    -- 2. ダメージ干渉 & ネットワークオーナー奪取 (Kill Aura ロジック)
+                    pcall(function()
+                        local rs = game:GetService("ReplicatedStorage")
+                        -- ネットワークオーナーを上書きして物理演算を自分優先にする
+                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                        if SetNetworkOwner then
+                            SetNetworkOwner:FireServer(tRoot, tRoot.CFrame)
+                        end
+                        
+                        -- ダメージイベント送信（もし存在すれば）
+                        local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") 
+                                         or rs:FindFirstChild("HitEvent")
+                        if combatEvent then
+                            combatEvent:FireServer(tChar, "Punch")
+                        end
+                    end)
+
+                    -- 3. 強制ラグドール & 物理射出 (Void Aura ロジック)
+                    -- これにより相手は空中や地面に固定されず、速度が適用されるようになります
+                    game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(tChar)
+                    game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(tRoot)
                     
-                    -- 3. 物理衝撃でマップ外（Void）へ叩き落とす
-                    -- 下方向に超強力な速度を加えます
+                    -- 4. 異常な速度ベクトルを適用（ブラックホール射出）
+                    tRoot.Velocity = Vector3.new(purgePower, purgePower, purgePower)
+                    tRoot.RotVelocity = Vector3.new(purgePower, purgePower, purgePower)
+                    
+                    -- 5. ダメ押しの脱出信号でサーバー判定をバグらせる
+                    game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
+                    
+                    -- 0.05秒だけ滞在して確実に飛ばす
                     task.wait(0.05)
-                    tRoot.Velocity = Vector3.new(0, -50000, 0)
-                    
-                    -- 4. 確実に死ぬまで少し待機（スキップ防止）
-                    task.wait(0.1)
                 end
             end
         end
