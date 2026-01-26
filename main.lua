@@ -287,11 +287,10 @@ task.spawn(function()
     end
 end)
 
--- [[ 制御用変数 ]]
+-- [[ Kill All 設定 ]]
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
-local killAllActive = false
-local killPower = 50000 -- 飛ばす強さ
+local killAllRunning = false
 
 -- [[ Kill All タブ生成 ]]
 local KillTab = Window:MakeTab({
@@ -301,60 +300,47 @@ local KillTab = Window:MakeTab({
 })
 
 KillTab:AddToggle({
-    Name = "Ultimate Kill All (Loop)",
+    Name = "Ultimate Kill All (TP Mode)",
     Default = false,
     Callback = function(Value)
-        killAllActive = Value
+        killAllRunning = Value
     end    
 })
 
-KillTab:AddSlider({
-    Name = "Ejection Power",
-    Min = 10000,
-    Max = 200000,
-    Default = 50000,
-    Callback = function(Value)
-        killPower = Value
-    end    
-})
-
--- [[ 最強パージ（排除）ロジック ]]
+-- [[ 最強奈落送りロジック ]]
 task.spawn(function()
-    while task.wait(0.2) do -- 0.2秒ごとに次のターゲットへ
-        if killAllActive then
+    while task.wait(0.1) do
+        if killAllRunning then
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                     local tRoot = p.Character.HumanoidRootPart
                     local tChar = p.Character
-                    local mRoot = lp.Character.HumanoidRootPart
-
-                    -- 1. 相手を自分の目の前（空中）に強制引き寄せ
-                    -- 地面との摩擦を消すために少し上にテレポート
-                    tRoot.CFrame = mRoot.CFrame * CFrame.new(0, 10, -5)
-
-                    -- 2. ネットワークオーナー奪取 & ラグドール化
+                    
+                    -- 1. 自分の座標を相手の真上にテレポート（同期を強める）
+                    lp.Character.HumanoidRootPart.CFrame = tRoot.CFrame * CFrame.new(0, 5, 0)
+                    
+                    -- 2. アンチチート(StopVelocity等)を無効化するコンボ
                     pcall(function()
+                        -- 所有権を奪い、ラグドール化して抵抗不能にする
                         game.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(tRoot)
                         game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(tChar)
                     end)
 
-                    -- 3. 物理バグを誘発する爆速射出（Kill Aura & Void Auraの統合）
-                    -- Velocity（速度）とRotVelocity（回転）を同時に与えると防御不能になります
-                    tRoot.Velocity = Vector3.new(0, killPower, 0)
-                    tRoot.RotVelocity = Vector3.new(killPower, killPower, killPower)
-
-                    -- 4. サーバー側のイベントを連打して「掴み」と「抵抗」を上書き
-                    game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(tRoot)
+                    -- 3. 相手をマップ外（奈落）に直接テレポート上書き
+                    -- これを連打することで、相手のクライアントが戻そうとする力を封じます
+                    for i = 1, 5 do
+                        tRoot.CFrame = CFrame.new(0, -50000, 0)
+                        tRoot.Velocity = Vector3.new(0, -100000, 0) -- 超高速で奈落へ
+                        task.wait()
+                    end
+                    
+                    -- 4. 最後にStruggleを送って判定を確定させる
                     game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
-
-                    -- 確実に飛ばすための短い待機
-                    task.wait(0.05)
                 end
             end
         end
     end
 end)
-
 --==============================
 -- 初期化
 --==============================
