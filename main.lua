@@ -227,61 +227,63 @@ task.spawn(function()
     end
 end)
 
--- [[ Anti-Grab Pro タブ ]]
+-- [[ Anti-Grab Ultra タブ ]]
 local AntiTab = Window:MakeTab({
-    Name = "Anti-Grab Pro",
+    Name = "Anti-Grab Ultra",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-local antiGrabPro = false
+local antiGrabEnabled = false
 
 AntiTab:AddToggle({
-    Name = "Enable Anti-Grab Mode",
+    Name = "God Defense (Anti-Grab)",
     Default = false,
     Callback = function(Value)
-        antiGrabPro = Value
+        antiGrabEnabled = Value
     end    
 })
 
--- [[ 安定版ロジック：物理ロック解除 ＆ カウンター反撃 ]]
+-- [[ 最強防御・判定拒否ロジック ]]
 task.spawn(function()
     while task.wait() do 
-        if antiGrabPro then
+        if antiGrabEnabled then
             local lp = game.Players.LocalPlayer
             local char = lp.Character
             if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
             
-            -- 1. 物理的な硬直（Anchored）を強制パッチ
+            -- 1. 物理ロック（Anchored）を最速で解除
             if char.HumanoidRootPart.Anchored then
                 char.HumanoidRootPart.Anchored = false
             end
 
-            -- 2. 掴み判定（IsHeld）が出た瞬間の即時処理
-            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
-                -- 【重要】自分を掴んでいる可能性のある近くの奴を全員転ばせる（振り払い）
-                for _, p in pairs(game.Players:GetPlayers()) do
-                    if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        local dist = (p.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude
-                        if dist < 25 then 
-                            -- 相手をラグドール化して強制ドロップさせる
-                            game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
-                        end
+            -- 2. サーバー側の掴み接続（Drop）を強制連打
+            game.ReplicatedStorage.HoldEvents.Drop:FireServer()
+            
+            -- 3. ステータス異常（IsHeld）の即時上書き
+            if lp:FindFirstChild("IsHeld") then
+                lp.IsHeld.Value = false
+            end
+            
+            -- 4. 近接カウンター（Blobman対策）
+            for _, p in pairs(game.Players:GetPlayers()) do
+                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetPos = p.Character.HumanoidRootPart.Position
+                    local dist = (targetPos - char.HumanoidRootPart.Position).Magnitude
+                    
+                    if dist < 25 then 
+                        game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
                     end
                 end
-                
-                -- 自分のステータスを無理やり正常化
-                lp.IsHeld.Value = false
-                lp.Struggled.Value = true
-                lp.HeldTimer.Value = 0
-                
-                -- サーバーへの脱出信号を高速送信
-                game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
             end
+
+            -- 5. Struggle（あがき）信号を送り続けて拘束を無効化
+            if lp:FindFirstChild("Struggled") then lp.Struggled.Value = true end
+            if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
+            game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
         end
     end
 end)
-
 --==============================
 -- 初期化
 --==============================
