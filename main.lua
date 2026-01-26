@@ -287,218 +287,136 @@ task.spawn(function()
     end
 end)
 
--- [[ Kill All 設定 ]]
-local Players = game:GetService("Players")
-local lp = Players.LocalPlayer
-local killAllRunning = false
-
--- [[ Kill All タブ生成 ]]
-local KillTab = Window:MakeTab({
-    Name = "Kill All Pro",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-KillTab:AddToggle({
-    Name = "Ultimate Kill All (TP Mode)",
-    Default = false,
-    Callback = function(Value)
-        killAllRunning = Value
-    end    
-})
-
--- [[ 最強奈落送りロジック ]]
-task.spawn(function()
-    while task.wait(0.1) do
-        if killAllRunning then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local tRoot = p.Character.HumanoidRootPart
-                    local tChar = p.Character
-                    
-                    -- 1. 自分の座標を相手の真上にテレポート（同期を強める）
-                    lp.Character.HumanoidRootPart.CFrame = tRoot.CFrame * CFrame.new(0, 5, 0)
-                    
-                    -- 2. アンチチート(StopVelocity等)を無効化するコンボ
-                    pcall(function()
-                        -- 所有権を奪い、ラグドール化して抵抗不能にする
-                        game.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(tRoot)
-                        game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(tChar)
-                    end)
-
-                    -- 3. 相手をマップ外（奈落）に直接テレポート上書き
-                    -- これを連打することで、相手のクライアントが戻そうとする力を封じます
-                    for i = 1, 5 do
-                        tRoot.CFrame = CFrame.new(0, -50000, 0)
-                        tRoot.Velocity = Vector3.new(0, -100000, 0) -- 超高速で奈落へ
-                        task.wait()
-                    end
-                    
-                    -- 4. 最後にStruggleを送って判定を確定させる
-                    game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
-                end
-            end
-        end
-    end
-end)
-
-
-local TargetTab = Window:MakeTab({
-    Name = "Target Snipes",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-local TargetPlayer = ""
-TargetTab:AddTextbox({
-    Name = "Target Name",
-    Default = "",
-    TextDisappear = false,
-    Callback = function(Value)
-        TargetPlayer = Value
-    end	  
-})
-
--- Bring / Fling ロジック (message.txt の Snipefunc を参照)
-TargetTab:AddButton({
-    Name = "Bring / Fling Target",
-    Callback = function()
-        local t = getPlayerFromName(TargetPlayer)
-        if t and t.Character then
-            local root = t.Character:FindFirstChild("HumanoidRootPart")
-            if root then
-                -- 相手を自分の位置に引き寄せてから飛ばす処理
-                Snipefunc(root, function()
-                    root.CFrame = getLocalRoot().CFrame * CFrame.new(0, 0, -3)
-                    Velocity(root, Vector3.new(500, 500, 500))
-                end)
-            end
-        end
-    end
-})
-
--- Loop Kill (message.txt の LoopKill ロジック)
-local loopKillActive = false
-TargetTab:AddToggle({
-    Name = "Loop Kill Target",
-    Default = false,
-    Callback = function(Value)
-        loopKillActive = Value
-        task.spawn(function()
-            while loopKillActive do
-                local t = getPlayerFromName(TargetPlayer)
-                if t and t.Character then
-                    local root = t.Character:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        Snipefunc(root, function()
-                            local hum = t.Character:FindFirstChildOfClass("Humanoid")
-                            if hum then hum.Health = 0 end -- 強制殺害
-                        end)
-                    end
-                end
-                task.wait(1)
-            end
-        end)
-    end
-})
-
--- Loop Death (message.txt の LoopDeath ロジック)
-local loopDeathActive = false
-TargetTab:AddToggle({
-    Name = "Loop Death Target",
-    Default = false,
-    Callback = function(Value)
-        loopDeathActive = Value
-        task.spawn(function()
-            while loopDeathActive do
-                local t = getPlayerFromName(TargetPlayer)
-                if t and t.Character then
-                    local root = t.Character:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        Snipefunc(root, function()
-                            local hum = t.Character:FindFirstChildOfClass("Humanoid")
-                            if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end -- 死亡状態維持
-                        end)
-                    end
-                end
-                task.wait(0.5)
-            end
-        end)
-    end
-})
-
-local SelfTab = Window:MakeTab({
-    Name = "Self Buffs",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- Fly (message.txt の Flight 機能を簡略化)
-local flying = false
-SelfTab:AddToggle({
-    Name = "Flight (Fly)",
-    Default = false,
-    Callback = function(Value)
-        flying = Value
-        -- 飛行ロジックを実行 (BodyVelocity等を使用)
-    end
-})
-
--- God Mode (message.txt の GodMode ロジック)
-SelfTab:AddButton({
-    Name = "Enable God Mode",
-    Callback = function()
-        local char = game.Players.LocalPlayer.Character
-        if char then
-            char:FindFirstChildOfClass("Humanoid").MaxHealth = math.huge
-            char:FindFirstChildOfClass("Humanoid").Health = math.huge
-        end
-    end
-})
-
--- Anti-Ragdoll (message.txt の Anti-Ragdoll ロジック)
-local antiRagdoll = false
-SelfTab:AddToggle({
-    Name = "Anti-Ragdoll",
-    Default = false,
-    Callback = function(Value)
-        antiRagdoll = Value
-        task.spawn(function()
-            while antiRagdoll do
-                local hum = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    -- 転倒状態（Physics等）を強制キャンセルする設定
-                    hum:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
-                    hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-                end
-                task.wait(0.1)
-            end
-        end)
-    end
-})
-
+-- [[ Blobman Kick タブ生成 ]]
 local BlobTab = Window:MakeTab({
-    Name = "Blobman Mode",
+    Name = "Blobman Kick",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
--- Blobman (message.txt の Blobman 機能を抽出)
-local blobActive = false
-BlobTab:AddToggle({
-    Name = "Activate Blobman",
-    Default = false,
+-- Blobman専用のドロップダウン用プレイヤーリスト作成
+local function getPlayerList()
+    local list = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        table.insert(list, p.Name)
+    end
+    return list
+end
+
+-- ターゲット選択
+BlobTab:AddDropdown({
+    Name = "Target Player",
+    Default = game.Players.LocalPlayer.Name,
+    Options = getPlayerList(),
     Callback = function(Value)
-        blobActive = Value
-        if blobActive then
-            -- キャラクターの各パーツを巨大化・結合させる Blobman 処理
-            -- message.txt 内の config.Blobman 関連のループ処理を実行
-        else
-            -- キャラクターをリセットして元に戻す
-            game.Players.LocalPlayer.Character:BreakJoints()
+        config.Blobman.Target.Value = Value
+    end
+})
+
+-- 腕の左右選択
+BlobTab:AddDropdown({
+    Name = "Arm Side",
+    Default = "Left",
+    Options = {"Left", "Right"},
+    Callback = function(Value)
+        config.Blobman.ArmSide.Value = Value
+    end
+})
+
+-- 召喚ボタン
+BlobTab:AddButton({
+    Name = "Spawn Blobman",
+    Callback = function()
+        spawnBlobman()
+    end
+})
+
+-- Kickボタン（単体攻撃）
+BlobTab:AddButton({
+    Name = "Kick Target",
+    Callback = function()
+        local t = getPlayerFromName(config.Blobman.Target.Value)
+        if t then
+            task.spawn(function()
+                local root = get(t.Character, "HumanoidRootPart")
+                local b = getBlobman()
+                local pos = getLocalRoot().CFrame
+                task.wait(.5)
+                getLocalRoot().CFrame = root.CFrame
+                task.wait()
+                blobKick(b, root, config.Blobman.ArmSide.Value)
+                task.wait(.5)
+                getLocalRoot().CFrame = pos
+            end)
         end
     end
 })
+
+-- Kick All（全員飛ばし）
+BlobTab:AddButton({
+    Name = "Kick All Players",
+    Callback = function()
+        local blob = getBlobman()
+        if (not blob) then blob = spawnBlobman() end
+        if (not getLocalHum().Sit) then
+            blob.VehicleSeat:Sit(getLocalHum())
+        end
+        task.wait()
+        local pos = getLocalRoot().CFrame
+        if (blob and getLocalHum().Sit) then
+            blobGrab(blob, getLocalRoot(), config.Blobman.ArmSide.Value)
+            for _, v in ipairs(game.Players:GetPlayers()) do
+                if (v == game.Players.LocalPlayer) then continue end
+                local character = v.Character
+                if (not character) then continue end
+                local root = get(character, "HumanoidRootPart")
+                if (not root) then continue end
+                getLocalRoot().CFrame = root.CFrame
+                task.wait(.25)
+                blobKick(blob, root, config.Blobman.ArmSide.Value)
+            end
+            task.wait(.1)
+            getLocalRoot().CFrame = pos
+            destroyToy(blob)
+        end
+    end
+})
+
+-- Void（奈落送り）
+BlobTab:AddButton({
+    Name = "Void Target",
+    Callback = function()
+        local t = getPlayerFromName(config.Blobman.Target.Value)
+        if t then
+            task.spawn(function()
+                local root = get(t.Character, "HumanoidRootPart")
+                local b = getBlobman()
+                local pos = getLocalRoot().CFrame
+                blobGrab(b, getLocalRoot(), config.Blobman.ArmSide.Value)
+                task.wait()
+                blobBring(b, root, config.Blobman.ArmSide.Value)
+                task.wait()
+                getLocalRoot().CFrame = CFrame.new(1e32, -16, 1e32)
+                task.wait(1)
+                getLocalHum().Sit = false
+                task.wait(.1)
+                getLocalRoot().CFrame = pos
+                task.wait()
+                destroyToy(b)
+            end)
+        end
+    end
+})
+
+-- オーラ系のトグル
+BlobTab:AddToggle({
+    Name = "Kick Aura",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.KickAura.Value = Value
+    end
+})
+
 
 --==============================
 -- 初期化
