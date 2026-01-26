@@ -287,6 +287,84 @@ task.spawn(function()
     end
 end)
 
+-- [[ プレイヤーリスト取得用変数 ]]
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local selectedTarget = ""
+local isKickEnabled = false
+
+-- [[ Blobman Kick タブ生成 ]]
+local KickTab = Window:MakeTab({
+    Name = "Blobman Kick",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- ターゲット選択ドロップダウン
+local TargetDropdown = KickTab:AddDropdown({
+    Name = "Select Target Player",
+    Default = "",
+    Options = {}, 
+    Callback = function(Value)
+        selectedTarget = Value
+    end    
+})
+
+-- プレイヤーリストを動的に更新する関数
+local function updatePlayerList()
+    local pList = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= lp then
+            table.insert(pList, p.Name)
+        end
+    end
+    TargetDropdown:Refresh(pList, true)
+end
+
+-- プレイヤーが参加/退出した時にリスト更新
+Players.PlayerAdded:Connect(updatePlayerList)
+Players.PlayerRemoving:Connect(updatePlayerList)
+updatePlayerList()
+
+-- 拉致実行トグル
+KickTab:AddToggle({
+    Name = "Blobman Abduction (遠隔拉致)",
+    Default = false,
+    Callback = function(Value)
+        isKickEnabled = Value
+    end    
+})
+
+-- [[ メイン拉致ロジック ]]
+task.spawn(function()
+    while task.wait() do
+        if isKickEnabled and selectedTarget ~= "" then
+            local targetPlayer = Players:FindFirstChild(selectedTarget)
+            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local tRoot = targetPlayer.Character.HumanoidRootPart
+                local mRoot = lp.Character.HumanoidRootPart
+                
+                -- 1. 相手を強制的に自分の目の前（Blobmanの腕の位置）に持ってくる
+                tRoot.CFrame = mRoot.CFrame * CFrame.new(0, 0, -5)
+                
+                -- 2. Dexで確認した GrabEvents で「線」を繋いで固定する
+                game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(tRoot)
+                
+                -- 3. HoldEvents で「掴み状態」をサーバーに確定させる
+                game.ReplicatedStorage.HoldEvents.Hold:FireServer(targetPlayer.Character)
+                
+                -- 4. RagdollPlayer で相手の抵抗を封じる
+                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(targetPlayer.Character)
+                
+                -- 5. ネットワークオーナーを奪う（DexにあったSetNetworkOwnerを利用）
+                -- これにより相手の動きが自分の画面と同期しやすくなります
+                game.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(tRoot)
+            end
+        end
+    end
+end)
+
+
 --==============================
 -- 初期化
 --==============================
