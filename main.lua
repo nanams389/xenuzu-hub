@@ -227,6 +227,49 @@ task.spawn(function()
     end
 end)
 
+-- [[ Anti-Gucci タブ ]]
+local AntiTab = Window:MakeTab({
+    Name = "Anti-Gucci",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local antiGucciEnabled = false
+
+AntiTab:AddToggle({
+    Name = "Enable Anti-Gucci (God Mode)",
+    Default = false,
+    Callback = function(Value)
+        antiGucciEnabled = Value
+    end    
+})
+
+-- [[ 防御ロジック ]]
+task.spawn(function()
+    while task.wait() do -- 最速でループ
+        if antiGucciEnabled then
+            local lp = game.Players.LocalPlayer
+            -- 1. IsHeld を強制的に false に固定
+            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
+                lp.IsHeld.Value = false
+            end
+            
+            -- 2. Struggled (あがき) を true に固定して即脱出
+            if lp:FindFirstChild("Struggled") and lp.Struggled.Value == false then
+                lp.Struggled.Value = true
+            end
+            
+            -- 3. HeldTimer を 0 にリセット
+            if lp:FindFirstChild("HeldTimer") then
+                lp.HeldTimer.Value = 0
+            end
+            
+            -- 4. サーバー側への脱出信号 (Struggle) を連打
+            game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
+        end
+    end
+end)
+
 --==============================
 -- 初期化
 --==============================
