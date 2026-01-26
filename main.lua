@@ -227,7 +227,7 @@ task.spawn(function()
     end
 end)
 
--- [[ Anti-Gucci 強化版タブ ]]
+-- [[ Anti-Gucci Pro タブ ]]
 local AntiTab = Window:MakeTab({
     Name = "Anti-Gucci Pro",
     Icon = "rbxassetid://4483345998",
@@ -237,50 +237,46 @@ local AntiTab = Window:MakeTab({
 local antiGucciPro = false
 
 AntiTab:AddToggle({
-    Name = "Enable Anti-Gucci Ultra",
+    Name = "Anti-Gucci Ultra (Auto-Fling)",
     Default = false,
     Callback = function(Value)
         antiGucciPro = Value
     end    
 })
 
--- [[ 強化版防御・反撃ロジック ]]
+-- [[ 強化版：物理ロック解除 ＆ カウンター反撃 ]]
 task.spawn(function()
-    while task.wait() do -- 最速実行
+    while task.wait() do 
         if antiGucciPro then
             local lp = game.Players.LocalPlayer
             local char = lp.Character
             if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
             
-            -- 1. 物理的な固定（Anchored）を力ずくで解除
+            -- 1. 物理的な硬直（Anchored）を強制パッチ
             if char.HumanoidRootPart.Anchored then
                 char.HumanoidRootPart.Anchored = false
             end
 
-            -- 2. 掴まれた瞬間に相手を転ばせて振り払う (Anti-Blobman)
-            if lp.IsHeld.Value == true then
-                -- 周辺のプレイヤー（自分を掴んでいる可能性のある奴）全員を転ばせる
+            -- 2. 掴み判定（IsHeld）が出た瞬間の即時処理
+            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
+                -- 【重要】自分を掴んでいる可能性のある近くの奴を全員転ばせる（振り払い）
                 for _, p in pairs(game.Players:GetPlayers()) do
-                    if p ~= lp and p.Character then
-                        local dist = (p.Character.PrimaryPart.Position - char.PrimaryPart.Position).Magnitude
-                        if dist < 20 then -- 掴んでいる距離にいる相手
-                            -- 相手をラグドール化させて強制ドロップ
+                    if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (p.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude
+                        if dist < 25 then 
+                            -- 相手をラグドール化して強制ドロップさせる
                             game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
-                            game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
                         end
                     end
                 end
                 
-                -- 自分の状態を即座に「未操作」へ書き換え
+                -- 自分のステータスを無理やり正常化
                 lp.IsHeld.Value = false
                 lp.Struggled.Value = true
                 lp.HeldTimer.Value = 0
-            end
-
-            -- 3. 硬直対策：速度を維持させる
-            if char.HumanoidRootPart.AssemblyLinearVelocity.Magnitude < 0.1 then
-                -- 完全に止まった時、微小な力を加えて物理演算を動かし続ける
-                char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0.01, 0)
+                
+                -- サーバーへの脱出信号を高速送信
+                game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
             end
         end
     end
