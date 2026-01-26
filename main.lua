@@ -149,111 +149,82 @@ AuraTab:AddToggle({
     end    
 })
 
-AuraTab:AddToggle({
-	Name = "Ultra Fling Aura (自分固定版)",
-	Default = false,
-	Callback = function(Value)
-		_G.UltraFlingEnabled = Value
-		if Value then
-			task.spawn(function()
-				local lp = game.Players.LocalPlayer
-				local RunService = game:GetService("RunService")
-				
-				while _G.UltraFlingEnabled do
-					local char = lp.Character
-					local hrp = char and char:FindFirstChild("HumanoidRootPart")
-					
-					if hrp then
-						-- 1. 自分のパーツを「物理的な凶器」にする設定
-						for _, v in pairs(char:GetDescendants()) do
-							if v:IsA("BasePart") then
-								v.CanCollide = false -- 通常時はすり抜ける（自分が飛ばないため）
-								v.Velocity = Vector3.new(200000, 200000, 200000) -- 常に高圧力を維持
-							end
-						end
-
-						for _, player in ipairs(game.Players:GetPlayers()) do
-							if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-								local tHrp = player.Character.HumanoidRootPart
-								local dist = (tHrp.Position - hrp.Position).Magnitude
-
-								if dist <= 20 then
-									-- 2. 相手に重なった瞬間だけ自分を「固定(Anchor)」して「衝突」を有効化
-									local oldCF = hrp.CFrame
-									
-									-- 相手の座標に高速回転しながら突入
-									hrp.CFrame = tHrp.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), 0)
-									
-									-- 【重要】自分を固定して相手の反動を受けないようにする
-									hrp.Anchored = true 
-									for _, p in pairs(char:GetChildren()) do
-										if p:IsA("BasePart") then p.CanCollide = true end
-									end
-
-									task.wait(0.05) -- この0.05秒の間に相手が吹っ飛ぶ
-
-									-- 3. 固定を解除して元の位置に戻る
-									hrp.Anchored = false
-									hrp.CFrame = oldCF
-									for _, p in pairs(char:GetChildren()) do
-										if p:IsA("BasePart") then p.CanCollide = false end
-									end
-								end
-							end
-						end
-					end
-					RunService.Heartbeat:Wait()
-				end
-			end)
-		end
-	end    
+-- [[ Void Aura タブ ]]
+local VoidTab = Window:MakeTab({
+    Name = "Void Aura",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
 })
 
+local autoVoidEnabled = false
+local voidPower = 20000 -- 消し去るための超高速設定
+local voidRange = 25
 
-local AuraTab = Window:MakeTab({
-	Name = "Ultra Kick",
-	Icon = "rbxassetid://4483345998",
-	PremiumOnly = false
+VoidTab:AddSection({
+    Name = "Auto-Fling Settings"
 })
 
-local kickEnabled = false
-local ultraRange = 25
-
-AuraTab:AddToggle({
-	Name = "Ultra Kick Aura (Improved)",
-	Default = false,
-	Callback = function(Value)
-		kickEnabled = Value
-	end    
+VoidTab:AddToggle({
+    Name = "Enable Auto-Void (Near Players)",
+    Default = false,
+    Callback = function(Value)
+        autoVoidEnabled = Value
+    end    
 })
 
-AuraTab:AddSlider({
-	Name = "Range",
-	Min = 5, Max = 50, Default = 25,
-	Callback = function(v) ultraRange = v end
+VoidTab:AddSlider({
+    Name = "Void Range",
+    Min = 5,
+    Max = 50,
+    Default = 25,
+    Callback = function(Value)
+        voidRange = Value
+    end    
 })
 
+VoidTab:AddSlider({
+    Name = "Ejection Power",
+    Min = 5000,
+    Max = 100000,
+    Default = 20000,
+    Callback = function(Value)
+        voidPower = Value
+    end    
+})
+
+-- [[ 自動射出ロジック ]]
 task.spawn(function()
-	while task.wait(0.1) do
-		if kickEnabled then
-			local lp = game.Players.LocalPlayer
-			for _, p in pairs(game.Players:GetPlayers()) do
-				if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-					local dist = (p.Character.HumanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude
-					if dist <= ultraRange then
-						-- 1. PlayerEvents側のRagdollを試す
-						game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
-						
-						-- 2. 同時にStruggleを送ってスタミナや判定をバグらせる
-						game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
-						
-						-- 3. 爆発でダメ押し
-						game.ReplicatedStorage.BombEvents.BombExplode:FireServer(p.Character.HumanoidRootPart.Position)
-					end
-				end
-			end
-		end
-	end
+    while task.wait(0.1) do
+        if autoVoidEnabled then
+            local lp = game.Players.LocalPlayer
+            if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
+            
+            local myRoot = lp.Character.HumanoidRootPart
+
+            for _, p in pairs(game.Players:GetPlayers()) do
+                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetRoot = p.Character.HumanoidRootPart
+                    local dist = (targetRoot.Position - myRoot.Position).Magnitude
+
+                    if dist <= voidRange then
+                        -- 1. 相手を強制ラグドール化（物理演算を有効にする）
+                        game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
+                        
+                        -- 2. 掴みイベントを「掴まずに」サーバーへ送り、所有権に干渉
+                        game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(targetRoot)
+                        
+                        -- 3. 速度ベクトルを全方向に異常な値で上書き（Blackhole効果）
+                        -- これで近くに来たプレイヤーが自動的に射出されます
+                        targetRoot.Velocity = Vector3.new(voidPower, voidPower, voidPower)
+                        targetRoot.RotVelocity = Vector3.new(voidPower, voidPower, voidPower)
+                        
+                        -- 4. サーバー側へのダメ押し
+                        game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
+                    end
+                end
+            end
+        end
+    end
 end)
 
 --==============================
