@@ -287,83 +287,81 @@ task.spawn(function()
     end
 end)
 
--- [[ プレイヤーリスト取得用変数 ]]
+-- [[ 制御用変数 ]]
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 local selectedTarget = ""
-local isKickEnabled = false
+local isTargetKickEnabled = false
+local isKickAllEnabled = false
 
--- [[ Blobman Kick タブ生成 ]]
+-- [[ Blobman Kick タブ ]]
 local KickTab = Window:MakeTab({
-    Name = "Blobman Kick",
+    Name = "Blobman Kick Pro",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
--- ターゲット選択ドロップダウン
+-- 1. ターゲット選択 & 個別Kick
 local TargetDropdown = KickTab:AddDropdown({
-    Name = "Select Target Player",
+    Name = "Select Target",
     Default = "",
     Options = {}, 
-    Callback = function(Value)
-        selectedTarget = Value
-    end    
+    Callback = function(Value) selectedTarget = Value end    
 })
 
--- プレイヤーリストを動的に更新する関数
-local function updatePlayerList()
-    local pList = {}
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= lp then
-            table.insert(pList, p.Name)
-        end
-    end
-    TargetDropdown:Refresh(pList, true)
-end
-
--- プレイヤーが参加/退出した時にリスト更新
-Players.PlayerAdded:Connect(updatePlayerList)
-Players.PlayerRemoving:Connect(updatePlayerList)
-updatePlayerList()
-
--- 拉致実行トグル
 KickTab:AddToggle({
-    Name = "Blobman Abduction (遠隔拉致)",
+    Name = "Target: Blackhole Loop",
     Default = false,
-    Callback = function(Value)
-        isKickEnabled = Value
-    end    
+    Callback = function(Value) isTargetKickEnabled = Value end    
 })
 
--- [[ メイン拉致ロジック ]]
+-- 2. 全員排除 (Kick All)
+KickTab:AddToggle({
+    Name = "Kick All (Void Fling Mode)",
+    Default = false,
+    Callback = function(Value) isKickAllEnabled = Value end    
+})
+
+-- [[ 最強排除ロジック ]]
 task.spawn(function()
     while task.wait() do
-        if isKickEnabled and selectedTarget ~= "" then
-            local targetPlayer = Players:FindFirstChild(selectedTarget)
-            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local tRoot = targetPlayer.Character.HumanoidRootPart
-                local mRoot = lp.Character.HumanoidRootPart
+        local char = lp.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
+        local myRoot = char.HumanoidRootPart
+
+        -- 特定ターゲットへの拉致 & ブラックホール送り
+        if isTargetKickEnabled and selectedTarget ~= "" then
+            local p = Players:FindFirstChild(selectedTarget)
+            if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local tRoot = p.Character.HumanoidRootPart
                 
-                -- 1. 相手を強制的に自分の目の前（Blobmanの腕の位置）に持ってくる
-                tRoot.CFrame = mRoot.CFrame * CFrame.new(0, 0, -5)
+                -- 拉致: 自分の手元に引き寄せ
+                tRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -5)
                 
-                -- 2. Dexで確認した GrabEvents で「線」を繋いで固定する
-                game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(tRoot)
-                
-                -- 3. HoldEvents で「掴み状態」をサーバーに確定させる
-                game.ReplicatedStorage.HoldEvents.Hold:FireServer(targetPlayer.Character)
-                
-                -- 4. RagdollPlayer で相手の抵抗を封じる
-                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(targetPlayer.Character)
-                
-                -- 5. ネットワークオーナーを奪う（DexにあったSetNetworkOwnerを利用）
-                -- これにより相手の動きが自分の画面と同期しやすくなります
-                game.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(tRoot)
+                -- 破壊的吹き飛ばし: 下方向（Void）へ超高速で射出
+                tRoot.Velocity = Vector3.new(0, -100000, 0) 
+                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
+                game.ReplicatedStorage.HoldEvents.Hold:FireServer(p.Character)
+            end
+        end
+
+        -- Kick All: 周囲をテレポートしながら全員飛ばす
+        if isKickAllEnabled then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local tRoot = p.Character.HumanoidRootPart
+                    
+                    -- 高速テレポート & 射出コンボ
+                    tRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -5)
+                    tRoot.Velocity = (tRoot.Position - myRoot.Position).Unit * 50000 + Vector3.new(0, 50000, 0)
+                    
+                    game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
+                    game.ReplicatedStorage.HoldEvents.Drop:FireServer() -- 掴みを解除して飛ばす
+                end
             end
         end
     end
 end)
-
 
 --==============================
 -- 初期化
