@@ -227,45 +227,61 @@ task.spawn(function()
     end
 end)
 
--- [[ Anti-Gucci タブ ]]
+-- [[ Anti-Gucci 強化版タブ ]]
 local AntiTab = Window:MakeTab({
-    Name = "Anti-Gucci",
+    Name = "Anti-Gucci Pro",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-local antiGucciEnabled = false
+local antiGucciPro = false
 
 AntiTab:AddToggle({
-    Name = "Enable Anti-Gucci (God Mode)",
+    Name = "Enable Anti-Gucci Ultra",
     Default = false,
     Callback = function(Value)
-        antiGucciEnabled = Value
+        antiGucciPro = Value
     end    
 })
 
--- [[ 防御ロジック ]]
+-- [[ 強化版防御・反撃ロジック ]]
 task.spawn(function()
-    while task.wait() do -- 最速でループ
-        if antiGucciEnabled then
+    while task.wait() do -- 最速実行
+        if antiGucciPro then
             local lp = game.Players.LocalPlayer
-            -- 1. IsHeld を強制的に false に固定
-            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
+            local char = lp.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
+            
+            -- 1. 物理的な固定（Anchored）を力ずくで解除
+            if char.HumanoidRootPart.Anchored then
+                char.HumanoidRootPart.Anchored = false
+            end
+
+            -- 2. 掴まれた瞬間に相手を転ばせて振り払う (Anti-Blobman)
+            if lp.IsHeld.Value == true then
+                -- 周辺のプレイヤー（自分を掴んでいる可能性のある奴）全員を転ばせる
+                for _, p in pairs(game.Players:GetPlayers()) do
+                    if p ~= lp and p.Character then
+                        local dist = (p.Character.PrimaryPart.Position - char.PrimaryPart.Position).Magnitude
+                        if dist < 20 then -- 掴んでいる距離にいる相手
+                            -- 相手をラグドール化させて強制ドロップ
+                            game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
+                            game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
+                        end
+                    end
+                end
+                
+                -- 自分の状態を即座に「未操作」へ書き換え
                 lp.IsHeld.Value = false
-            end
-            
-            -- 2. Struggled (あがき) を true に固定して即脱出
-            if lp:FindFirstChild("Struggled") and lp.Struggled.Value == false then
                 lp.Struggled.Value = true
-            end
-            
-            -- 3. HeldTimer を 0 にリセット
-            if lp:FindFirstChild("HeldTimer") then
                 lp.HeldTimer.Value = 0
             end
-            
-            -- 4. サーバー側への脱出信号 (Struggle) を連打
-            game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
+
+            -- 3. 硬直対策：速度を維持させる
+            if char.HumanoidRootPart.AssemblyLinearVelocity.Magnitude < 0.1 then
+                -- 完全に止まった時、微小な力を加えて物理演算を動かし続ける
+                char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0.01, 0)
+            end
         end
     end
 end)
