@@ -287,59 +287,53 @@ task.spawn(function()
     end
 end)
 
--- [[ Kick All 専用設定 ]]
+-- [[ Kill All 設定 ]]
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
-local kickAllActive = false
+local killAllActive = false
 
 -- [[ タブ生成 ]]
-local KickTab = Window:MakeTab({
-    Name = "Kick All Mode",
+local KillTab = Window:MakeTab({
+    Name = "Kill All Pro",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-KickTab:AddToggle({
-    Name = "Ultimate Kick All (Auto-Grab & Fling)",
+KillTab:AddToggle({
+    Name = "Enable Kill All (Teleport & Void)",
     Default = false,
     Callback = function(Value)
-        kickAllActive = Value
+        killAllActive = Value
     end    
 })
 
--- [[ Kick All メインロジック ]]
+-- [[ Kill All ロジック ]]
 task.spawn(function()
-    while task.wait(0.3) do -- 連続で処理するための間隔
-        if kickAllActive then
+    while task.wait(0.1) do
+        if killAllActive then
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                     local tRoot = p.Character.HumanoidRootPart
-                    local mRoot = lp.Character.HumanoidRootPart
+                    local char = p.Character
                     
-                    -- 1. 相手をBlobmanの「手」の目の前に強制テレポート
-                    -- どこにいても自分の位置（腕の範囲内）に引き寄せます
-                    tRoot.CFrame = mRoot.CFrame * CFrame.new(0, 2, -6)
+                    -- 1. 相手の頭上にテレポート（攻撃準備）
+                    lp.Character.HumanoidRootPart.CFrame = tRoot.CFrame * CFrame.new(0, 5, 0)
                     
-                    -- 2. 掴み判定を強制発生（Dexで確認したHoldイベント）
-                    -- これにより「自動で掴む」動作をシミュレートします
-                    game.ReplicatedStorage.HoldEvents.Hold:FireServer(p.Character)
+                    -- 2. 相手を強制ラグドール化（抵抗不能にする）
+                    game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(char)
                     
-                    -- 3. 相手をラグドール化して抵抗不能にする
-                    game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
+                    -- 3. 物理衝撃でマップ外（Void）へ叩き落とす
+                    -- 下方向に超強力な速度を加えます
+                    task.wait(0.05)
+                    tRoot.Velocity = Vector3.new(0, -50000, 0)
                     
-                    -- 4. 空の彼方（ブラックホール）へ投げ飛ばす
-                    -- 上方向（Y軸）と前方向へ爆速の力を加えます
-                    task.wait(0.1) -- 掴んだ瞬間に投げるための微小な待ち
-                    tRoot.Velocity = Vector3.new(0, 100000, 0) + (mRoot.CFrame.LookVector * 50000)
-                    
-                    -- 5. 投げた瞬間に掴みを解除（次のターゲットへ移るため）
-                    game.ReplicatedStorage.HoldEvents.Drop:FireServer()
+                    -- 4. 確実に死ぬまで少し待機（スキップ防止）
+                    task.wait(0.1)
                 end
             end
         end
     end
 end)
-
 
 --==============================
 -- 初期化
