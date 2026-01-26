@@ -227,59 +227,62 @@ task.spawn(function()
     end
 end)
 
--- [[ Anti-Gucci Ultra タブ ]]
+-- [[ Anti-Grab & Gucci Ultra タブ ]]
 local AntiTab = Window:MakeTab({
-    Name = "Anti-Gucci Ultra",
+    Name = "Anti-Grab Ultra",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-local antiUltra = false
+local antiGrabEnabled = false
 
 AntiTab:AddToggle({
-    Name = "God-Defend (Anti-Grab)",
+    Name = "God Defense (Anti-Grab)",
     Default = false,
     Callback = function(Value)
-        antiUltra = Value
+        antiGrabEnabled = Value
     end    
 })
 
--- [[ 最強防御ロジック ]]
+-- [[ 最強防御・判定拒否ロジック ]]
 task.spawn(function()
     while task.wait() do 
-        if antiUltra then
+        if antiGrabEnabled then
             local lp = game.Players.LocalPlayer
             local char = lp.Character
             if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
             
-            -- 1. サーバー側の「掴み線（GrabLine）」を強制ドロップ
-            -- 相手が掴んだ瞬間に「自分から離す信号」を送って接続を切断します
-            game.ReplicatedStorage.HoldEvents.Drop:FireServer()
+            -- 1. 物理ロック（Anchored）を最速で解除（固まるのを防ぐ）
+            if char.HumanoidRootPart.Anchored then
+                char.HumanoidRootPart.Anchored = false
+            end
 
-            -- 2. 自分のステータスを毎フレームリセット
+            -- 2. 【最重要】掴み接続（GrabLine）の強制切断連打
+            -- これを連打することで、相手の画面で掴めていてもサーバーが強制的に「Drop」させます
+            game.ReplicatedStorage.HoldEvents.Drop:FireServer()
+            
+            -- 3. ステータス異常（IsHeld）の即時上書き
             if lp:FindFirstChild("IsHeld") then
                 lp.IsHeld.Value = false
             end
-            if lp:FindFirstChild("HeldTimer") then
-                lp.HeldTimer.Value = 0
-            end
             
-            -- 3. 相手の画面で「掴めていない」状態にするための反撃
-            -- 近くにいる（自分を掴もうとしている）奴の RagdollPlayer を連打
+            -- 4. 近接カウンター（Blobman対策）
+            -- 自分の周囲で掴み動作をしている奴を全員転ばせる
             for _, p in pairs(game.Players:GetPlayers()) do
                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (p.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude
+                    local targetPos = p.Character.HumanoidRootPart.Position
+                    local dist = (targetPos - char.HumanoidRootPart.Position).Magnitude
+                    
                     if dist < 25 then 
-                        -- 相手をラグドール化（Blobman対策）
+                        -- 相手を強制ラグドール化
                         game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
                     end
                 end
             end
 
-            -- 4. 物理ロックの強制解除
-            char.HumanoidRootPart.Anchored = false
-            
-            -- 5. Struggle（あがき）をサーバーへ送り続けて判定を上書き
+            -- 5. Struggle（あがき）信号を送り続けて拘束を無効化
+            lp.Struggled.Value = true
+            lp.HeldTimer.Value = 0
             game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
         end
     end
