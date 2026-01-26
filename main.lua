@@ -287,70 +287,67 @@ task.spawn(function()
     end
 end)
 
--- [[ Kill All 設定 ]]
+-- [[ 制御用変数 ]]
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
-local killAllRunning = false
-local purgePower = 50000 -- 射出パワー（調整可能）
+local killAllActive = false
+local killPower = 50000 -- 飛ばす強さ
 
 -- [[ Kill All タブ生成 ]]
-local PurgeTab = Window:MakeTab({
-    Name = "Kill All Ultra",
+local KillTab = Window:MakeTab({
+    Name = "Kill All Pro",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-PurgeTab:AddToggle({
-    Name = "Execute Ultimate Kill All",
+KillTab:AddToggle({
+    Name = "Ultimate Kill All (Loop)",
     Default = false,
     Callback = function(Value)
-        killAllRunning = Value
+        killAllActive = Value
     end    
 })
 
--- [[ メイン・パージ・ロジック ]]
+KillTab:AddSlider({
+    Name = "Ejection Power",
+    Min = 10000,
+    Max = 200000,
+    Default = 50000,
+    Callback = function(Value)
+        killPower = Value
+    end    
+})
+
+-- [[ 最強パージ（排除）ロジック ]]
 task.spawn(function()
-    while task.wait(0.2) do -- 安定して全滅させるためのループ間隔
-        if killAllRunning then
+    while task.wait(0.2) do -- 0.2秒ごとに次のターゲットへ
+        if killAllActive then
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                     local tRoot = p.Character.HumanoidRootPart
                     local tChar = p.Character
                     local mRoot = lp.Character.HumanoidRootPart
-                    
-                    -- 1. 相手の場所に瞬時に移動（背後にテレポート）
-                    mRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 3)
-                    
-                    -- 2. ダメージ干渉 & ネットワークオーナー奪取 (Kill Aura ロジック)
+
+                    -- 1. 相手を自分の目の前（空中）に強制引き寄せ
+                    -- 地面との摩擦を消すために少し上にテレポート
+                    tRoot.CFrame = mRoot.CFrame * CFrame.new(0, 10, -5)
+
+                    -- 2. ネットワークオーナー奪取 & ラグドール化
                     pcall(function()
-                        local rs = game:GetService("ReplicatedStorage")
-                        -- ネットワークオーナーを上書きして物理演算を自分優先にする
-                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                        if SetNetworkOwner then
-                            SetNetworkOwner:FireServer(tRoot, tRoot.CFrame)
-                        end
-                        
-                        -- ダメージイベント送信（もし存在すれば）
-                        local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") 
-                                         or rs:FindFirstChild("HitEvent")
-                        if combatEvent then
-                            combatEvent:FireServer(tChar, "Punch")
-                        end
+                        game.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(tRoot)
+                        game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(tChar)
                     end)
 
-                    -- 3. 強制ラグドール & 物理射出 (Void Aura ロジック)
-                    -- これにより相手は空中や地面に固定されず、速度が適用されるようになります
-                    game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(tChar)
+                    -- 3. 物理バグを誘発する爆速射出（Kill Aura & Void Auraの統合）
+                    -- Velocity（速度）とRotVelocity（回転）を同時に与えると防御不能になります
+                    tRoot.Velocity = Vector3.new(0, killPower, 0)
+                    tRoot.RotVelocity = Vector3.new(killPower, killPower, killPower)
+
+                    -- 4. サーバー側のイベントを連打して「掴み」と「抵抗」を上書き
                     game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(tRoot)
-                    
-                    -- 4. 異常な速度ベクトルを適用（ブラックホール射出）
-                    tRoot.Velocity = Vector3.new(purgePower, purgePower, purgePower)
-                    tRoot.RotVelocity = Vector3.new(purgePower, purgePower, purgePower)
-                    
-                    -- 5. ダメ押しの脱出信号でサーバー判定をバグらせる
                     game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
-                    
-                    -- 0.05秒だけ滞在して確実に飛ばす
+
+                    -- 確実に飛ばすための短い待機
                     task.wait(0.05)
                 end
             end
