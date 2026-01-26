@@ -234,50 +234,55 @@ local AntiTab = Window:MakeTab({
     PremiumOnly = false
 })
 
-local antiGrabPro = false
+local activeAntiGrab = false
 
 AntiTab:AddToggle({
     Name = "Enable Anti-Grab Mode",
     Default = false,
     Callback = function(Value)
-        antiGrabPro = Value
+        activeAntiGrab = Value
     end    
 })
 
--- [[ ロジック：いじらずそのまま ]]
+-- [[ Dexで見た仕組みを直接叩くロジック ]]
 task.spawn(function()
     while task.wait() do 
-        if antiGrabPro then
+        if activeAntiGrab then
             local lp = game.Players.LocalPlayer
             local char = lp.Character
-            if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
             
-            -- 1. 物理的な硬直（Anchored）を強制パッチ
-            if char.HumanoidRootPart.Anchored then
-                char.HumanoidRootPart.Anchored = false
+            -- 1. Dexで見た「IsHeld」のチェックを強制的に外す
+            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
+                lp.IsHeld.Value = false
             end
 
-            -- 2. 掴み判定（IsHeld）が出た瞬間の即時処理
-            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
-                -- 【重要】自分を掴んでいる可能性のある近くの奴を全員転ばせる（振り払い）
+            -- 2. 物理的な固まり（Anchored）を即時解除
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                if char.HumanoidRootPart.Anchored then
+                    char.HumanoidRootPart.Anchored = false
+                end
+            end
+
+            -- 3. 周囲のプレイヤーへの自動カウンター（Blobman対策）
+            -- 掴まれている判定の時だけ、周囲の奴を転ばせて強制ドロップさせる
+            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == false then
                 for _, p in pairs(game.Players:GetPlayers()) do
                     if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                         local dist = (p.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude
                         if dist < 25 then 
-                            -- 相手をラグドール化して強制ドロップさせる
+                            -- 相手をラグドール化（Dexで見たPlayerEventsを利用）
                             game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
                         end
                     end
                 end
-                
-                -- 自分のステータスを無理やり正常化
-                lp.IsHeld.Value = false
-                lp.Struggled.Value = true
-                lp.HeldTimer.Value = 0
-                
-                -- サーバーへの脱出信号を高速送信
-                game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
             end
+            
+            -- 4. ステータス正常化（あがき・タイマー）
+            if lp:FindFirstChild("Struggled") then lp.Struggled.Value = true end
+            if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
+            
+            -- 5. サーバーへの脱出信号
+            game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
         end
     end
 end)
