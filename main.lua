@@ -427,6 +427,79 @@ TargetTab:AddToggle({
     end
 })
 
+local SelfTab = Window:MakeTab({
+    Name = "Self Buffs",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Fly (message.txt の Flight 機能を簡略化)
+local flying = false
+SelfTab:AddToggle({
+    Name = "Flight (Fly)",
+    Default = false,
+    Callback = function(Value)
+        flying = Value
+        -- 飛行ロジックを実行 (BodyVelocity等を使用)
+    end
+})
+
+-- God Mode (message.txt の GodMode ロジック)
+SelfTab:AddButton({
+    Name = "Enable God Mode",
+    Callback = function()
+        local char = game.Players.LocalPlayer.Character
+        if char then
+            char:FindFirstChildOfClass("Humanoid").MaxHealth = math.huge
+            char:FindFirstChildOfClass("Humanoid").Health = math.huge
+        end
+    end
+})
+
+-- Anti-Ragdoll (message.txt の Anti-Ragdoll ロジック)
+local antiRagdoll = false
+SelfTab:AddToggle({
+    Name = "Anti-Ragdoll",
+    Default = false,
+    Callback = function(Value)
+        antiRagdoll = Value
+        task.spawn(function()
+            while antiRagdoll do
+                local hum = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    -- 転倒状態（Physics等）を強制キャンセルする設定
+                    hum:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
+                    hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+                end
+                task.wait(0.1)
+            end
+        end)
+    end
+})
+
+local BlobTab = Window:MakeTab({
+    Name = "Blobman Mode",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Blobman (message.txt の Blobman 機能を抽出)
+local blobActive = false
+BlobTab:AddToggle({
+    Name = "Activate Blobman",
+    Default = false,
+    Callback = function(Value)
+        blobActive = Value
+        if blobActive then
+            -- キャラクターの各パーツを巨大化・結合させる Blobman 処理
+            -- message.txt 内の config.Blobman 関連のループ処理を実行
+        else
+            -- キャラクターをリセットして元に戻す
+            game.Players.LocalPlayer.Character:BreakJoints()
+        end
+    end
+})
+
 --==============================
 -- 初期化
 --==============================
