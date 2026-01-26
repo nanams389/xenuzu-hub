@@ -341,6 +341,92 @@ task.spawn(function()
         end
     end
 end)
+
+
+local TargetTab = Window:MakeTab({
+    Name = "Target Snipes",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local TargetPlayer = ""
+TargetTab:AddTextbox({
+    Name = "Target Name",
+    Default = "",
+    TextDisappear = false,
+    Callback = function(Value)
+        TargetPlayer = Value
+    end	  
+})
+
+-- Bring / Fling ロジック (message.txt の Snipefunc を参照)
+TargetTab:AddButton({
+    Name = "Bring / Fling Target",
+    Callback = function()
+        local t = getPlayerFromName(TargetPlayer)
+        if t and t.Character then
+            local root = t.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                -- 相手を自分の位置に引き寄せてから飛ばす処理
+                Snipefunc(root, function()
+                    root.CFrame = getLocalRoot().CFrame * CFrame.new(0, 0, -3)
+                    Velocity(root, Vector3.new(500, 500, 500))
+                end)
+            end
+        end
+    end
+})
+
+-- Loop Kill (message.txt の LoopKill ロジック)
+local loopKillActive = false
+TargetTab:AddToggle({
+    Name = "Loop Kill Target",
+    Default = false,
+    Callback = function(Value)
+        loopKillActive = Value
+        task.spawn(function()
+            while loopKillActive do
+                local t = getPlayerFromName(TargetPlayer)
+                if t and t.Character then
+                    local root = t.Character:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        Snipefunc(root, function()
+                            local hum = t.Character:FindFirstChildOfClass("Humanoid")
+                            if hum then hum.Health = 0 end -- 強制殺害
+                        end)
+                    end
+                end
+                task.wait(1)
+            end
+        end)
+    end
+})
+
+-- Loop Death (message.txt の LoopDeath ロジック)
+local loopDeathActive = false
+TargetTab:AddToggle({
+    Name = "Loop Death Target",
+    Default = false,
+    Callback = function(Value)
+        loopDeathActive = Value
+        task.spawn(function()
+            while loopDeathActive do
+                local t = getPlayerFromName(TargetPlayer)
+                if t and t.Character then
+                    local root = t.Character:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        Snipefunc(root, function()
+                            local hum = t.Character:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end -- 死亡状態維持
+                        end)
+                    end
+                end
+                task.wait(0.5)
+            end
+        end)
+    end
+})
+
 --==============================
 -- 初期化
 --==============================
