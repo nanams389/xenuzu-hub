@@ -1199,48 +1199,32 @@ loop.Event:Connect(function(dt)
     end
 end)
 
---========================================================
--- Orion UI タブ作成
---========================================================
-
--- Anti タブ
+-- [[ Anti タブ作成 ]]
 local AntiTab = Window:MakeTab({
-    Name = "Anti",
+    Name = "Anti Functions",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-AntiTab:AddSection({
-    Name = "掴み反撃 / 防御機能 (新しい設定)"
-})
+AntiTab:AddSection({Name = "掴み反撃 / 防御機能"})
 
--- 1. Anti Fling (右)
+-- 1. Anti kill (右飛ばし)
 AntiTab:AddToggle({
     Name = "Anti kill (右: 1億飛ばし)",
     Default = false,
     Callback = function(v)
-        if v then
-            startAntiFling()
-            OrionLib:MakeNotification({Name = "Anti Fling ON", Content = "掴んだ相手を右に1億で吹き飛ばします", Time = 2})
-        else
-            stopAntiFling()
-            OrionLib:MakeNotification({Name = "Anti Fling OFF", Content = "停止しました", Time = 2})
-        end
+        if v then startAntiFling() else stopAntiFling() end
+        OrionLib:MakeNotification({Name = "Status", Content = "Anti kill: " .. tostring(v), Time = 2})
     end
 })
 
--- 2. Anti Fling (上)
+-- 2. Anti Fling (上飛ばし)
 AntiTab:AddToggle({
     Name = "Anti Fling (上: 1億飛ばし)",
     Default = false,
     Callback = function(v)
-        if v then
-            startAntiFlingUp()
-            OrionLib:MakeNotification({Name = "Anti Fling (Up) ON", Content = "掴んだ相手を上に吹き飛ばします", Time = 2})
-        else
-            stopAntiFlingUp()
-            OrionLib:MakeNotification({Name = "Anti Fling (Up) OFF", Content = "停止しました", Time = 2})
-        end
+        if v then startAntiFlingUp() else stopAntiFlingUp() end
+        OrionLib:MakeNotification({Name = "Status", Content = "Anti Fling Up: " .. tostring(v), Time = 2})
     end
 })
 
@@ -1249,13 +1233,7 @@ AntiTab:AddToggle({
     Name = "Anti Banana (威力50飛ばし)",
     Default = false,
     Callback = function(v)
-        if v then
-            startAntiBanana()
-            OrionLib:MakeNotification({Name = "Anti Banana ON", Content = "掴んだ相手を飛ばします（威力50）", Time = 2})
-        else
-            stopAntiBanana()
-            OrionLib:MakeNotification({Name = "Anti Banana OFF", Content = "停止しました", Time = 2})
-        end
+        if v then startAntiBanana() else stopAntiBanana() end
     end
 })
 
@@ -1264,13 +1242,7 @@ AntiTab:AddToggle({
     Name = "Anti Grab (下テレポート)",
     Default = false,
     Callback = function(v)
-        if v then
-            startAntiGrab()
-            OrionLib:MakeNotification({Name = "Anti Grab ON", Content = "触られた相手を下に飛ばします", Time = 2})
-        else
-            stopAntiGrab()
-            OrionLib:MakeNotification({Name = "Anti Grab OFF", Content = "停止しました", Time = 2})
-        end
+        if v then startAntiGrab() else stopAntiGrab() end
     end
 })
 
@@ -1279,13 +1251,7 @@ AntiTab:AddToggle({
     Name = "Anti Voido (下埋め)",
     Default = false,
     Callback = function(v)
-        if v then
-            startAntiVoido()
-            OrionLib:MakeNotification({Name = "Anti Voido ON", Content = "触られた相手を即座に下に埋めます", Time = 2})
-        else
-            stopAntiVoido()
-            OrionLib:MakeNotification({Name = "Anti Voido OFF", Content = "停止しました", Time = 2})
-        end
+        if v then startAntiVoido() else stopAntiVoido() end
     end
 })
 
@@ -1294,13 +1260,7 @@ AntiTab:AddToggle({
     Name = "Anti Spin (回転反撃)",
     Default = false,
     Callback = function(v)
-        if v then
-            startAntiSpin()
-            OrionLib:MakeNotification({Name = "Anti Spin ON", Content = "掴んだ相手を高速回転させます", Time = 2})
-        else
-            stopAntiSpin()
-            OrionLib:MakeNotification({Name = "Anti Spin OFF", Content = "停止しました", Time = 2})
-        end
+        if v then startAntiSpin() else stopAntiSpin() end
     end
 })
 
@@ -1310,67 +1270,44 @@ AntiTab:AddToggle({
     Default = false,
     Callback = function(v)
         toggleAntiMissile(v)
-        if v then
-            OrionLib:MakeNotification({Name = "Anti Missile ON", Content = "全パーツの当たり判定を無効化しました", Time = 2})
-        else
-            OrionLib:MakeNotification({Name = "Anti Missile OFF", Content = "当たり判定を元に戻しました", Time = 2})
-        end
     end
 })
 
---========================================================
--- Blobman タブ
---========================================================
+-- [[ Blobman タブ作成 ]]
 local BlobmanTab = Window:MakeTab({
     Name = "Blobman",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-BlobmanTab:AddSection({
-    Name = "Blobman 掴み切替"
-})
+BlobmanTab:AddSection({Name = "Blobman 掴み切替"})
 
 BlobmanTab:AddButton({
-    Name = "左右手切替 Grab",
+    Name = "左右手切替 Grab (実行)",
     Callback = function()
-        -- ロジック実行（既存の変数を参照）
+        -- 以前のBlobmanロジックをここに実行
         local nearestPlayer
         local nearestDist = math.huge
-        local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local myHRP = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         
-        if not myHRP then
-            OrionLib:MakeNotification({Name = "Error", Content = "キャラクターが見つかりません", Time = 2})
-            return
-        end
-
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= localPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
-                if dist < nearestDist then
-                    nearestDist = dist
-                    nearestPlayer = p
+        if myHRP then
+            for _, p in pairs(game.Players:GetPlayers()) do
+                if p ~= game.Players.LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                    if dist < nearestDist then
+                        nearestDist = dist
+                        nearestPlayer = p
+                    end
                 end
             end
-        end
-
-        local blobman = workspace:FindFirstChild("Blobman")
-        if nearestPlayer and blobman then
-            blobGrabPlayer(nearestPlayer, blobman)
-            OrionLib:MakeNotification({Name = "Blobman Grab", Content = "掴み切替実行成功", Time = 2})
-        else
-            OrionLib:MakeNotification({Name = "Error", Content = "対象が見つかりません", Time = 2})
+            local blob = workspace:FindFirstChild("Blobman")
+            if nearestPlayer and blob then
+                blobGrabPlayer(nearestPlayer, blob)
+                OrionLib:MakeNotification({Name = "Success", Content = "Grab executed!", Time = 2})
+            end
         end
     end
 })
-
--- 起動通知
-OrionLib:MakeNotification({
-    Name = "MOD 起動完了",
-    Content = "Orion UI版 Anti機能群が読み込まれました",
-    Time = 4
-})
-   
 
 --==============================
 -- 初期化
