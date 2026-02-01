@@ -227,6 +227,7 @@ task.spawn(function()
     end
 end)
 
+
 -- [[ Anti-Grab Pro タブ ]]
 local AntiTab = Window:MakeTab({
     Name = "Anti-Grab Pro",
@@ -234,22 +235,27 @@ local AntiTab = Window:MakeTab({
     PremiumOnly = false
 })
 
-local activeAntiGrab = false
+-- グローバル変数として定義（死んでも値を保持するため）
+_G.activeAntiGrab = _G.activeAntiGrab or false
 
 AntiTab:AddToggle({
     Name = "Enable Anti-Grab Mode",
-    Default = false,
+    Default = _G.activeAntiGrab,
     Callback = function(Value)
-        activeAntiGrab = Value
+        _G.activeAntiGrab = Value
     end    
 })
 
--- [[ Dexで見た仕組みを直接叩くロジック ]]
+-- [[ ループ処理：死んでも止まらないように設計 ]]
 task.spawn(function()
-    while task.wait() do 
-        if activeAntiGrab then
+    while true do 
+        task.wait(0.1) -- 負荷を少し抑えるために 0.1秒待機
+        
+        if _G.activeAntiGrab then
             local lp = game.Players.LocalPlayer
-            local char = lp.Character
+            -- キャラクターが読み込まれるのを待つ
+            local char = lp.Character or lp.CharacterAdded:Wait()
+            local hrp = char:FindFirstChild("HumanoidRootPart")
             
             -- 1. Dexで見た「IsHeld」のチェックを強制的に外す
             if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
@@ -257,21 +263,24 @@ task.spawn(function()
             end
 
             -- 2. 物理的な固まり（Anchored）を即時解除
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                if char.HumanoidRootPart.Anchored then
-                    char.HumanoidRootPart.Anchored = false
-                end
+            if hrp and hrp.Anchored then
+                hrp.Anchored = false
             end
 
             -- 3. 周囲のプレイヤーへの自動カウンター（Blobman対策）
-            -- 掴まれている判定の時だけ、周囲の奴を転ばせて強制ドロップさせる
-            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == false then
+            -- ここは自分のキャラが生きている時だけ実行
+            if hrp then
                 for _, p in pairs(game.Players:GetPlayers()) do
                     if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        local dist = (p.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude
+                        local enemyHrp = p.Character.HumanoidRootPart
+                        local dist = (enemyHrp.Position - hrp.Position).Magnitude
+                        
                         if dist < 25 then 
-                            -- 相手をラグドール化（Dexで見たPlayerEventsを利用）
-                            game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
+                            -- 相手をラグドール化
+                            local re = game.ReplicatedStorage:FindFirstChild("PlayerEvents")
+                            if re and re:FindFirstChild("RagdollPlayer") then
+                                re.RagdollPlayer:FireServer(p.Character)
+                            end
                         end
                     end
                 end
@@ -281,8 +290,11 @@ task.spawn(function()
             if lp:FindFirstChild("Struggled") then lp.Struggled.Value = true end
             if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
             
-            -- 5. サーバーへの脱出信号
-            game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
+            -- 5. サーバーへの脱出信号（イベントが存在するか確認してから）
+            local ce = game.ReplicatedStorage:FindFirstChild("CharacterEvents")
+            if ce and ce:FindFirstChild("Struggle") then
+                ce.Struggle:FireServer()
+            end
         end
     end
 end)
