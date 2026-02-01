@@ -472,65 +472,70 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 自動追跡・抹殺通知オーラ
+-- 銀河追放ワープ抹殺 (Galaxy Fling)
 --==============================
-_G.AutoKillNotifyEnabled = false
+_G.GalaxyFlingEnabled = false
+local flingPower = 9999999 -- 宇宙の彼方へ飛ばす力
 
 UltimateTab:AddToggle({
-    Name = "自動追跡・抹殺 (Auto-Target & Notify)",
+    Name = "銀河追放ワープ (Auto-Warp & Fling)",
     Default = false,
     Callback = function(Value)
-        _G.AutoKillNotifyEnabled = Value
+        _G.GalaxyFlingEnabled = Value
         if Value then
             task.spawn(function()
-                while _G.AutoKillNotifyEnabled do
-                    task.wait(0.5) -- アンチチート対策のため少し間隔を空ける
+                while _G.GalaxyFlingEnabled do
+                    task.wait(0.3) -- 次のターゲットへの間隔
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
 
                     for _, p in ipairs(game.Players:GetPlayers()) do
-                        if not _G.AutoKillNotifyEnabled then break end
+                        if not _G.GalaxyFlingEnabled then break end
                         
-                        -- 自分以外、かつ生存しているプレイヤーをターゲットにする
+                        -- 自分以外で生存しているプレイヤーを対象
                         if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                             local tHRP = p.Character.HumanoidRootPart
                             local tHum = p.Character.Humanoid
 
-                            -- 1. ターゲットの場所にテレポート
-                            lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
-                            
-                            -- 2. 抹殺実行（Noclip Abyss ロジック）
                             pcall(function()
-                                -- 所有権奪取
-                                local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
+                                -- 1. ターゲットの頭上へ一瞬でワープ
+                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
+                                task.wait(0.1) -- 重なりを確実にするための微待機
 
-                                -- 地底送り実行
-                                for i = 1, 5 do -- 5回連続で下に叩きつける
-                                    task.wait(0.05)
-                                    for _, part in ipairs(p.Character:GetDescendants()) do
-                                        if part:IsA("BasePart") then part.CanCollide = false end
-                                    end
-                                    tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -20, 0)
-                                    tHRP.Velocity = Vector3.new(0, -1000, 0)
-                                    
-                                    -- ダメージイベント
-                                    local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                    if combat then combat:FireServer(p.Character, "Punch") end
+                                -- 2. 所有権の奪取（これが無いと飛ばせない）
+                                local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                if netOwner then 
+                                    netOwner:FireServer(tHRP, tHRP.CFrame) 
                                 end
 
-                                -- 3. キル通知を表示 (Orion Libraryの通知機能を使用)
+                                -- 3. 銀河の彼方へ射出（Velocity & RotVelocity）
+                                -- 複数の方向に巨大な力を加えて復帰を不可能にします
+                                tHRP.Velocity = Vector3.new(0, flingPower, flingPower)
+                                tHRP.RotVelocity = Vector3.new(flingPower, flingPower, flingPower)
+
+                                -- 4. 強力なBodyVelocityを叩き込む（ダメ押し）
+                                local bv = Instance.new("BodyVelocity")
+                                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                bv.Velocity = Vector3.new(0, flingPower, 0)
+                                bv.Parent = tHRP
+                                game:GetService("Debris"):AddItem(bv, 0.05)
+
+                                -- 5. ダメージイベント送信（即死を早める）
+                                local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                if combat then combat:FireServer(p.Character, "Punch") end
+
+                                -- 6. キル通知を表示
                                 OrionLib:MakeNotification({
-                                    Name = "ターゲット抹殺完了",
-                                    Content = p.Name .. " を地底に送り込みました。",
+                                    Name = "銀河追放完了",
+                                    Content = p.Name .. " を宇宙の彼方へ送信しました。",
                                     Image = "rbxassetid://4483345998",
-                                    Time = 3
+                                    Time = 2
                                 })
                             end)
                             
-                            task.wait(0.5) -- 次のターゲットへ行く前の待機
+                            task.wait(0.4) -- ターゲットが消えるのを待ってから次へ
                         end
                     end
                 end
