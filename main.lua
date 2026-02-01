@@ -472,21 +472,28 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 銀河追放ワープ抹殺 (Galaxy Fling)
+-- 銀河追放ワープ抹殺 (Galaxy Fling + Return)
 --==============================
 _G.GalaxyFlingEnabled = false
-local flingPower = 9999999 -- 宇宙の彼方へ飛ばす力
+local flingPower = 9999999
+local galaxyReturnPos = nil -- 帰還場所を保存する変数
 
 UltimateTab:AddToggle({
-    Name = "銀河追放ワープ (Auto-Warp & Fling)",
+    Name = "銀河追放ワープ (Return機能付)",
     Default = false,
     Callback = function(Value)
         _G.GalaxyFlingEnabled = Value
+        local lp = game.Players.LocalPlayer
+        
         if Value then
+            -- 1. オンにした瞬間の座標を記録
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                galaxyReturnPos = lp.Character.HumanoidRootPart.CFrame
+            end
+
             task.spawn(function()
                 while _G.GalaxyFlingEnabled do
-                    task.wait(0.3) -- 次のターゲットへの間隔
-                    local lp = game.Players.LocalPlayer
+                    task.wait(0.3)
                     local rs = game:GetService("ReplicatedStorage")
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
@@ -494,52 +501,55 @@ UltimateTab:AddToggle({
                     for _, p in ipairs(game.Players:GetPlayers()) do
                         if not _G.GalaxyFlingEnabled then break end
                         
-                        -- 自分以外で生存しているプレイヤーを対象
                         if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                             local tHRP = p.Character.HumanoidRootPart
-                            local tHum = p.Character.Humanoid
-
+                            
                             pcall(function()
-                                -- 1. ターゲットの頭上へ一瞬でワープ
+                                -- ワープ実行
                                 lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
-                                task.wait(0.1) -- 重なりを確実にするための微待機
+                                task.wait(0.1)
 
-                                -- 2. 所有権の奪取（これが無いと飛ばせない）
+                                -- 所有権奪取
                                 local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                if netOwner then 
-                                    netOwner:FireServer(tHRP, tHRP.CFrame) 
-                                end
+                                if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
 
-                                -- 3. 銀河の彼方へ射出（Velocity & RotVelocity）
-                                -- 複数の方向に巨大な力を加えて復帰を不可能にします
+                                -- 銀河射出（9999999M）
                                 tHRP.Velocity = Vector3.new(0, flingPower, flingPower)
                                 tHRP.RotVelocity = Vector3.new(flingPower, flingPower, flingPower)
 
-                                -- 4. 強力なBodyVelocityを叩き込む（ダメ押し）
+                                -- 追撃BodyVelocity
                                 local bv = Instance.new("BodyVelocity")
                                 bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
                                 bv.Velocity = Vector3.new(0, flingPower, 0)
                                 bv.Parent = tHRP
                                 game:GetService("Debris"):AddItem(bv, 0.05)
 
-                                -- 5. ダメージイベント送信（即死を早める）
+                                -- ダメージ
                                 local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
                                 if combat then combat:FireServer(p.Character, "Punch") end
 
-                                -- 6. キル通知を表示
+                                -- 通知
                                 OrionLib:MakeNotification({
                                     Name = "銀河追放完了",
-                                    Content = p.Name .. " を宇宙の彼方へ送信しました。",
-                                    Image = "rbxassetid://4483345998",
+                                    Content = p.Name .. " を送信しました。",
                                     Time = 2
                                 })
                             end)
-                            
-                            task.wait(0.4) -- ターゲットが消えるのを待ってから次へ
+                            task.wait(0.4)
                         end
                     end
                 end
             end)
+        else
+            -- 2. オフにした時に元の場所へ戻る
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and galaxyReturnPos then
+                lp.Character.HumanoidRootPart.CFrame = galaxyReturnPos
+                OrionLib:MakeNotification({
+                    Name = "帰還成功",
+                    Content = "元の場所に戻りました。",
+                    Time = 3
+                })
+            end
         end
     end    
 })
