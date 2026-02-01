@@ -472,79 +472,64 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 全員抹殺ワープオーラ (All Players Abyss)
+-- 最速・広域抹殺：地底貫通オーラ
 --==============================
-_G.AllAbyssWarpEnabled = false
-local returnPos = nil
+_G.MassAbyssEnabled = false
 
 UltimateTab:AddToggle({
-    Name = "全員抹殺ワープ (All Abyss Warp)",
+    Name = "超効率・広域地底抹殺 (Mass Abyss)",
     Default = false,
     Callback = function(Value)
-        _G.AllAbyssWarpEnabled = Value
-        local lp = game.Players.LocalPlayer
-        
+        _G.MassAbyssEnabled = Value
         if Value then
-            -- 実行した瞬間の場所を記録
-            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                returnPos = lp.Character.HumanoidRootPart.CFrame
-            end
-
             task.spawn(function()
-                while _G.AllAbyssWarpEnabled do
-                    task.wait(0.3) -- 早すぎるとアンチチートに引っかかるので少し待機
+                while _G.MassAbyssEnabled do
+                    task.wait(0.03) -- 0.1秒より高速な判定で逃がさない
+                    local lp = game.Players.LocalPlayer
+                    local rs = game:GetService("ReplicatedStorage")
                     
-                    if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
+                    if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
+                    local myHRP = lp.Character.HumanoidRootPart
+
+                    -- イベント類をループ外で一度だけ取得して高速化
+                    local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                    local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
                     for _, p in ipairs(game.Players:GetPlayers()) do
-                        if not _G.AllAbyssWarpEnabled then break end -- 途中でオフにされたら中断
-                        
                         if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
-                            local targetHRP = p.Character.HumanoidRootPart
-                            local targetHum = p.Character.Humanoid
-
-                            if targetHum.Health > 0 then
-                                -- 1. ターゲットの真上にワープ（地面にめり込まないよう少し上）
-                                lp.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 5, 0)
-                                
-                                -- 2. 地底貫通オーラのロジックを実行（0.5秒間集中攻撃）
-                                local startTime = tick()
-                                while tick() - startTime < 0.5 and _G.AllAbyssWarpEnabled do
-                                    task.wait(0.05)
+                            local tHRP = p.Character.HumanoidRootPart
+                            local tHum = p.Character.Humanoid
+                            
+                            -- 距離判定（前のスライダー ultRange を使用）
+                            if (tHRP.Position - myHRP.Position).Magnitude <= ultRange and tHum.Health > 0 then
+                                task.spawn(function() -- ターゲットごとに並列処理
                                     pcall(function()
-                                        -- 所有権剥奪
-                                        local SetNetworkOwner = game:GetService("ReplicatedStorage"):FindFirstChild("GrabEvents") and game:GetService("ReplicatedStorage").GrabEvents:FindFirstChild("SetNetworkOwner")
-                                        if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
+                                        -- 1. 所有権奪取
+                                        if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
 
-                                        -- Noclip化
-                                        for _, part in ipairs(p.Character:GetChildren()) do
-                                            if part:IsA("BasePart") then part.CanCollide = false end
+                                        -- 2. 超高速Noclip引きずり込み
+                                        -- 毎秒数百スタッドの速さで座標を下にずらし続ける
+                                        for _, part in ipairs(p.Character:GetDescendants()) do
+                                            if part:IsA("BasePart") then 
+                                                part.CanCollide = false 
+                                                part.Velocity = Vector3.new(0, -1000, 0) -- 物理的にも落とす
+                                            end
                                         end
+                                        
+                                        -- 座標を直接奈落（-500以下）へ強制的に書き換える
+                                        tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -30, 0)
 
-                                        -- 地底へ引きずり込み
-                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -15, 0)
-                                        targetHRP.Velocity = Vector3.new(0, -500, 0)
-
-                                        -- ダメージ
-                                        local combatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("Events") and game:GetService("ReplicatedStorage").Events:FindFirstChild("Combat") or game:GetService("ReplicatedStorage"):FindFirstChild("HitEvent")
-                                        if combatEvent then combatEvent:FireServer(p.Character, "Punch") end
+                                        -- 3. ダメージ連打
+                                        if combat then
+                                            combat:FireServer(p.Character, "Punch")
+                                        end
                                     end)
-                                end
+                                end)
                             end
                         end
                     end
                 end
             end)
-        else
-            -- オフにした時に元の場所に戻る
-            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and returnPos then
-                lp.Character.HumanoidRootPart.CFrame = returnPos
-                OrionLib:MakeNotification({
-                    Name = "帰還",
-                    Content = "元の場所にテレポートしました",
-                    Time = 3
-                })
-            end
         end
     end    
 })
