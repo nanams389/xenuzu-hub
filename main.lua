@@ -408,6 +408,72 @@ task.spawn(function()
 end)
 
 --==============================
+-- 完全キル特化：地底奈落オーラ
+--==============================
+_G.AbyssKillAuraEnabled = false
+local abyssPower = -100000 -- 地面の下へ叩き落とす負の力
+
+UltimateTab:AddToggle({
+    Name = "地底奈落 Kill Aura (完全抹殺)",
+    Default = false,
+    Callback = function(Value)
+        _G.AbyssKillAuraEnabled = Value
+        if Value then
+            task.spawn(function()
+                while _G.AbyssKillAuraEnabled do
+                    task.wait(0.1)
+                    local lp = game.Players.LocalPlayer
+                    local rs = game:GetService("ReplicatedStorage")
+                    
+                    -- 攻撃イベントと所有権イベント
+                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+
+                    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = player.Character.HumanoidRootPart
+                                local distance = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+
+                                -- 射程内（前のスライダーの値 ultRange を流用）かつ生存している場合
+                                if distance <= ultRange and player.Character.Humanoid.Health > 0 then
+                                    pcall(function()
+                                        -- 1. 相手の物理演算を奪う
+                                        if SetNetworkOwner then 
+                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
+                                        end
+
+                                        -- 2. ダメージを入れつつ、ラグドール化があれば実行
+                                        if combatEvent then
+                                            combatEvent:FireServer(player.Character, "Punch")
+                                        end
+                                        if rs:FindFirstChild("PlayerEvents") and rs.PlayerEvents:FindFirstChild("RagdollPlayer") then
+                                            rs.PlayerEvents.RagdollPlayer:FireServer(player.Character)
+                                        end
+
+                                        -- 3. 地面の下（Y軸マイナス方向）へ超高速射出
+                                        -- VelocityとCFrameの両方で地面の下へ押し込みます
+                                        targetHRP.Velocity = Vector3.new(0, abyssPower, 0)
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -10, 0)
+
+                                        -- 4. 浮き上がりを防止する強力な下向きの力
+                                        local bv = Instance.new("BodyVelocity")
+                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                        bv.Velocity = Vector3.new(0, abyssPower, 0)
+                                        bv.Parent = targetHRP
+                                        game:GetService("Debris"):AddItem(bv, 0.1)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end    
+})
+
+--==============================
 -- 初期化
 --==============================
 OrionLib:Init()
