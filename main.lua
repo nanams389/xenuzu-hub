@@ -408,24 +408,24 @@ task.spawn(function()
 end)
 
 --==============================
--- 完全キル特化：地底奈落オーラ
+-- 地底貫通・抹殺オーラ (Noclip Abyss)
 --==============================
 _G.AbyssKillAuraEnabled = false
-local abyssPower = -100000 -- 地面の下へ叩き落とす負の力
+local abyssDepth = -50 -- 1回で引きずり込む深さ
+local fallSpeed = -500 -- 落下加速
 
 UltimateTab:AddToggle({
-    Name = "地底奈落 Kill Aura (完全抹殺)",
+    Name = "地底貫通 Kill Aura (Noclip)",
     Default = false,
     Callback = function(Value)
         _G.AbyssKillAuraEnabled = Value
         if Value then
             task.spawn(function()
                 while _G.AbyssKillAuraEnabled do
-                    task.wait(0.1)
+                    task.wait(0.05) -- 貫通を維持するため高速に回す
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
-                    -- 攻撃イベントと所有権イベント
                     local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
                     local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
@@ -433,35 +433,33 @@ UltimateTab:AddToggle({
                         for _, player in ipairs(game.Players:GetPlayers()) do
                             if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                                 local targetHRP = player.Character.HumanoidRootPart
-                                local distance = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                                local dist = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
 
-                                -- 射程内（前のスライダーの値 ultRange を流用）かつ生存している場合
-                                if distance <= ultRange and player.Character.Humanoid.Health > 0 then
+                                if dist <= ultRange and player.Character.Humanoid.Health > 0 then
                                     pcall(function()
-                                        -- 1. 相手の物理演算を奪う
+                                        -- 1. 所有権奪取（これをしないとCFrame操作が弾かれる）
                                         if SetNetworkOwner then 
                                             SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
                                         end
 
-                                        -- 2. ダメージを入れつつ、ラグドール化があれば実行
+                                        -- 2. 相手のすべてのパーツの衝突判定を「一瞬だけ」オフにする (Noclip効果)
+                                        for _, part in ipairs(player.Character:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                part.CanCollide = false
+                                            end
+                                        end
+
+                                        -- 3. 【重要】地面の下へ強制移動 (Noclip貫通)
+                                        -- 元の場所から垂直に abyssDepth 分だけ下に瞬間移動
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, abyssDepth, 0)
+
+                                        -- 4. 速度も下向きに固定して復帰を阻止
+                                        targetHRP.Velocity = Vector3.new(0, fallSpeed, 0)
+
+                                        -- 5. ダメージ (Kill Aura)
                                         if combatEvent then
                                             combatEvent:FireServer(player.Character, "Punch")
                                         end
-                                        if rs:FindFirstChild("PlayerEvents") and rs.PlayerEvents:FindFirstChild("RagdollPlayer") then
-                                            rs.PlayerEvents.RagdollPlayer:FireServer(player.Character)
-                                        end
-
-                                        -- 3. 地面の下（Y軸マイナス方向）へ超高速射出
-                                        -- VelocityとCFrameの両方で地面の下へ押し込みます
-                                        targetHRP.Velocity = Vector3.new(0, abyssPower, 0)
-                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -10, 0)
-
-                                        -- 4. 浮き上がりを防止する強力な下向きの力
-                                        local bv = Instance.new("BodyVelocity")
-                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                        bv.Velocity = Vector3.new(0, abyssPower, 0)
-                                        bv.Parent = targetHRP
-                                        game:GetService("Debris"):AddItem(bv, 0.1)
                                     end)
                                 end
                             end
