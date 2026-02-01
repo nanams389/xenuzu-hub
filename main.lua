@@ -472,60 +472,65 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 最速・広域抹殺：地底貫通オーラ
+-- 自動追跡・抹殺通知オーラ
 --==============================
-_G.MassAbyssEnabled = false
+_G.AutoKillNotifyEnabled = false
 
 UltimateTab:AddToggle({
-    Name = "超効率・広域地底抹殺 (Mass Abyss)",
+    Name = "自動追跡・抹殺 (Auto-Target & Notify)",
     Default = false,
     Callback = function(Value)
-        _G.MassAbyssEnabled = Value
+        _G.AutoKillNotifyEnabled = Value
         if Value then
             task.spawn(function()
-                while _G.MassAbyssEnabled do
-                    task.wait(0.03) -- 0.1秒より高速な判定で逃がさない
+                while _G.AutoKillNotifyEnabled do
+                    task.wait(0.5) -- アンチチート対策のため少し間隔を空ける
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
-                    local myHRP = lp.Character.HumanoidRootPart
-
-                    -- イベント類をループ外で一度だけ取得して高速化
-                    local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                    local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
                     for _, p in ipairs(game.Players:GetPlayers()) do
-                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
+                        if not _G.AutoKillNotifyEnabled then break end
+                        
+                        -- 自分以外、かつ生存しているプレイヤーをターゲットにする
+                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                             local tHRP = p.Character.HumanoidRootPart
                             local tHum = p.Character.Humanoid
+
+                            -- 1. ターゲットの場所にテレポート
+                            lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
                             
-                            -- 距離判定（前のスライダー ultRange を使用）
-                            if (tHRP.Position - myHRP.Position).Magnitude <= ultRange and tHum.Health > 0 then
-                                task.spawn(function() -- ターゲットごとに並列処理
-                                    pcall(function()
-                                        -- 1. 所有権奪取
-                                        if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
+                            -- 2. 抹殺実行（Noclip Abyss ロジック）
+                            pcall(function()
+                                -- 所有権奪取
+                                local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
 
-                                        -- 2. 超高速Noclip引きずり込み
-                                        -- 毎秒数百スタッドの速さで座標を下にずらし続ける
-                                        for _, part in ipairs(p.Character:GetDescendants()) do
-                                            if part:IsA("BasePart") then 
-                                                part.CanCollide = false 
-                                                part.Velocity = Vector3.new(0, -1000, 0) -- 物理的にも落とす
-                                            end
-                                        end
-                                        
-                                        -- 座標を直接奈落（-500以下）へ強制的に書き換える
-                                        tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -30, 0)
+                                -- 地底送り実行
+                                for i = 1, 5 do -- 5回連続で下に叩きつける
+                                    task.wait(0.05)
+                                    for _, part in ipairs(p.Character:GetDescendants()) do
+                                        if part:IsA("BasePart") then part.CanCollide = false end
+                                    end
+                                    tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -20, 0)
+                                    tHRP.Velocity = Vector3.new(0, -1000, 0)
+                                    
+                                    -- ダメージイベント
+                                    local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                    if combat then combat:FireServer(p.Character, "Punch") end
+                                end
 
-                                        -- 3. ダメージ連打
-                                        if combat then
-                                            combat:FireServer(p.Character, "Punch")
-                                        end
-                                    end)
-                                end)
-                            end
+                                -- 3. キル通知を表示 (Orion Libraryの通知機能を使用)
+                                OrionLib:MakeNotification({
+                                    Name = "ターゲット抹殺完了",
+                                    Content = p.Name .. " を地底に送り込みました。",
+                                    Image = "rbxassetid://4483345998",
+                                    Time = 3
+                                })
+                            end)
+                            
+                            task.wait(0.5) -- 次のターゲットへ行く前の待機
                         end
                     end
                 end
