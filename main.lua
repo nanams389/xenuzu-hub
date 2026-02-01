@@ -287,911 +287,906 @@ task.spawn(function()
     end
 end)
 
---==============================
--- VALOR HUB タブ追加（Xenouzu Hubに統合）
---==============================
+-- Xenouzu Hubの既存Windowに追加するタブ
+local service=setmetatable({},{
+    __index=function(self,k)
+        local s=game:GetService(k)
+        rawset(self,k,s)
+        return s
+    end,
+})
 
-do
-    local service=setmetatable({},{
-        __index=function(self,k)
-            local s=game:GetService(k)
-            rawset(self,k,s)
-            return s
-        end,
-    })
+local loop=Instance.new("BindableEvent")
+service.RunService.Heartbeat:Connect(function(dt)
+    loop:Fire(dt)
+end)
 
-    local loop=Instance.new("BindableEvent")
-    service.RunService.Heartbeat:Connect(function(dt)
-        loop:Fire(dt)
-    end)
-
-    local get=game.FindFirstChild
-    local cget=game.FindFirstChildOfClass
-
-    local function getLocalPlayer()
-        return service.Players.LocalPlayer
+local get=game.FindFirstChild
+local cget=game.FindFirstChildOfClass
+local function getLocalPlayer()
+    return service.Players.LocalPlayer
+end
+local function getLocalChar()
+    return getLocalPlayer().Character
+end
+local function getLocalRoot()
+    if(not getLocalChar())then return end
+    return get(getLocalChar(),"HumanoidRootPart")or get(getLocalChar(),"Torso")
+end
+local function getLocalHum()
+    if(not getLocalChar())then return end
+    return cget(getLocalChar(),"Humanoid")
+end
+local function Velocity(part,value)
+    local b=Instance.new("BodyVelocity")
+    b.MaxForce=Vector3.one*math.huge
+    b.Velocity=value
+    b.Parent=part
+    task.spawn(task.delay,1,game.Destroy,b)
+end
+local function SetNetworkOwner(part)
+    service.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(part,getLocalRoot().CFrame)
+end
+local function GetNearParts(origin,radius)
+    return workspace:GetPartBoundsInRadius(origin,radius)
+end
+local function MoveTo(part,x)
+    for _,v in ipairs(part.Parent:GetDescendants())do
+        if(v:IsA("BasePart"))then
+            v.CanCollide=false
+        end
     end
-    local function getLocalChar()
-        return getLocalPlayer().Character
-    end
-    local function getLocalRoot()
-        if(not getLocalChar())then return end
-        return get(getLocalChar(),"HumanoidRootPart")or get(getLocalChar(),"Torso")
-    end
-    local function getLocalHum()
-        if(not getLocalChar())then return end
-        return cget(getLocalChar(),"Humanoid")
-    end
-    local function Velocity(part,value)
-        local b=Instance.new("BodyVelocity")
-        b.MaxForce=Vector3.one*math.huge
-        b.Velocity=value
-        b.Parent=part
-        task.spawn(task.delay,1,game.Destroy,b)
-    end
-    local function SetNetworkOwner(part)
-        service.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(part,getLocalRoot().CFrame)
-    end
-    local function GetNearParts(origin,radius)
-        return workspace:GetPartBoundsInRadius(origin,radius)
-    end
-    local function MoveTo(part,x)
+    local pos=typeof(x)=="CFrame"and x.Position or x
+    local b=Instance.new("BodyPosition")
+    b.MaxForce=Vector3.one*math.huge
+    b.Position=pos
+    b.P=2e4
+    b.D=5e3
+    b.Parent=part
+    task.spawn(function()
+        b.ReachedTarget:Wait()
+        pcall(game.Destroy,b)
         for _,v in ipairs(part.Parent:GetDescendants())do
             if(v:IsA("BasePart"))then
-                v.CanCollide=false
+                v.CanCollide=true
             end
         end
-        local pos=typeof(x)=="CFrame"and x.Position or x
-        local b=Instance.new("BodyPosition")
-        b.MaxForce=Vector3.one*math.huge
-        b.Position=pos
-        b.P=2e4
-        b.D=5e3
-        b.Parent=part
-        task.spawn(function()
-            b.ReachedTarget:Wait()
-            pcall(game.Destroy,b)
-            for _,v in ipairs(part.Parent:GetDescendants())do
-                if(v:IsA("BasePart"))then
-                    v.CanCollide=true
-                end
-            end
-        end)
-    end
-    local function ungrab(part)
-        service.ReplicatedStorage.GrabEvents.DestroyGrabLine:FireServer(part)
-    end
-    local function getInv()
-        return get(workspace,getLocalPlayer().Name.."SpawnedInToys")
-    end
-    local function spawntoy(name,cframe,vector3)
-        local toy=service.ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(table.unpack({
-            [1]=name,
-            [2]=cframe,
-            [3]=vector3 or Vector3.zero
-        }))
-        local r=get(getInv(),name)
-        return r
-    end
-    local function destroyToy(model)
-        service.ReplicatedStorage.MenuToys.DestroyToy:FireServer(model)
-    end
+    end)
+end
+local function ungrab(part)
+    service.ReplicatedStorage.GrabEvents.DestroyGrabLine:FireServer(part)
+end
+local function getInv()
+    return get(workspace,getLocalPlayer().Name.."SpawnedInToys")
+end
+local function spawntoy(name,cframe,vector3)
+    local toy=service.ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(table.unpack({
+        [1]=name,
+        [2]=cframe,
+        [3]=vector3 or Vector3.zero
+    }))
+    local r=get(getInv(),name)
+    return r
+end
+local function destroyToy(model)
+    service.ReplicatedStorage.MenuToys.DestroyToy:FireServer(model)
+end
 
-    local function getBlobman()
-        local v=get(getInv(),"CreatureBlobman",true)
-        if(not v)then
-            for _,p in ipairs(workspace.PlotItems:GetChildren())do
-                if(p)then
-                    local m=get(p,"CreatureBlobman")
-                    if(not m)or(m and m.PlayerValue.Value~=getLocalPlayer().Name)then
-                        return
-                    end
-                    v=m
+local function getBlobman()
+    local v=get(getInv(),"CreatureBlobman",true)
+    if(not v)then
+        for _,p in ipairs(workspace.PlotItems:GetChildren())do
+            if(p)then
+                local m=get(p,"CreatureBlobman")
+                if(not m)or(m and m.PlayerValue.Value~=getLocalPlayer().Name)then
+                    return
                 end
+                v=m
             end
         end
-        if(v.ClassName~="Model")then return false end
-        if(not get(v,"VehicleSeat"))then return false end
-        return v
     end
-    local function spawnBlobman()
-        local blobman=spawntoy("CreatureBlobman",getLocalRoot().CFrame)
-        return blobman
+    if(v.ClassName~="Model")then return false end
+    if(not get(v,"VehicleSeat"))then return false end
+    return v
+end
+local function spawnBlobman()
+    local blobman=spawntoy("CreatureBlobman",getLocalRoot().CFrame)
+    return blobman
+end
+local function blobGrab(blob,target,side)
+    local args={
+        [1]=get(blob,side.."Detector"),
+        [2]=target,
+        [3]=get(get(blob,side.."Detector"),side.."Weld")
+    }
+    blob.BlobmanSeatAndOwnerScript.CreatureGrab:FireServer(unpack(args))
+end
+local function blobDrop(blob,target,side)
+    local args={
+        [1]=get(blob,side.."Detector"),
+        [2]=target
+    }
+    blob.BlobmanSeatAndOwnerScript.CreatureDrop:FireServer(unpack(args))
+end
+local function blobBring(blob,target,side)
+    local pos=getLocalRoot().CFrame
+    getLocalRoot().CFrame=target.CFrame
+    task.wait(.25)
+    blobGrab(blob,target,side)
+    task.wait(.25)
+    getLocalRoot().CFrame=pos
+end
+local function blobKick(blob,target,side)
+    blobGrab(blob,getLocalRoot(),side)
+    task.wait(.1)
+    SetNetworkOwner(target)
+    task.wait()
+    target.CFrame+=Vector3.new(0,16,0)
+    task.wait(.1)
+    ungrab(target)
+    blobGrab(blob,target,side)
+end
+
+local function IsFriend(p)
+    if(not p or not p.UserId or not getLocalPlayer())then return end
+    return getLocalPlayer():IsFriendsWith(p.UserId)
+end
+local function IsInPlot(p)
+    return p.InPlot.Value
+end
+
+local function getPlayerFromName(name)
+    local tplayer=nil
+    local sname=name:lower()
+    for _,player in pairs(service.Players:GetPlayers())do
+        if(player.DisplayName:lower():sub(1,#sname)==sname)then
+            tplayer=player
+            break
+        elseif(player.Name:lower():sub(1,#sname)==sname)then
+            if(not tplayer )then
+                tplayer=player
+            end
+        end
     end
-    local function blobGrab(blob,target,side)
-        local args={
-            [1]=get(blob,side.."Detector"),
-            [2]=target,
-            [3]=get(get(blob,side.."Detector"),side.."Weld")
-        }
-        blob.BlobmanSeatAndOwnerScript.CreatureGrab:FireServer(unpack(args))
+    return tplayer
+end
+
+local function Snipefunc(root,func,...)
+    local pos=getLocalRoot().CFrame
+    task.spawn(function(...)
+        local parts={"Head","Torso","HumanoidRootPart"}
+        for _,p in pairs(parts)do 
+            local part = get(getLocalChar(),p)
+            if part then part.CanCollide=false end 
+        end
+        getLocalRoot().CFrame=CFrame.new(root.Position-root.CFrame.LookVector*15)
+        task.wait(0.1)
+        workspace.CurrentCamera.CFrame=CFrame.lookAt(workspace.CurrentCamera.CFrame.Position,root.Position)
+        for _=1,4 do SetNetworkOwner(root)task.wait(0.05)end
+        local look=workspace.CurrentCamera.CFrame
+        task.wait(0.1)
+        func(...)
+        workspace.CurrentCamera.CFrame=look
+        task.wait(0.1)
+        for _,p in pairs(parts)do 
+            local part = get(getLocalChar(),p)
+            if part then part.CanCollide=true end 
+        end
+        getLocalRoot().CFrame=pos
+        Velocity(getLocalRoot(),Vector3.zero)
+    end,...)
+end
+
+local config={
+    Blobman={
+        Target={Value=getLocalPlayer().Name},
+        ArmSide={Value="Left"},
+        Noclip={Value=false},
+        GrabAura={Value=false},
+        KickAura={Value=false},
+        LoopKick={Value=false},
+        LoopKickAll={Value=false}
+    },
+    Snipes={
+        Target={Value=getLocalPlayer().Name},
+        LoopVoid={Value=false},
+        LoopKill={Value=false},
+        LoopPoison={Value=false},
+        LoopRagdoll={Value=false},
+        LoopDeath={Value=false}
+    },
+    Settings={
+        IgnoreFriend={Value=false},
+        IgnoreIsInPlot={Value=false},
+        AuraRadius={Value=32}
+    },
+}
+
+local playerList = {}
+for _, player in pairs(service.Players:GetPlayers()) do
+    if player ~= getLocalPlayer() then
+        table.insert(playerList, player.Name)
     end
-    local function blobDrop(blob,target,side)
-        local args={
-            [1]=get(blob,side.."Detector"),
-            [2]=target
-        }
-        blob.BlobmanSeatAndOwnerScript.CreatureDrop:FireServer(unpack(args))
+end
+table.insert(playerList, getLocalPlayer().Name)
+
+-- WindowはXenouzu Hubの既存のものを使用
+local BlobmansTab = Window:MakeTab({
+    Name = "Blobmans",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local SnipesTab = Window:MakeTab({
+    Name = "Snipes",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local SettingsTab = Window:MakeTab({
+    Name = "Settings",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+BlobmansTab:AddDropdown({
+    Name = "Target",
+    Default = getLocalPlayer().Name,
+    Options = playerList,
+    Callback = function(Value)
+        config.Blobman.Target.Value = Value
     end
-    local function blobBring(blob,target,side)
+})
+
+BlobmansTab:AddDropdown({
+    Name = "Arm Side",
+    Default = "Left",
+    Options = {"Left", "Right"},
+    Callback = function(Value)
+        config.Blobman.ArmSide.Value = Value
+    end
+})
+
+BlobmansTab:AddButton({
+    Name = "Kick",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                local pos=getLocalRoot().CFrame
+                task.wait(.5)
+                getLocalRoot().CFrame=root.CFrame
+                task.wait()
+                blobKick(b,root,config.Blobman.ArmSide.Value)
+                task.wait(.5)
+                getLocalRoot().CFrame=pos
+            end)
+        end
+    end
+})
+
+BlobmansTab:AddButton({
+    Name = "Bring",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                if(not root or not b)then return end
+                local pos=getLocalRoot().CFrame
+                getLocalRoot().CFrame=root.CFrame
+                blobBring(b,root,config.Blobman.ArmSide.Value)
+                task.wait()
+                getLocalRoot().CFrame=pos
+            end)
+        end
+    end
+})
+
+BlobmansTab:AddButton({
+    Name = "Void",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                local pos=getLocalRoot().CFrame
+                blobGrab(b,getLocalRoot(),config.Blobman.ArmSide.Value)
+                task.wait()
+                blobBring(b,root,config.Blobman.ArmSide.Value)
+                task.wait()
+                getLocalRoot().CFrame=CFrame.new(1e32,-16,1e32)
+                task.wait(1)
+                getLocalHum().Sit=false
+                task.wait(.1)
+                getLocalRoot().CFrame=pos
+                task.wait()
+                destroyToy(b)
+            end)
+        end
+    end
+})
+
+BlobmansTab:AddToggle({
+    Name = "Noclip",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.Noclip.Value = Value
+    end
+})
+
+BlobmansTab:AddButton({
+    Name = "Slide",
+    Callback = function()
+        local t=getPlayerFromName(config.Blobman.Target.Value)
+        if(t)then
+            task.spawn(function()
+                local root=get(t.Character,"HumanoidRootPart")
+                local b=getBlobman()
+                local pos=getLocalRoot().CFrame
+                blobGrab(b,getLocalRoot(),config.Blobman.ArmSide.Value)
+                task.wait()
+                blobBring(b,root,config.Blobman.ArmSide.Value)
+                task.wait()
+                getLocalRoot().CFrame=pos
+                task.wait(.5)
+                destroyToy(b)
+            end)
+        end
+    end
+})
+
+BlobmansTab:AddButton({
+    Name = "Spawn Blobman",
+    Callback = function()
+        spawnBlobman()
+    end
+})
+
+BlobmansTab:AddButton({
+    Name = "OP-Blobman",
+    Callback = function()
+        local blob=getBlobman()
+        if(not blob)then
+            blob=spawnBlobman()
+        end
+        if(not getLocalHum().Sit)then
+            blob.VehicleSeat:Sit(getLocalHum())
+        end
         local pos=getLocalRoot().CFrame
-        getLocalRoot().CFrame=target.CFrame
-        task.wait(.25)
-        blobGrab(blob,target,side)
-        task.wait(.25)
+        task.wait()
+        if(blob and getLocalHum())then
+            if(blob:IsDescendantOf(workspace.PlotItems))then
+                getLocalRoot().CFrame=CFrame.new(0,0,0)
+                task.wait(.5)
+            end
+            local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+            SetNetworkOwner(Toy.HumanoidRootPart)
+            Toy.HumanoidRootPart.CFrame=blob.RightDetector.CFrame
+            task.wait()
+            blobGrab(blob,Toy.HumanoidRootPart,"Right")
+            task.wait(1.25)
+            destroyToy(Toy)
+            task.wait(.1)
+
+            local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+            SetNetworkOwner(Toy.HumanoidRootPart)
+            Toy.HumanoidRootPart.CFrame=blob.LeftDetector.CFrame
+            task.wait()
+            blobGrab(blob,Toy.HumanoidRootPart,"Left")
+            task.wait(1.25)
+            destroyToy(Toy)
+            task.wait(.1)
+        end
         getLocalRoot().CFrame=pos
     end
-    local function blobKick(blob,target,side)
-        blobGrab(blob,getLocalRoot(),side)
-        task.wait(.1)
-        SetNetworkOwner(target)
+})
+
+BlobmansTab:AddButton({
+    Name = "Kick All",
+    Callback = function()
+        local blob=getBlobman()
+        if(not blob)then
+            blob=spawnBlobman()
+        end
+        if(not getLocalHum().Sit)then
+            blob.VehicleSeat:Sit(getLocalHum())
+        end
         task.wait()
-        target.CFrame+=Vector3.new(0,16,0)
-        task.wait(.1)
-        ungrab(target)
-        blobGrab(blob,target,side)
-    end
-
-    local function IsFriend(p)
-        if(not p or not p.UserId or not getLocalPlayer())then return end
-        return getLocalPlayer():IsFriendsWith(p.UserId)
-    end
-    local function IsInPlot(p)
-        return p.InPlot.Value
-    end
-    
-    local function getPlayerFromName(name)
-        local tplayer=nil
-        local sname=name:lower()
-        for _,player in pairs(service.Players:GetPlayers())do
-            if(player.DisplayName:lower():sub(1,#sname)==sname)then
-                tplayer=player
-                break
-            elseif(player.Name:lower():sub(1,#sname)==sname)then
-                if(not tplayer )then
-                    tplayer=player
-                end
-            end
-        end
-        return tplayer
-    end
-
-    local function Snipefunc(root,func,...)
         local pos=getLocalRoot().CFrame
-        task.spawn(function(...)
-            local parts={"Head","Torso","HumanoidRootPart"}
-            for _,p in pairs(parts)do 
-                local part = get(getLocalChar(),p)
-                if part then part.CanCollide=false end 
+        if(blob and getLocalHum().Sit)then
+            blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
+            for _,v in ipairs(service.Players:GetPlayers())do
+                if(v==getLocalPlayer())then continue end
+                if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
+                if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
+                local character=v.Character
+                if(not character)then continue end
+                local root=get(character,"HumanoidRootPart")
+                if(not root)then continue end
+                getLocalRoot().CFrame=root.CFrame
+                task.wait(.25)
+                blobKick(blob,root,config.Blobman.ArmSide.Value)
             end
-            getLocalRoot().CFrame=CFrame.new(root.Position-root.CFrame.LookVector*15)
-            task.wait(0.1)
-            workspace.CurrentCamera.CFrame=CFrame.lookAt(workspace.CurrentCamera.CFrame.Position,root.Position)
-            for _=1,4 do SetNetworkOwner(root)task.wait(0.05)end
-            local look=workspace.CurrentCamera.CFrame
-            task.wait(0.1)
-            func(...)
-            workspace.CurrentCamera.CFrame=look
-            task.wait(0.1)
-            for _,p in pairs(parts)do 
-                local part = get(getLocalChar(),p)
-                if part then part.CanCollide=true end 
-            end
-            getLocalRoot().CFrame=pos
-            Velocity(getLocalRoot(),Vector3.zero)
-        end,...)
-    end
-
-    local config={
-        Blobman={
-            Target={Value=getLocalPlayer().Name},
-            ArmSide={Value="Left"},
-            Noclip={Value=false},
-            GrabAura={Value=false},
-            KickAura={Value=false},
-            LoopKick={Value=false},
-            LoopKickAll={Value=false}
-        },
-        Snipes={
-            Target={Value=getLocalPlayer().Name},
-            LoopVoid={Value=false},
-            LoopKill={Value=false},
-            LoopPoison={Value=false},
-            LoopRagdoll={Value=false},
-            LoopDeath={Value=false}
-        },
-        Settings={
-            IgnoreFriend={Value=false},
-            IgnoreIsInPlot={Value=false},
-            AuraRadius={Value=32}
-        },
-    }
-
-    local playerList = {}
-    for _, player in pairs(service.Players:GetPlayers()) do
-        if player ~= getLocalPlayer() then
-            table.insert(playerList, player.Name)
-        end
-    end
-    table.insert(playerList, getLocalPlayer().Name)
-
-    -- Windowは既存のXenouzu Hubのものを使用
-    local BlobmansTab = Window:MakeTab({
-        Name = "Blobmans",
-        Icon = "rbxassetid://4483345998",
-        PremiumOnly = false
-    })
-
-    local SnipesTab = Window:MakeTab({
-        Name = "Snipes",
-        Icon = "rbxassetid://4483345998",
-        PremiumOnly = false
-    })
-
-    local SettingsTab = Window:MakeTab({
-        Name = "Settings",
-        Icon = "rbxassetid://4483345998",
-        PremiumOnly = false
-    })
-
-    BlobmansTab:AddDropdown({
-        Name = "Target",
-        Default = getLocalPlayer().Name,
-        Options = playerList,
-        Callback = function(Value)
-            config.Blobman.Target.Value = Value
-        end
-    })
-
-    BlobmansTab:AddDropdown({
-        Name = "Arm Side",
-        Default = "Left",
-        Options = {"Left", "Right"},
-        Callback = function(Value)
-            config.Blobman.ArmSide.Value = Value
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "Kick",
-        Callback = function()
-            local t=getPlayerFromName(config.Blobman.Target.Value)
-            if(t)then
-                task.spawn(function()
-                    local root=get(t.Character,"HumanoidRootPart")
-                    local b=getBlobman()
-                    local pos=getLocalRoot().CFrame
-                    task.wait(.5)
-                    getLocalRoot().CFrame=root.CFrame
-                    task.wait()
-                    blobKick(b,root,config.Blobman.ArmSide.Value)
-                    task.wait(.5)
-                    getLocalRoot().CFrame=pos
-                end)
-            end
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "Bring",
-        Callback = function()
-            local t=getPlayerFromName(config.Blobman.Target.Value)
-            if(t)then
-                task.spawn(function()
-                    local root=get(t.Character,"HumanoidRootPart")
-                    local b=getBlobman()
-                    if(not root or not b)then return end
-                    local pos=getLocalRoot().CFrame
-                    getLocalRoot().CFrame=root.CFrame
-                    blobBring(b,root,config.Blobman.ArmSide.Value)
-                    task.wait()
-                    getLocalRoot().CFrame=pos
-                end)
-            end
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "Void",
-        Callback = function()
-            local t=getPlayerFromName(config.Blobman.Target.Value)
-            if(t)then
-                task.spawn(function()
-                    local root=get(t.Character,"HumanoidRootPart")
-                    local b=getBlobman()
-                    local pos=getLocalRoot().CFrame
-                    blobGrab(b,getLocalRoot(),config.Blobman.ArmSide.Value)
-                    task.wait()
-                    blobBring(b,root,config.Blobman.ArmSide.Value)
-                    task.wait()
-                    getLocalRoot().CFrame=CFrame.new(1e32,-16,1e32)
-                    task.wait(1)
-                    getLocalHum().Sit=false
-                    task.wait(.1)
-                    getLocalRoot().CFrame=pos
-                    task.wait()
-                    destroyToy(b)
-                end)
-            end
-        end
-    })
-
-    BlobmansTab:AddToggle({
-        Name = "Noclip",
-        Default = false,
-        Callback = function(Value)
-            config.Blobman.Noclip.Value = Value
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "Slide",
-        Callback = function()
-            local t=getPlayerFromName(config.Blobman.Target.Value)
-            if(t)then
-                task.spawn(function()
-                    local root=get(t.Character,"HumanoidRootPart")
-                    local b=getBlobman()
-                    local pos=getLocalRoot().CFrame
-                    blobGrab(b,getLocalRoot(),config.Blobman.ArmSide.Value)
-                    task.wait()
-                    blobBring(b,root,config.Blobman.ArmSide.Value)
-                    task.wait()
-                    getLocalRoot().CFrame=pos
-                    task.wait(.5)
-                    destroyToy(b)
-                end)
-            end
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "Spawn Blobman",
-        Callback = function()
-            spawnBlobman()
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "OP-Blobman",
-        Callback = function()
-            local blob=getBlobman()
-            if(not blob)then
-                blob=spawnBlobman()
-            end
-            if(not getLocalHum().Sit)then
-                blob.VehicleSeat:Sit(getLocalHum())
-            end
-            local pos=getLocalRoot().CFrame
-            task.wait()
-            if(blob and getLocalHum())then
-                if(blob:IsDescendantOf(workspace.PlotItems))then
-                    getLocalRoot().CFrame=CFrame.new(0,0,0)
-                    task.wait(.5)
-                end
-                local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
-                SetNetworkOwner(Toy.HumanoidRootPart)
-                Toy.HumanoidRootPart.CFrame=blob.RightDetector.CFrame
-                task.wait()
-                blobGrab(blob,Toy.HumanoidRootPart,"Right")
-                task.wait(1.25)
-                destroyToy(Toy)
-                task.wait(.1)
-
-                local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
-                SetNetworkOwner(Toy.HumanoidRootPart)
-                Toy.HumanoidRootPart.CFrame=blob.LeftDetector.CFrame
-                task.wait()
-                blobGrab(blob,Toy.HumanoidRootPart,"Left")
-                task.wait(1.25)
-                destroyToy(Toy)
-                task.wait(.1)
-            end
-            getLocalRoot().CFrame=pos
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "Kick All",
-        Callback = function()
-            local blob=getBlobman()
-            if(not blob)then
-                blob=spawnBlobman()
-            end
-            if(not getLocalHum().Sit)then
-                blob.VehicleSeat:Sit(getLocalHum())
-            end
-            task.wait()
-            local pos=getLocalRoot().CFrame
-            if(blob and getLocalHum().Sit)then
-                blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
-                for _,v in ipairs(service.Players:GetPlayers())do
-                    if(v==getLocalPlayer())then continue end
-                    if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
-                    if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
-                    local character=v.Character
-                    if(not character)then continue end
-                    local root=get(character,"HumanoidRootPart")
-                    if(not root)then continue end
-                    getLocalRoot().CFrame=root.CFrame
-                    task.wait(.25)
-                    blobKick(blob,root,config.Blobman.ArmSide.Value)
-                end
-                task.wait(.1)
-                getLocalRoot().CFrame=pos
-                destroyToy(blob)
-            end
-        end
-    })
-
-    BlobmansTab:AddButton({
-        Name = "Slide All",
-        Callback = function()
-            local blob=getBlobman()
-            if(not blob)then
-                blob=spawnBlobman()
-            end
-            if(not getLocalHum().Sit)then
-                blob.VehicleSeat:Sit(getLocalHum())
-            end
-            task.wait()
-            local pos=getLocalRoot().CFrame
-            if(blob and getLocalHum().Sit)then
-                blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
-                for _,v in ipairs(service.Players:GetPlayers())do
-                    if(v==getLocalPlayer())then continue end
-                    if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
-                    if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
-                    local character=v.Character
-                    if(not character)then continue end
-                    local root=get(character,"HumanoidRootPart")
-                    if(not root)then continue end
-                    getLocalRoot().CFrame=root.CFrame
-                    task.wait(.2)
-                    blobGrab(blob,root,config.Blobman.ArmSide.Value)
-                end
-                task.wait(.1)
-                getLocalRoot().CFrame=pos
-                destroyToy(blob)
-            end
-        end
-    })
-
-    BlobmansTab:AddToggle({
-        Name = "Loop Kick All",
-        Default = false,
-        Callback = function(Value)
-            config.Blobman.LoopKickAll.Value = Value
-        end
-    })
-
-    BlobmansTab:AddToggle({
-        Name = "Kick Aura",
-        Default = false,
-        Callback = function(Value)
-            config.Blobman.KickAura.Value = Value
-        end
-    })
-
-    BlobmansTab:AddToggle({
-        Name = "Grab Aura",
-        Default = false,
-        Callback = function(Value)
-            config.Blobman.GrabAura.Value = Value
-        end
-    })
-
-    SnipesTab:AddDropdown({
-        Name = "Target",
-        Default = getLocalPlayer().Name,
-        Options = playerList,
-        Callback = function(Value)
-            config.Snipes.Target.Value = Value
-        end
-    })
-
-    SnipesTab:AddButton({
-        Name = "Bring",
-        Callback = function()
-            local pos=getLocalRoot().CFrame
-            local t=getPlayerFromName(config.Snipes.Target.Value)
-            if(not t)then return end
-            local root=get(t.Character,"HumanoidRootPart")
-            if(not root)then return end
-            task.spawn(function()
-                Snipefunc(root,function()
-                    task.wait(.01)
-                    root.CFrame=pos
-                    task.wait(.5)
-                    ungrab(root)
-                    getLocalRoot().CFrame=pos
-                end)
-            end)
-        end
-    })
-
-    SnipesTab:AddButton({
-        Name = "Void",
-        Callback = function()
-            task.spawn(function()
-                local pos=getLocalRoot().CFrame
-                local t=getPlayerFromName(config.Snipes.Target.Value)
-                if(not t)then return end
-                local root=get(t.Character,"HumanoidRootPart")
-                if(not root)then return end
-                Snipefunc(root,function()
-                    Velocity(root,Vector3.new(0,1e4,0))
-                    getLocalRoot().CFrame=pos
-                end)
-            end)
-        end
-    })
-
-    SnipesTab:AddButton({
-        Name = "Kill",
-        Callback = function()
-            task.spawn(function()
-                local pos=getLocalRoot().CFrame
-                local t=getPlayerFromName(config.Snipes.Target.Value)
-                if(not t)then return end
-                local root=get(t.Character,"HumanoidRootPart")
-                if(not root)then return end
-                Snipefunc(root,function()
-                    MoveTo(root,CFrame.new(4096,-75,4096))
-                    Velocity(root,Vector3.new(0,-1e3,0))
-                    getLocalRoot().CFrame=pos
-                end)
-            end)
-        end
-    })
-
-    SnipesTab:AddButton({
-        Name = "Poison",
-        Callback = function()
-            task.spawn(function()
-                local pos=getLocalRoot().CFrame
-                local t=getPlayerFromName(config.Snipes.Target.Value)
-                if(not t)then return end
-                local root=get(t.Character,"HumanoidRootPart")
-                if(not root)then return end
-                Snipefunc(root,function()
-                    MoveTo(root,CFrame.new(58,-70,271))
-                    getLocalRoot().CFrame=pos
-                end)
-            end)
-        end
-    })
-
-    SnipesTab:AddButton({
-        Name = "Ragdoll",
-        Callback = function()
-            task.spawn(function()
-                local pos=getLocalRoot().CFrame
-                local t=getPlayerFromName(config.Snipes.Target.Value)
-                if(not t)then return end
-                local root=get(t.Character,"HumanoidRootPart")
-                if(not root)then return end
-                Snipefunc(root,function()
-                    local rpos=root.CFrame
-                    Velocity(root,Vector3.new(0,-64,0))
-                    task.wait(.1)
-                    getLocalRoot().CFrame=rpos
-                    Velocity(root,Vector3.zero)
-                    getLocalRoot().CFrame=pos
-                end)
-            end)
-        end
-    })
-
-    SnipesTab:AddButton({
-        Name = "Death",
-        Callback = function()
-            task.spawn(function()
-                local pos=getLocalRoot().CFrame
-                local t=getPlayerFromName(config.Snipes.Target.Value)
-                if(not t)then return end
-                local root=get(t.Character,"HumanoidRootPart")
-                if(not root)then return end
-                Snipefunc(root,function()
-                    local hum = cget(root.Parent,"Humanoid")
-                    if hum then
-                        hum:ChangeState(Enum.HumanoidStateType.Dead)
-                    end
-                    task.wait(.5)
-                    ungrab(root)
-                    getLocalRoot().CFrame=pos
-                end)
-            end)
-        end
-    })
-
-    SnipesTab:AddButton({
-        Name = "Fling",
-        Callback = function()
-            local pos=getLocalRoot().CFrame
-            local t=getPlayerFromName(config.Snipes.Target.Value)
-            if(not t)then return end
-            local root=get(t.Character,"HumanoidRootPart")
-            if(not root)then return end
-            local toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
-            task.wait(.3)
-            getLocalRoot().CFrame=toy.PrimaryPart.CFrame
             task.wait(.1)
-            SetNetworkOwner(toy.PrimaryPart)
-            for _=1,256 do
-                SetNetworkOwner(toy.PrimaryPart)
-                task.wait()
-                local rx=math.rad(math.random(0,360*32768))
-                local ry=math.rad(math.random(0,360*32768))
-                local rz=math.rad(math.random(0,360*32768))
-                local rr=1.5
-                toy.PrimaryPart.CFrame=CFrame.new(root.Position+Vector3.one*math.random(-rr,rr))*CFrame.Angles(rx,ry,rz)
-                Velocity(toy.PrimaryPart,Vector3.one*1e16)
-            end
-            task.wait(.5)
             getLocalRoot().CFrame=pos
-            task.wait(.5)
-            destroyToy(toy)
+            destroyToy(blob)
         end
-    })
+    end
+})
 
-    SnipesTab:AddToggle({
-        Name = "Loop Void",
-        Default = false,
-        Callback = function(Value)
-            config.Snipes.LoopVoid.Value = Value
+BlobmansTab:AddButton({
+    Name = "Slide All",
+    Callback = function()
+        local blob=getBlobman()
+        if(not blob)then
+            blob=spawnBlobman()
         end
-    })
-
-    SnipesTab:AddToggle({
-        Name = "Loop Kill",
-        Default = false,
-        Callback = function(Value)
-            config.Snipes.LoopKill.Value = Value
+        if(not getLocalHum().Sit)then
+            blob.VehicleSeat:Sit(getLocalHum())
         end
-    })
-
-    SnipesTab:AddToggle({
-        Name = "Loop Poison",
-        Default = false,
-        Callback = function(Value)
-            config.Snipes.LoopPoison.Value = Value
+        task.wait()
+        local pos=getLocalRoot().CFrame
+        if(blob and getLocalHum().Sit)then
+            blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
+            for _,v in ipairs(service.Players:GetPlayers())do
+                if(v==getLocalPlayer())then continue end
+                if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
+                if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
+                local character=v.Character
+                if(not character)then continue end
+                local root=get(character,"HumanoidRootPart")
+                if(not root)then continue end
+                getLocalRoot().CFrame=root.CFrame
+                task.wait(.2)
+                blobGrab(blob,root,config.Blobman.ArmSide.Value)
+            end
+            task.wait(.1)
+            getLocalRoot().CFrame=pos
+            destroyToy(blob)
         end
-    })
+    end
+})
 
-    SnipesTab:AddToggle({
-        Name = "Loop Ragdoll",
-        Default = false,
-        Callback = function(Value)
-            config.Snipes.LoopRagdoll.Value = Value
+BlobmansTab:AddToggle({
+    Name = "Loop Kick All",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.LoopKickAll.Value = Value
+    end
+})
+
+BlobmansTab:AddToggle({
+    Name = "Kick Aura",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.KickAura.Value = Value
+    end
+})
+
+BlobmansTab:AddToggle({
+    Name = "Grab Aura",
+    Default = false,
+    Callback = function(Value)
+        config.Blobman.GrabAura.Value = Value
+    end
+})
+
+SnipesTab:AddDropdown({
+    Name = "Target",
+    Default = getLocalPlayer().Name,
+    Options = playerList,
+    Callback = function(Value)
+        config.Snipes.Target.Value = Value
+    end
+})
+
+SnipesTab:AddButton({
+    Name = "Bring",
+    Callback = function()
+        local pos=getLocalRoot().CFrame
+        local t=getPlayerFromName(config.Snipes.Target.Value)
+        if(not t)then return end
+        local root=get(t.Character,"HumanoidRootPart")
+        if(not root)then return end
+        task.spawn(function()
+            Snipefunc(root,function()
+                task.wait(.01)
+                root.CFrame=pos
+                task.wait(.5)
+                ungrab(root)
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesTab:AddButton({
+    Name = "Void",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                Velocity(root,Vector3.new(0,1e4,0))
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesTab:AddButton({
+    Name = "Kill",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                MoveTo(root,CFrame.new(4096,-75,4096))
+                Velocity(root,Vector3.new(0,-1e3,0))
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesTab:AddButton({
+    Name = "Poison",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                MoveTo(root,CFrame.new(58,-70,271))
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesTab:AddButton({
+    Name = "Ragdoll",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                local rpos=root.CFrame
+                Velocity(root,Vector3.new(0,-64,0))
+                task.wait(.1)
+                getLocalRoot().CFrame=rpos
+                Velocity(root,Vector3.zero)
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesTab:AddButton({
+    Name = "Death",
+    Callback = function()
+        task.spawn(function()
+            local pos=getLocalRoot().CFrame
+            local t=getPlayerFromName(config.Snipes.Target.Value)
+            if(not t)then return end
+            local root=get(t.Character,"HumanoidRootPart")
+            if(not root)then return end
+            Snipefunc(root,function()
+                local hum = cget(root.Parent,"Humanoid")
+                if hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Dead)
+                end
+                task.wait(.5)
+                ungrab(root)
+                getLocalRoot().CFrame=pos
+            end)
+        end)
+    end
+})
+
+SnipesTab:AddButton({
+    Name = "Fling",
+    Callback = function()
+        local pos=getLocalRoot().CFrame
+        local t=getPlayerFromName(config.Snipes.Target.Value)
+        if(not t)then return end
+        local root=get(t.Character,"HumanoidRootPart")
+        if(not root)then return end
+        local toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+        task.wait(.3)
+        getLocalRoot().CFrame=toy.PrimaryPart.CFrame
+        task.wait(.1)
+        SetNetworkOwner(toy.PrimaryPart)
+        for _=1,256 do
+            SetNetworkOwner(toy.PrimaryPart)
+            task.wait()
+            local rx=math.rad(math.random(0,360*32768))
+            local ry=math.rad(math.random(0,360*32768))
+            local rz=math.rad(math.random(0,360*32768))
+            local rr=1.5
+            toy.PrimaryPart.CFrame=CFrame.new(root.Position+Vector3.one*math.random(-rr,rr))*CFrame.Angles(rx,ry,rz)
+            Velocity(toy.PrimaryPart,Vector3.one*1e16)
         end
-    })
+        task.wait(.5)
+        getLocalRoot().CFrame=pos
+        task.wait(.5)
+        destroyToy(toy)
+    end
+})
 
-    SnipesTab:AddToggle({
-        Name = "Loop Death",
-        Default = false,
-        Callback = function(Value)
-            config.Snipes.LoopDeath.Value = Value
-        end
-    })
+SnipesTab:AddToggle({
+    Name = "Loop Void",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopVoid.Value = Value
+    end
+})
 
-    SettingsTab:AddSlider({
-        Name = "Aura Radius",
-        Min = 0,
-        Max = 128,
-        Default = 32,
-        Color = Color3.fromRGB(255,255,255),
-        Increment = 1,
-        ValueName = "studs",
-        Callback = function(Value)
-            config.Settings.AuraRadius.Value = Value
-        end
-    })
+SnipesTab:AddToggle({
+    Name = "Loop Kill",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopKill.Value = Value
+    end
+})
 
-    SettingsTab:AddButton({
-        Name = "Infinite Aura Radius (NetworkOwner)",
-        Callback = function()
-            config.Settings.AuraRadius.Value = 10000
-        end
-    })
+SnipesTab:AddToggle({
+    Name = "Loop Poison",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopPoison.Value = Value
+    end
+})
 
-    SettingsTab:AddToggle({
-        Name = "Ignore Friend",
-        Default = false,
-        Callback = function(Value)
-            config.Settings.IgnoreFriend.Value = Value
-        end
-    })
+SnipesTab:AddToggle({
+    Name = "Loop Ragdoll",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopRagdoll.Value = Value
+    end
+})
 
-    SettingsTab:AddToggle({
-        Name = "Ignore IsInPlot",
-        Default = false,
-        Callback = function(Value)
-            config.Settings.IgnoreIsInPlot.Value = Value
-        end
-    })
+SnipesTab:AddToggle({
+    Name = "Loop Death",
+    Default = false,
+    Callback = function(Value)
+        config.Snipes.LoopDeath.Value = Value
+    end
+})
 
-    task.wait(.1)
+SettingsTab:AddSlider({
+    Name = "Aura Radius",
+    Min = 0,
+    Max = 128,
+    Default = 32,
+    Color = Color3.fromRGB(255,255,255),
+    Increment = 1,
+    ValueName = "studs",
+    Callback = function(Value)
+        config.Settings.AuraRadius.Value = Value
+    end
+})
 
-    local LoopKickTimer=0
-    local SnipeLoopTimer=0
-    
-    loop.Event:Connect(function(dt)
-        LoopKickTimer+=dt
-        SnipeLoopTimer+=dt
+SettingsTab:AddButton({
+    Name = "Infinite Aura Radius (NetworkOwner)",
+    Callback = function()
+        config.Settings.AuraRadius.Value = 10000
+    end
+})
 
-        if(config.Blobman.Noclip.Value)then
-            local blob=getBlobman()
-            if(blob)then
-                for _,v in ipairs(blob:GetDescendants())do
-                    if(v:IsA("BasePart"))then
-                        v.CanCollide=false
-                    end
+SettingsTab:AddToggle({
+    Name = "Ignore Friend",
+    Default = false,
+    Callback = function(Value)
+        config.Settings.IgnoreFriend.Value = Value
+    end
+})
+
+SettingsTab:AddToggle({
+    Name = "Ignore IsInPlot",
+    Default = false,
+    Callback = function(Value)
+        config.Settings.IgnoreIsInPlot.Value = Value
+    end
+})
+
+task.wait(.1)
+
+local LoopKickTimer=0
+local SnipeLoopTimer=0
+
+loop.Event:Connect(function(dt)
+    LoopKickTimer+=dt
+    SnipeLoopTimer+=dt
+
+    if(config.Blobman.Noclip.Value)then
+        local blob=getBlobman()
+        if(blob)then
+            for _,v in ipairs(blob:GetDescendants())do
+                if(v:IsA("BasePart"))then
+                    v.CanCollide=false
                 end
             end
         end
+    end
 
-        if(getLocalChar()and getLocalRoot())then
-            for _,v in ipairs(GetNearParts(getLocalRoot().Position,config.Settings.AuraRadius.Value))do
-                if(not v.Anchored and not v:IsDescendantOf(getLocalChar()))then
-                    local p=service.Players:GetPlayerFromCharacter(v.Parent)
-                    if(IsFriend(p)and config.Settings.IgnoreFriend.Value)then continue end
-                    if(config.Blobman.GrabAura.Value)then
+    if(getLocalChar()and getLocalRoot())then
+        for _,v in ipairs(GetNearParts(getLocalRoot().Position,config.Settings.AuraRadius.Value))do
+            if(not v.Anchored and not v:IsDescendantOf(getLocalChar()))then
+                local p=service.Players:GetPlayerFromCharacter(v.Parent)
+                if(IsFriend(p)and config.Settings.IgnoreFriend.Value)then continue end
+                if(config.Blobman.GrabAura.Value)then
+                    if(v.Name~="HumanoidRootPart"or not getBlobman())then continue end
+                    if(p and config.Settings.IgnoreFriend.Value and IsFriend(p))then continue end
+                    if(p and p==getLocalPlayer())then continue end
+                    local blob=getBlobman()
+                    local side=(math.random()>=.5)and"Left"or"Right"
+                    blobGrab(blob,v,side)
+                end
+                if(config.Blobman.KickAura.Value)then
+                    if(not p)then continue end
+                    if(getLocalHum()and getLocalHum().Sit)then
                         if(v.Name~="HumanoidRootPart"or not getBlobman())then continue end
-                        if(p and config.Settings.IgnoreFriend.Value and IsFriend(p))then continue end
-                        if(p and p==getLocalPlayer())then continue end
                         local blob=getBlobman()
                         local side=(math.random()>=.5)and"Left"or"Right"
-                        blobGrab(blob,v,side)
-                    end
-                    if(config.Blobman.KickAura.Value)then
-                        if(not p)then continue end
-                        if(getLocalHum()and getLocalHum().Sit)then
-                            if(v.Name~="HumanoidRootPart"or not getBlobman())then continue end
-                            local blob=getBlobman()
-                            local side=(math.random()>=.5)and"Left"or"Right"
-                            task.spawn(function()
-                                blobKick(blob,v,side)
-                            end)
-                        end
+                        task.spawn(function()
+                            blobKick(blob,v,side)
+                        end)
                     end
                 end
             end
         end
+    end
 
-        if(LoopKickTimer>=1.5)then
-            if(config.Blobman.LoopKick.Value)then
-                local target=getPlayerFromName(config.Blobman.Target.Value)
-                local blob=getBlobman()
-                if(not blob)then
-                    blob=spawnBlobman()
+    if(LoopKickTimer>=1.5)then
+        if(config.Blobman.LoopKick.Value)then
+            local target=getPlayerFromName(config.Blobman.Target.Value)
+            local blob=getBlobman()
+            if(not blob)then
+                blob=spawnBlobman()
+            end
+            if(target)then
+                local character=target.Character
+                if(character)then
+                    local root=get(character,"HumanoidRootPart")
+                    if(root)then
+                        local side=(math.random()>=.5)and"Left"or"Right"
+                        local b=getBlobman()
+                        local pos=getLocalRoot().CFrame
+                        task.wait(.5)
+                        getLocalRoot().CFrame=root.CFrame
+                        task.wait()
+                        blobKick(b,root,side)
+                        task.wait(.5)
+                        getLocalRoot().CFrame=pos
+                    end
                 end
-                if(target)then
-                    local character=target.Character
+            end
+        end
+        if(config.Blobman.LoopKickAll.Value)then
+            local blob=getBlobman()
+            if(not blob)then
+                blob=spawnBlobman()
+            end
+            for _,p in ipairs(service.Players:GetPlayers())do
+                if(p~=getLocalPlayer()and not config.Settings.IgnoreIsInPlot.Value and not IsInPlot(p)and getLocalChar())then
+                    local character=p.Character
                     if(character)then
                         local root=get(character,"HumanoidRootPart")
                         if(root)then
                             local side=(math.random()>=.5)and"Left"or"Right"
                             local b=getBlobman()
                             local pos=getLocalRoot().CFrame
-                            task.wait(.5)
+                            task.wait(.25)
                             getLocalRoot().CFrame=root.CFrame
                             task.wait()
                             blobKick(b,root,side)
-                            task.wait(.5)
+                            task.wait(.25)
                             getLocalRoot().CFrame=pos
                         end
                     end
                 end
             end
-            if(config.Blobman.LoopKickAll.Value)then
-                local blob=getBlobman()
-                if(not blob)then
-                    blob=spawnBlobman()
-                end
-                for _,p in ipairs(service.Players:GetPlayers())do
-                    if(p~=getLocalPlayer()and not config.Settings.IgnoreIsInPlot.Value and not IsInPlot(p)and getLocalChar())then
-                        local character=p.Character
-                        if(character)then
-                            local root=get(character,"HumanoidRootPart")
-                            if(root)then
-                                local side=(math.random()>=.5)and"Left"or"Right"
-                                local b=getBlobman()
-                                local pos=getLocalRoot().CFrame
-                                task.wait(.25)
-                                getLocalRoot().CFrame=root.CFrame
-                                task.wait()
-                                blobKick(b,root,side)
-                                task.wait(.25)
-                                getLocalRoot().CFrame=pos
-                            end
-                        end
-                    end
-                end
-            end
-            LoopKickTimer=0
         end
+        LoopKickTimer=0
+    end
 
-        if(SnipeLoopTimer>=1)then
-            SnipeLoopTimer=0
-            if(config.Snipes.LoopVoid.Value)then
-                task.spawn(function()
-                    local t = getPlayerFromName(config.Snipes.Target.Value)
-                    if t and t.Character then
-                        local root=get(t.Character,"HumanoidRootPart")
-                        if(root)then
-                            Snipefunc(root,function()
-                                Velocity(root,Vector3.new(0,1e4,0))
-                            end)
-                        end
+    if(SnipeLoopTimer>=1)then
+        SnipeLoopTimer=0
+        if(config.Snipes.LoopVoid.Value)then
+            task.spawn(function()
+                local t = getPlayerFromName(config.Snipes.Target.Value)
+                if t and t.Character then
+                    local root=get(t.Character,"HumanoidRootPart")
+                    if(root)then
+                        Snipefunc(root,function()
+                            Velocity(root,Vector3.new(0,1e4,0))
+                        end)
                     end
-                end)
-            end
-            if(config.Snipes.LoopKill.Value)then
-                task.spawn(function()
-                    local t = getPlayerFromName(config.Snipes.Target.Value)
-                    if t and t.Character then
-                        local root=get(t.Character,"HumanoidRootPart")
-                        if(root)then
-                            Snipefunc(root,function()
-                                MoveTo(root,CFrame.new(512,-85,512))
-                                Velocity(root,Vector3.new(0,-1e3,0))
-                            end)
-                        end
-                    end
-                end)
-            end
-            if(config.Snipes.LoopPoison.Value)then
-                task.spawn(function()
-                    local t = getPlayerFromName(config.Snipes.Target.Value)
-                    if t and t.Character then
-                        local root=get(t.Character,"HumanoidRootPart")
-                        if(root)then
-                            Snipefunc(root,function()
-                                MoveTo(root,CFrame.new(58,-70,271))
-                            end)
-                        end
-                    end
-                end)
-            end
-            if(config.Snipes.LoopRagdoll.Value)then
-                task.spawn(function()
-                    local t = getPlayerFromName(config.Snipes.Target.Value)
-                    if t and t.Character then
-                        local root=get(t.Character,"HumanoidRootPart")
-                        if(root)then
-                            Snipefunc(root,function()
-                                local rpos=root.CFrame
-                                Velocity(root,Vector3.new(0,-64,0))
-                                task.wait(.1)
-                                MoveTo(root,rpos)
-                                Velocity(root,Vector3.zero)
-                            end)
-                        end
-                    end
-                end)
-            end
-            if(config.Snipes.LoopDeath.Value)then
-                task.spawn(function()
-                    local t = getPlayerFromName(config.Snipes.Target.Value)
-                    if t and t.Character then
-                        local root=get(t.Character,"HumanoidRootPart")
-                        if(root)then
-                            Snipefunc(root,function()
-                                local hum = cget(root.Parent,"Humanoid")
-                                if hum then
-                                    hum:ChangeState(Enum.HumanoidStateType.Dead)
-                                end
-                                task.wait(.5)
-                                ungrab(root)
-                            end)
-                        end
-                    end
-                end)
-            end
+                end
+            end)
         end
-    end)
-end
+        if(config.Snipes.LoopKill.Value)then
+            task.spawn(function()
+                local t = getPlayerFromName(config.Snipes.Target.Value)
+                if t and t.Character then
+                    local root=get(t.Character,"HumanoidRootPart")
+                    if(root)then
+                        Snipefunc(root,function()
+                            MoveTo(root,CFrame.new(512,-85,512))
+                            Velocity(root,Vector3.new(0,-1e3,0))
+                        end)
+                    end
+                end
+            end)
+        end
+        if(config.Snipes.LoopPoison.Value)then
+            task.spawn(function()
+                local t = getPlayerFromName(config.Snipes.Target.Value)
+                if t and t.Character then
+                    local root=get(t.Character,"HumanoidRootPart")
+                    if(root)then
+                        Snipefunc(root,function()
+                            MoveTo(root,CFrame.new(58,-70,271))
+                        end)
+                    end
+                end
+            end)
+        end
+        if(config.Snipes.LoopRagdoll.Value)then
+            task.spawn(function()
+                local t = getPlayerFromName(config.Snipes.Target.Value)
+                if t and t.Character then
+                    local root=get(t.Character,"HumanoidRootPart")
+                    if(root)then
+                        Snipefunc(root,function()
+                            local rpos=root.CFrame
+                            Velocity(root,Vector3.new(0,-64,0))
+                            task.wait(.1)
+                            MoveTo(root,rpos)
+                            Velocity(root,Vector3.zero)
+                        end)
+                    end
+                end
+            end)
+        end
+        if(config.Snipes.LoopDeath.Value)then
+            task.spawn(function()
+                local t = getPlayerFromName(config.Snipes.Target.Value)
+                if t and t.Character then
+                    local root=get(t.Character,"HumanoidRootPart")
+                    if(root)then
+                        Snipefunc(root,function()
+                            local hum = cget(root.Parent,"Humanoid")
+                            if hum then
+                                hum:ChangeState(Enum.HumanoidStateType.Dead)
+                            end
+                            task.wait(.5)
+                            ungrab(root)
+                        end)
+                    end
+                end
+            end)
+        end
+    end
+end)
+
 
    
 
