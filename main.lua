@@ -383,6 +383,63 @@ task.spawn(function()
     end
 end)
 
+AuraTab:AddToggle({
+    Name = "空中固定 Kill Aura",
+    Default = false,
+    Callback = function(Value)
+        _G.LevitateKillAura = Value
+        if Value then
+            task.spawn(function()
+                while _G.LevitateKillAura do
+                    task.wait(0.1)
+                    local lp = game.Players.LocalPlayer
+                    local rs = game:GetService("ReplicatedStorage")
+                    
+                    -- イベント類の取得
+                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+
+                    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = player.Character.HumanoidRootPart
+                                local distance = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+
+                                -- 射程範囲内なら発動
+                                if distance <= 25 and player.Character.Humanoid.Health > 0 then
+                                    pcall(function()
+                                        -- 1. 所有権の奪取（固定を安定させるため）
+                                        if SetNetworkOwner then 
+                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
+                                        end
+
+                                        -- 2. 空中固定ロジック (BodyVelocityを使用)
+                                        local bv = Instance.new("BodyVelocity")
+                                        bv.Name = "LevitateForce"
+                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                        bv.Velocity = Vector3.new(0, 0, 0) -- 速度0でその場に固める
+                                        bv.Parent = targetHRP
+                                        
+                                        -- 相手を少し浮かせる（地面から離す）
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0.5, 0)
+                                        
+                                        -- 3. ダメージイベント (Kill Aura)
+                                        if combatEvent then
+                                            combatEvent:FireServer(player.Character, "Punch")
+                                        end
+
+                                        -- 4. 短時間で削除してループさせる
+                                        game:GetService("Debris"):AddItem(bv, 0.1)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end    
+})
 
 
 --==============================
