@@ -5,7 +5,7 @@ local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jen
 
 -- [[ ウィンドウ設定 ]]
 local Window = OrionLib:MakeWindow({
-    Name = "Xenouzu Hub | Blitz Edition", 
+    Name = "Xenouzu Hub", 
     HidePremium = false, 
     SaveConfig = true, 
     ConfigFolder = "XenouzuHub",
