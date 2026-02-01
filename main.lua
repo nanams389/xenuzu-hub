@@ -287,24 +287,27 @@ task.spawn(function()
     end
 end)
 
-local service=setmetatable({},{
-    __index=function(self,k)
-        local s=game:GetService(k)
-        rawset(self,k,s)
-        return s
-    end,
-})
-
-local loop=Instance.new("BindableEvent")
-service.RunService.Heartbeat:Connect(function(dt)
-    loop:Fire(dt)
-end)
+--==============================
+-- VALOR HUB タブ追加（Xenouzu Hubに統合）
+--==============================
 
 do
-    --// FUNCTIONS/VARIABLES/UTILS
+    local service=setmetatable({},{
+        __index=function(self,k)
+            local s=game:GetService(k)
+            rawset(self,k,s)
+            return s
+        end,
+    })
+
+    local loop=Instance.new("BindableEvent")
+    service.RunService.Heartbeat:Connect(function(dt)
+        loop:Fire(dt)
+    end)
+
     local get=game.FindFirstChild
     local cget=game.FindFirstChildOfClass
-    local waitc=game.WaitForChild
+
     local function getLocalPlayer()
         return service.Players.LocalPlayer
     end
@@ -374,7 +377,6 @@ do
         service.ReplicatedStorage.MenuToys.DestroyToy:FireServer(model)
     end
 
-    --// BLOBMAN
     local function getBlobman()
         local v=get(getInv(),"CreatureBlobman",true)
         if(not v)then
@@ -382,12 +384,6 @@ do
                 if(p)then
                     local m=get(p,"CreatureBlobman")
                     if(not m)or(m and m.PlayerValue.Value~=getLocalPlayer().Name)then
-                        OrionLib:MakeNotification({
-                            Name = "Valor Hub",
-                            Content = "Blobman not found!",
-                            Image = "rbxassetid://4483345998",
-                            Time = 5
-                        })
                         return
                     end
                     v=m
@@ -460,7 +456,6 @@ do
         return tplayer
     end
 
-    --// SNIPES FUNCTIONS
     local function Snipefunc(root,func,...)
         local pos=getLocalRoot().CFrame
         task.spawn(function(...)
@@ -487,106 +482,31 @@ do
         end,...)
     end
 
-    --//DEBUGGING
-    if(not game:IsLoaded())then
-        OrionLib:MakeNotification({
-            Name = "Valor Hub",
-            Content = "Game not loaded! Waiting...",
-            Image = "rbxassetid://4483345998",
-            Time = 5
-        })
-        game.Loaded:Wait()
-        OrionLib:MakeNotification({
-            Name = "Valor Hub",
-            Content = "Game loaded!",
-            Image = "rbxassetid://4483345998",
-            Time = 5
-        })
-    end
-
-    --// MAIN GUI
-    local ToggleKeybind = Enum.KeyCode.C
-    
-    OrionLib:MakeNotification({
-        Name = "Valor Hub",
-        Content = "Hello, "..getLocalPlayer().DisplayName,
-        Image = "rbxassetid://4483345998",
-        Time = 5
-    })
-    OrionLib:MakeNotification({
-        Name = "Valor Hub",
-        Content = ToggleKeybind.Name.." to toggle the GUI",
-        Image = "rbxassetid://4483345998",
-        Time = 5
-    })
-
-    local window = OrionLib:MakeWindow({
-        Name = "Valor Hub",
-        HidePremium = false,
-        SaveConfig = true,
-        ConfigFolder = "ValorHub",
-        IntroEnabled = false
-    })
-
-    --// CONFIG TABLE
     local config={
         Blobman={
-            Target={
-                Value=getLocalPlayer().Name
-            },
-            ArmSide={
-                Value="Left"
-            },
-            Noclip={
-                Value=false
-            },
-            GrabAura={
-                Value=false
-            },
-            KickAura={
-                Value=false
-            },
-            LoopKick={
-                Value=false
-            },
-            LoopKickAll={
-                Value=false
-            }
+            Target={Value=getLocalPlayer().Name},
+            ArmSide={Value="Left"},
+            Noclip={Value=false},
+            GrabAura={Value=false},
+            KickAura={Value=false},
+            LoopKick={Value=false},
+            LoopKickAll={Value=false}
         },
         Snipes={
-            Target={
-                Value=getLocalPlayer().Name
-            },
-            LoopVoid={
-                Value=false
-            },
-            LoopKill={
-                Value=false
-            },
-            LoopPoison={
-                Value=false
-            },
-            LoopRagdoll={
-                Value=false
-            },
-            LoopDeath={
-                Value=false
-            }
+            Target={Value=getLocalPlayer().Name},
+            LoopVoid={Value=false},
+            LoopKill={Value=false},
+            LoopPoison={Value=false},
+            LoopRagdoll={Value=false},
+            LoopDeath={Value=false}
         },
         Settings={
-            IgnoreFriend={
-                Value=false
-            },
-            IgnoreIsInPlot={
-                Value=false
-            },
-            AuraRadius={
-                Value=32
-            }
+            IgnoreFriend={Value=false},
+            IgnoreIsInPlot={Value=false},
+            AuraRadius={Value=32}
         },
     }
 
-    -- Get player list for dropdown
     local playerList = {}
     for _, player in pairs(service.Players:GetPlayers()) do
         if player ~= getLocalPlayer() then
@@ -595,26 +515,25 @@ do
     end
     table.insert(playerList, getLocalPlayer().Name)
 
-    -- Tabs
-    local BlobmansTab = window:MakeTab({
+    -- Windowは既存のXenouzu Hubのものを使用
+    local BlobmansTab = Window:MakeTab({
         Name = "Blobmans",
         Icon = "rbxassetid://4483345998",
         PremiumOnly = false
     })
 
-    local SnipesTab = window:MakeTab({
+    local SnipesTab = Window:MakeTab({
         Name = "Snipes",
         Icon = "rbxassetid://4483345998",
         PremiumOnly = false
     })
 
-    local SettingsTab = window:MakeTab({
+    local SettingsTab = Window:MakeTab({
         Name = "Settings",
         Icon = "rbxassetid://4483345998",
         PremiumOnly = false
     })
 
-    -- Blobmans Tab
     BlobmansTab:AddDropdown({
         Name = "Target",
         Default = getLocalPlayer().Name,
@@ -746,7 +665,6 @@ do
             local pos=getLocalRoot().CFrame
             task.wait()
             if(blob and getLocalHum())then
-                --// RIGHT
                 if(blob:IsDescendantOf(workspace.PlotItems))then
                     getLocalRoot().CFrame=CFrame.new(0,0,0)
                     task.wait(.5)
@@ -760,7 +678,6 @@ do
                 destroyToy(Toy)
                 task.wait(.1)
 
-                --// LEFT
                 local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
                 SetNetworkOwner(Toy.HumanoidRootPart)
                 Toy.HumanoidRootPart.CFrame=blob.LeftDetector.CFrame
@@ -864,7 +781,6 @@ do
         end
     })
 
-    -- Snipes Tab
     SnipesTab:AddDropdown({
         Name = "Target",
         Default = getLocalPlayer().Name,
@@ -1059,7 +975,6 @@ do
         end
     })
 
-    -- Settings Tab
     SettingsTab:AddSlider({
         Name = "Aura Radius",
         Min = 0,
@@ -1096,28 +1011,15 @@ do
         end
     })
 
-    SettingsTab:AddTextbox({
-        Name = "Toggle Keybind",
-        Default = "C",
-        TextDisappear = false,
-        Callback = function(Value)
-            ToggleKeybind = Enum.KeyCode[Value]
-        end
-    })
-
-    --// SYSTEM
     task.wait(.1)
 
-    --// LOOPS
     local LoopKickTimer=0
     local SnipeLoopTimer=0
     
     loop.Event:Connect(function(dt)
-        --//DELTATIME/TIMER
         LoopKickTimer+=dt
         SnipeLoopTimer+=dt
 
-        --// BLOBS
         if(config.Blobman.Noclip.Value)then
             local blob=getBlobman()
             if(blob)then
@@ -1129,7 +1031,6 @@ do
             end
         end
 
-        --// AURAS
         if(getLocalChar()and getLocalRoot())then
             for _,v in ipairs(GetNearParts(getLocalRoot().Position,config.Settings.AuraRadius.Value))do
                 if(not v.Anchored and not v:IsDescendantOf(getLocalChar()))then
@@ -1211,7 +1112,6 @@ do
             LoopKickTimer=0
         end
 
-        --// SNIPES LOOPS
         if(SnipeLoopTimer>=1)then
             SnipeLoopTimer=0
             if(config.Snipes.LoopVoid.Value)then
@@ -1292,6 +1192,8 @@ do
         end
     end)
 end
+
+   
 
 --==============================
 -- 初期化
