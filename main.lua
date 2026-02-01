@@ -305,9 +305,11 @@ end)
 local UltimateTab = Window:MakeTab({ Name = "究極オーラ", Icon = "rbxassetid://6031064398" })
 
 _G.UltimateAuraEnabled = false
+_G.LevitateKillAura = false
 local ultRange = 25
 local ultPower = 50000
 
+-- [[ 1. 究極ハイブリッドオーラ（元のコード維持） ]]
 UltimateTab:AddToggle({
     Name = "究極ハイブリッドオーラ有効化",
     Default = false,
@@ -316,74 +318,8 @@ UltimateTab:AddToggle({
     end    
 })
 
-UltimateTab:AddSlider({
-    Name = "オーラ射程", Min = 5, Max = 50, Default = 25,
-    Callback = function(Value) ultRange = Value end
-})
-
--- [[ 合体ロジックメイン ]]
-task.spawn(function()
-    while true do
-        task.wait(0.1) -- サーバー負荷を考えつつ高速回転
-        if _G.UltimateAuraEnabled then
-            local lp = game.Players.LocalPlayer
-            if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
-            
-            local myRoot = lp.Character.HumanoidRootPart
-            local rs = game:GetService("ReplicatedStorage")
-
-            -- 必要なイベント類を事前に定義
-            local events = {
-                SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner"),
-                Combat = (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat")) or rs:FindFirstChild("HitEvent"),
-                Ragdoll = rs:FindFirstChild("PlayerEvents") and rs.PlayerEvents:FindFirstChild("RagdollPlayer"),
-                GrabLine = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("CreateGrabLine")
-            }
-
-            for _, p in ipairs(game.Players:GetPlayers()) do
-                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
-                    local targetRoot = p.Character.HumanoidRootPart
-                    local targetHum = p.Character.Humanoid
-                    local dist = (targetRoot.Position - myRoot.Position).Magnitude
-
-                    if dist <= ultRange and targetHum.Health > 0 then
-                        pcall(function()
-                            -- 1. 【Kill Aura】ダメージイベント送信
-                            if events.Combat then
-                                events.Combat:FireServer(p.Character, "Punch")
-                            end
-
-                            -- 2. 【Void/Kick】所有権の剥奪 (NetworkOwner & Grab)
-                            if events.SetNetworkOwner then
-                                events.SetNetworkOwner:FireServer(targetRoot, targetRoot.CFrame)
-                            end
-                            if events.GrabLine then
-                                events.GrabLine:FireServer(targetRoot)
-                            end
-                            if events.Ragdoll then
-                                events.Ragdoll:FireServer(p.Character)
-                            end
-
-                            -- 3. 【Fling/Void】物理的な吹き飛ばし
-                            -- Velocityを上書きして空の彼方へ
-                            targetRoot.Velocity = Vector3.new(ultPower, ultPower, ultPower)
-                            targetRoot.RotVelocity = Vector3.new(ultPower, ultPower, ultPower)
-
-                            -- 4. ダメ押しのBodyVelocity（相手を固定させない）
-                            local bv = Instance.new("BodyVelocity")
-                            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                            bv.Velocity = Vector3.new(0, ultPower/2, 0)
-                            bv.Parent = targetRoot
-                            game:GetService("Debris"):AddItem(bv, 0.1)
-                        end)
-                    end
-                end
-            end
-        end
-    end
-end)
-
-AuraTab:AddToggle({
+-- [[ 2. 空中固定 Kill Aura（新しく追加） ]]
+UltimateTab:AddToggle({
     Name = "空中固定 Kill Aura",
     Default = false,
     Callback = function(Value)
@@ -394,8 +330,6 @@ AuraTab:AddToggle({
                     task.wait(0.1)
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
-                    
-                    -- イベント類の取得
                     local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
                     local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
@@ -405,30 +339,15 @@ AuraTab:AddToggle({
                                 local targetHRP = player.Character.HumanoidRootPart
                                 local distance = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
 
-                                -- 射程範囲内なら発動
                                 if distance <= 25 and player.Character.Humanoid.Health > 0 then
                                     pcall(function()
-                                        -- 1. 所有権の奪取（固定を安定させるため）
-                                        if SetNetworkOwner then 
-                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
-                                        end
-
-                                        -- 2. 空中固定ロジック (BodyVelocityを使用)
+                                        if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
                                         local bv = Instance.new("BodyVelocity")
-                                        bv.Name = "LevitateForce"
                                         bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                        bv.Velocity = Vector3.new(0, 0, 0) -- 速度0でその場に固める
+                                        bv.Velocity = Vector3.new(0, 0, 0)
                                         bv.Parent = targetHRP
-                                        
-                                        -- 相手を少し浮かせる（地面から離す）
                                         targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0.5, 0)
-                                        
-                                        -- 3. ダメージイベント (Kill Aura)
-                                        if combatEvent then
-                                            combatEvent:FireServer(player.Character, "Punch")
-                                        end
-
-                                        -- 4. 短時間で削除してループさせる
+                                        if combatEvent then combatEvent:FireServer(player.Character, "Punch") end
                                         game:GetService("Debris"):AddItem(bv, 0.1)
                                     end)
                                 end
@@ -441,6 +360,52 @@ AuraTab:AddToggle({
     end    
 })
 
+-- [[ 3. 設定用スライダー ]]
+UltimateTab:AddSlider({
+    Name = "オーラ射程", Min = 5, Max = 50, Default = 25,
+    Callback = function(Value) ultRange = Value end
+})
+
+-- [[ 究極ハイブリッドオーラ用ロジック（いじってません） ]]
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if _G.UltimateAuraEnabled then
+            local lp = game.Players.LocalPlayer
+            if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
+            local myRoot = lp.Character.HumanoidRootPart
+            local rs = game:GetService("ReplicatedStorage")
+            local events = {
+                SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner"),
+                Combat = (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat")) or rs:FindFirstChild("HitEvent"),
+                Ragdoll = rs:FindFirstChild("PlayerEvents") and rs.PlayerEvents:FindFirstChild("RagdollPlayer"),
+                GrabLine = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("CreateGrabLine")
+            }
+            for _, p in ipairs(game.Players:GetPlayers()) do
+                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
+                    local targetRoot = p.Character.HumanoidRootPart
+                    local targetHum = p.Character.Humanoid
+                    local dist = (targetRoot.Position - myRoot.Position).Magnitude
+                    if dist <= ultRange and targetHum.Health > 0 then
+                        pcall(function()
+                            if events.Combat then events.Combat:FireServer(p.Character, "Punch") end
+                            if events.SetNetworkOwner then events.SetNetworkOwner:FireServer(targetRoot, targetRoot.CFrame) end
+                            if events.GrabLine then events.GrabLine:FireServer(targetRoot) end
+                            if events.Ragdoll then events.Ragdoll:FireServer(p.Character) end
+                            targetRoot.Velocity = Vector3.new(ultPower, ultPower, ultPower)
+                            targetRoot.RotVelocity = Vector3.new(ultPower, ultPower, ultPower)
+                            local bv = Instance.new("BodyVelocity")
+                            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                            bv.Velocity = Vector3.new(0, ultPower/2, 0)
+                            bv.Parent = targetRoot
+                            game:GetService("Debris"):AddItem(bv, 0.1)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
 
 --==============================
 -- 初期化
