@@ -472,81 +472,60 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 銀河追放ワープ抹殺 (Galaxy Fling + Return)
+-- 全員自動巡回テレポート (Auto-Warp)
 --==============================
-_G.GalaxyFlingEnabled = false
-local flingPower = 9999999
-local galaxyReturnPos = nil -- 帰還場所を保存する変数
+_G.AutoWarpEnabled = false
+local warpReturnPos = nil
 
 UltimateTab:AddToggle({
-    Name = "銀河追放ワープ (Return機能付)",
+    Name = "全員自動テレポート (Auto-Warp)",
     Default = false,
     Callback = function(Value)
-        _G.GalaxyFlingEnabled = Value
+        _G.AutoWarpEnabled = Value
         local lp = game.Players.LocalPlayer
         
         if Value then
-            -- 1. オンにした瞬間の座標を記録
+            -- 1. 開始時の場所を記憶
             if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                galaxyReturnPos = lp.Character.HumanoidRootPart.CFrame
+                warpReturnPos = lp.Character.HumanoidRootPart.CFrame
             end
 
             task.spawn(function()
-                while _G.GalaxyFlingEnabled do
-                    task.wait(0.3)
-                    local rs = game:GetService("ReplicatedStorage")
+                while _G.AutoWarpEnabled do
+                    task.wait(0.5) -- ワープの間隔（早すぎるとキック対策）
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
 
                     for _, p in ipairs(game.Players:GetPlayers()) do
-                        if not _G.GalaxyFlingEnabled then break end
+                        if not _G.AutoWarpEnabled then break end
                         
+                        -- 自分以外で、生存しているプレイヤーを探す
                         if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-                            local tHRP = p.Character.HumanoidRootPart
                             
                             pcall(function()
-                                -- ワープ実行
-                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
-                                task.wait(0.1)
-
-                                -- 所有権奪取
-                                local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
-
-                                -- 銀河射出（9999999M）
-                                tHRP.Velocity = Vector3.new(0, flingPower, flingPower)
-                                tHRP.RotVelocity = Vector3.new(flingPower, flingPower, flingPower)
-
-                                -- 追撃BodyVelocity
-                                local bv = Instance.new("BodyVelocity")
-                                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                bv.Velocity = Vector3.new(0, flingPower, 0)
-                                bv.Parent = tHRP
-                                game:GetService("Debris"):AddItem(bv, 0.05)
-
-                                -- ダメージ
-                                local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                if combat then combat:FireServer(p.Character, "Punch") end
-
-                                -- 通知
+                                -- 2. ターゲットの場所へワープ（頭上5スタッド）
+                                lp.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
+                                
+                                -- 通知を表示
                                 OrionLib:MakeNotification({
-                                    Name = "銀河追放完了",
-                                    Content = p.Name .. " を送信しました。",
-                                    Time = 2
+                                    Name = "テレポート中",
+                                    Content = p.Name .. " の場所へ移動しました",
+                                    Time = 1
                                 })
                             end)
-                            task.wait(0.4)
+                            
+                            task.wait(1) -- その場にとどまる時間（秒）
                         end
                     end
                 end
             end)
         else
-            -- 2. オフにした時に元の場所へ戻る
-            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and galaxyReturnPos then
-                lp.Character.HumanoidRootPart.CFrame = galaxyReturnPos
+            -- 3. オフにした時に元の場所へ戻る
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and warpReturnPos then
+                lp.Character.HumanoidRootPart.CFrame = warpReturnPos
                 OrionLib:MakeNotification({
-                    Name = "帰還成功",
-                    Content = "元の場所に戻りました。",
+                    Name = "帰還",
+                    Content = "元の場所に戻りました",
                     Time = 3
                 })
             end
