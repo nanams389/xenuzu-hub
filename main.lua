@@ -534,98 +534,63 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 特定プレイヤー選択・究極フリング抹殺
+-- 特定プレイヤー：追跡・転送システム
 --==============================
-local SelectedTargets = {} 
-_G.TargetKillEnabled = false
-local ultPower = 50000 -- 吹っ飛ばし威力
+local SelectedTarget = "" -- 現在のターゲット（1人に絞ると安定します）
+_G.StalkerEnabled = false
+local stalkerOffset = CFrame.new(0, 5, 0) -- 5は頭上
 
--- プレイヤーリスト取得 (維持)
-local function GetPlayerList()
-    local plist = {}
-    for _, p in ipairs(game.Players:GetPlayers()) do
-        if p ~= game.Players.LocalPlayer then
-            table.insert(plist, p.Name)
-        end
-    end
-    return plist
-end
-
--- 1. ターゲット選択ドロップダウン (維持)
+-- 1. ターゲット選択ドロップダウン
 local TargetDropdown = UltimateTab:AddDropdown({
-    Name = "抹殺ターゲットを選択 (複数可)",
+    Name = "ターゲットを選択",
     Default = "",
-    Options = GetPlayerList(),
+    Options = GetPlayerList(), -- 既存のリスト取得関数
     Callback = function(Value)
-        local found = false
-        for i, v in ipairs(SelectedTargets) do
-            if v == Value then 
-                table.remove(SelectedTargets, i)
-                found = true
-                break 
-            end
-        end
-        if not found and Value ~= "" then
-            table.insert(SelectedTargets, Value)
+        SelectedTarget = Value
+        OrionLib:MakeNotification({Name = "ターゲットロック", Content = Value .. " を選択中", Time = 2})
+    end    
+})
+
+-- 2. 【テレポート】ボタン (押した瞬間、相手の場所へ)
+UltimateTab:AddButton({
+    Name = "ターゲットへ即座にテレポート",
+    Callback = function()
+        local lp = game.Players.LocalPlayer
+        local targetPlayer = game.Players:FindFirstChild(SelectedTarget)
+        
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local myHRP = lp.Character.HumanoidRootPart
+            local tHRP = targetPlayer.Character.HumanoidRootPart
+            
+            myHRP.CFrame = tHRP.CFrame * CFrame.new(0, 3, 0) -- 相手の少し上にテレポート
+            OrionLib:MakeNotification({Name = "転送完了", Content = SelectedTarget .. " の元へ移動しました", Time = 1})
+        else
+            OrionLib:MakeNotification({Name = "エラー", Content = "ターゲットが見つかりません", Time = 2})
         end
     end    
 })
 
--- 2. 実行トグル：究極フリング & 即時帰還
+-- 3. 【ストーカー】トグル (ONの間ずっと貼り付く)
 UltimateTab:AddToggle({
-    Name = "選択したターゲットを究極フリング",
+    Name = "自動ストーカー (持続追従)",
     Default = false,
     Callback = function(Value)
-        _G.TargetKillEnabled = Value
+        _G.StalkerEnabled = Value
         if Value then
             task.spawn(function()
-                while _G.TargetKillEnabled do
-                    task.wait(0.3) -- 巡回速度
+                while _G.StalkerEnabled do
+                    task.wait() -- 最速更新
                     local lp = game.Players.LocalPlayer
-                    local rs = game:GetService("ReplicatedStorage")
+                    local targetPlayer = game.Players:FindFirstChild(SelectedTarget)
                     
-                    if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
-
-                    for _, targetName in ipairs(SelectedTargets) do
-                        if not _G.TargetKillEnabled then break end
+                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and lp.Character then
+                        local myHRP = lp.Character:FindFirstChild("HumanoidRootPart")
+                        local tHRP = targetPlayer.Character.HumanoidRootPart
                         
-                        local p = game.Players:FindFirstChild(targetName)
-                        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
-                            local tHRP = p.Character.HumanoidRootPart
-                            local myHRP = lp.Character.HumanoidRootPart
-                            local oldPos = myHRP.CFrame -- 【重要】元の位置を記録
-
-                            pcall(function()
-                                -- 【A】一瞬でターゲットへ移動
-                                myHRP.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
-                                
-                                -- 【B】提示された究極オーラロジックの適用
-                                local events = {
-                                    SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner"),
-                                    Combat = (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat")) or rs:FindFirstChild("HitEvent"),
-                                    Ragdoll = rs:FindFirstChild("PlayerEvents") and rs.PlayerEvents:FindFirstChild("RagdollPlayer")
-                                }
-
-                                if events.SetNetworkOwner then events.SetNetworkOwner:FireServer(tHRP, tHRP.CFrame) end
-                                if events.Combat then events.Combat:FireServer(p.Character, "Punch") end
-                                if events.Ragdoll then events.Ragdoll:FireServer(p.Character) end
-
-                                -- 【C】無限フリング & 上空吹っ飛ばし
-                                -- 凄まじい回転速度と上昇速度を付与
-                                tHRP.Velocity = Vector3.new(0, ultPower, 0)
-                                tHRP.RotVelocity = Vector3.new(ultPower, ultPower, ultPower)
-                                
-                                local bv = Instance.new("BodyVelocity")
-                                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                bv.Velocity = Vector3.new(0, ultPower, 0)
-                                bv.Parent = tHRP
-                                game:GetService("Debris"):AddItem(bv, 0.5) -- 0.5秒間上昇させ続ける
-
-                                -- 【D】即時帰還：自分を元の位置へ戻す
-                                task.wait(0.05) -- 処理のための一瞬の猶予
-                                myHRP.CFrame = oldPos
-                                myHRP.Velocity = Vector3.new(0,0,0) -- 慣性をリセット
-                            end)
+                        if myHRP and tHRP then
+                            -- 物理演算をリセットして座標を直書き（自分が吹っ飛ばない）
+                            myHRP.Velocity = Vector3.new(0,0,0)
+                            myHRP.CFrame = tHRP.CFrame * stalkerOffset
                         end
                     end
                 end
@@ -634,7 +599,16 @@ UltimateTab:AddToggle({
     end    
 })
 
--- 3. 更新ボタン
+-- 4. 追従位置スライダー
+UltimateTab:AddSlider({
+    Name = "ストーカー距離 (高さ)",
+    Min = -15, Max = 30, Default = 5,
+    Callback = function(Value)
+        stalkerOffset = CFrame.new(0, Value, 0)
+    end    
+})
+
+-- 5. リスト更新ボタン
 UltimateTab:AddButton({
     Name = "プレイヤーリストを更新",
     Callback = function()
