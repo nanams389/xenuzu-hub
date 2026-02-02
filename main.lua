@@ -5,12 +5,12 @@ local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jen
 
 -- [[ ウィンドウ設定 ]]
 local Window = OrionLib:MakeWindow({
-    Name = "Xenouzu Hub", 
+    Name = "nazer Hub", 
     HidePremium = false, 
     SaveConfig = true, 
     ConfigFolder = "nazer Hub",
     IntroEnabled = true,
-    IntroText = "Xenouzu Hub 起動中..."
+    IntroText = "nazer Hub 起動中..."
 })
 
 --==============================
