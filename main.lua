@@ -682,6 +682,110 @@ UltimateTab:AddButton({
     end    
 })
 
+-- [[ Anti-Gucci & Defense タブ ]]
+local DefenseTab = Window:MakeTab({
+    Name = "Anti-Gucci Pro",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- 設定用変数
+_G.AntiGrab = false
+_G.AntiFling = false
+_G.AutoCounter = false
+
+-- 1. 掴み防止 (Anti-Grab)
+DefenseTab:AddToggle({
+    Name = "Enable Anti-Grab (掴み無効化)",
+    Default = false,
+    Callback = function(Value)
+        _G.AntiGrab = Value
+    end    
+})
+
+-- 2. フリング防止 (Anti-Fling)
+DefenseTab:AddToggle({
+    Name = "Enable Anti-Fling (飛ばし防止)",
+    Default = false,
+    Callback = function(Value)
+        _G.AntiFling = Value
+    end    
+})
+
+-- 3. 自動カウンター (Auto-Ragdoll)
+DefenseTab:AddToggle({
+    Name = "Auto-Counter (近接自動ラグドール)",
+    Default = false,
+    Callback = function(Value)
+        _G.AutoCounter = Value
+    end    
+})
+
+-- [[ 最強防衛ループ処理 ]]
+task.spawn(function()
+    while true do 
+        task.wait(0.05) -- 高速ループで検知
+        
+        local lp = game.Players.LocalPlayer
+        local char = lp.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
+        
+        local hrp = char.HumanoidRootPart
+        local hum = char:FindFirstChild("Humanoid")
+        local rs = game:GetService("ReplicatedStorage")
+
+        pcall(function()
+            -- 【Anti-Grab】掴まれても即時解除・自由移動
+            if _G.AntiGrab then
+                -- ステータス強制上書き
+                if lp:FindFirstChild("IsHeld") then lp.IsHeld.Value = false end
+                if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
+                if lp:FindFirstChild("Struggled") then lp.Struggled.Value = true end
+                
+                -- 物理拘束の解除
+                if hrp.Anchored then hrp.Anchored = false end
+                
+                -- サーバーへ脱出信号を連打
+                local ce = rs:FindFirstChild("CharacterEvents")
+                if ce and ce:FindFirstChild("Struggle") then
+                    ce.Struggle:FireServer()
+                end
+            end
+
+            -- 【Anti-Fling】物理的な衝撃を無効化
+            if _G.AntiFling then
+                -- 自分の速度を一定以上にしない（飛ばされる力を逃がす）
+                if hrp.Velocity.Magnitude > 50 then
+                    hrp.Velocity = Vector3.new(0, 0, 0)
+                    hrp.RotVelocity = Vector3.new(0, 0, 0)
+                end
+                -- 他のプレイヤーとの衝突判定を一時的にいじる（高度な設定が必要な場合あり）
+            end
+
+            -- 【Auto-Counter】Gucciや敵が近づいたら自動返り討ち
+            if _G.AutoCounter then
+                for _, p in pairs(game.Players:GetPlayers()) do
+                    if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local enemyHrp = p.Character.HumanoidRootPart
+                        local dist = (enemyHrp.Position - hrp.Position).Magnitude
+                        
+                        -- 20スタッド以内に近づいたら発動
+                        if dist < 20 then
+                            -- 特定の名前(Gucci)なら即時実行
+                            if p.Name:find("Gucci") or p.DisplayName:find("Gucci") then
+                                local pe = rs:FindFirstChild("PlayerEvents")
+                                if pe and pe:FindFirstChild("RagdollPlayer") then
+                                    pe.RagdollPlayer:FireServer(p.Character)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
 --==============================
 -- 初期化
 --==============================
