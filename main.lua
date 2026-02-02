@@ -306,6 +306,67 @@ task.spawn(function()
 end)
 
 --==============================
+-- 掴みカウンター・地底送りオーラ
+--==============================
+_G.AntiGrabAbyss = false
+local abyssDepth = -50 
+local fallSpeed = -500
+
+AntiTab:AddToggle({
+    Name = "掴みカウンター: 地底貫通キル",
+    Default = false,
+    Callback = function(Value)
+        _G.AntiGrabAbyss = Value
+        if Value then
+            task.spawn(function()
+                while _G.AntiGrabAbyss do
+                    task.wait(0.05)
+                    local lp = game.Players.LocalPlayer
+                    local rs = game:GetService("ReplicatedStorage")
+                    
+                    -- あなたが誰かに掴まれている（IsHeldがtrue）かチェック
+                    if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
+                        -- 自分を掴んでいる相手（通常、近くにいる相手）を特定
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = player.Character.HumanoidRootPart
+                                local dist = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                                
+                                -- 掴んでいる＝至近距離(7スタッド以内)にいる相手を抹殺
+                                if dist < 7 and player.Character.Humanoid.Health > 0 then
+                                    pcall(function()
+                                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                        local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+
+                                        -- 1. 所有権奪取（あなたのロジック）
+                                        if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
+
+                                        -- 2. Noclip化
+                                        for _, part in ipairs(player.Character:GetChildren()) do
+                                            if part:IsA("BasePart") then part.CanCollide = false end
+                                        end
+
+                                        -- 3. 地底送り (abyssDepth)
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, abyssDepth, 0)
+                                        targetHRP.Velocity = Vector3.new(0, fallSpeed, 0)
+
+                                        -- 4. カウンターダメージ
+                                        if combatEvent then combatEvent:FireServer(player.Character, "Punch") end
+                                        
+                                        -- 5. 自分の解放（Anti-Grab Proと併用で確実）
+                                        if lp.IsHeld then lp.IsHeld.Value = false end
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end    
+})
+
+--==============================
 -- タブ：究極オーラ (Ultimate)
 --==============================
 local UltimateTab = Window:MakeTab({ Name = "究極オーラ", Icon = "rbxassetid://6031064398" })
