@@ -235,7 +235,7 @@ local AntiTab = Window:MakeTab({
     PremiumOnly = false
 })
 
--- グローバル変数として定義（死んでも値を保持するため）
+-- グローバル変数として定義（値を確実に保持）
 _G.activeAntiGrab = _G.activeAntiGrab or false
 
 AntiTab:AddToggle({
@@ -246,55 +246,61 @@ AntiTab:AddToggle({
     end    
 })
 
--- [[ ループ処理：死んでも止まらないように設計 ]]
+-- [[ ループ処理：死んでも・リセットしても止まらない設計 ]]
 task.spawn(function()
     while true do 
-        task.wait(0.1) -- 負荷を少し抑えるために 0.1秒待機
+        task.wait(0.1)
         
         if _G.activeAntiGrab then
             local lp = game.Players.LocalPlayer
-            -- キャラクターが読み込まれるのを待つ
-            local char = lp.Character or lp.CharacterAdded:Wait()
-            local hrp = char:FindFirstChild("HumanoidRootPart")
             
-            -- 1. Dexで見た「IsHeld」のチェックを強制的に外す
-            if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
-                lp.IsHeld.Value = false
-            end
+            -- 【重要】現在の最新のキャラクターを取得（存在しない場合は飛ばす）
+            local char = lp.Character
+            if not char then continue end
+            
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local rs = game:GetService("ReplicatedStorage")
+            
+            pcall(function()
+                -- 1. Dexで見た「IsHeld」のチェックを強制的に外す
+                if lp:FindFirstChild("IsHeld") and lp.IsHeld.Value == true then
+                    lp.IsHeld.Value = false
+                end
 
-            -- 2. 物理的な固まり（Anchored）を即時解除
-            if hrp and hrp.Anchored then
-                hrp.Anchored = false
-            end
+                -- 2. 物理的な固まり（Anchored）を即時解除
+                if hrp and hrp.Anchored then
+                    hrp.Anchored = false
+                end
 
-            -- 3. 周囲のプレイヤーへの自動カウンター（Blobman対策）
-            -- ここは自分のキャラが生きている時だけ実行
-            if hrp then
-                for _, p in pairs(game.Players:GetPlayers()) do
-                    if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        local enemyHrp = p.Character.HumanoidRootPart
-                        local dist = (enemyHrp.Position - hrp.Position).Magnitude
-                        
-                        if dist < 25 then 
-                            -- 相手をラグドール化
-                            local re = game.ReplicatedStorage:FindFirstChild("PlayerEvents")
-                            if re and re:FindFirstChild("RagdollPlayer") then
-                                re.RagdollPlayer:FireServer(p.Character)
+                -- 3. 周囲のプレイヤーへの自動カウンター
+                if hrp then
+                    for _, p in pairs(game.Players:GetPlayers()) do
+                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
+                            if p.Character.Humanoid.Health > 0 then
+                                local enemyHrp = p.Character.HumanoidRootPart
+                                local dist = (enemyHrp.Position - hrp.Position).Magnitude
+                                
+                                if dist < 25 then 
+                                    local re = rs:FindFirstChild("PlayerEvents")
+                                    if re and re:FindFirstChild("RagdollPlayer") then
+                                        re.RagdollPlayer:FireServer(p.Character)
+                                    end
+                                end
                             end
                         end
                     end
                 end
-            end
-            
-            -- 4. ステータス正常化（あがき・タイマー）
-            if lp:FindFirstChild("Struggled") then lp.Struggled.Value = true end
-            if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
-            
-            -- 5. サーバーへの脱出信号（イベントが存在するか確認してから）
-            local ce = game.ReplicatedStorage:FindFirstChild("CharacterEvents")
-            if ce and ce:FindFirstChild("Struggle") then
-                ce.Struggle:FireServer()
-            end
+                
+                -- 4. ステータス正常化
+                if lp:FindFirstChild("Struggled") then lp.Struggled.Value = true end
+                if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
+                
+                -- 5. サーバーへの脱出信号
+                local ce = rs:FindFirstChild("CharacterEvents")
+                if ce and ce:FindFirstChild("Struggle") then
+                    ce.Struggle:FireServer()
+                end
+            end)
         end
     end
 end)
