@@ -540,6 +540,54 @@ UltimateTab:AddToggle({
 })
 
 --==============================
+-- 爆速・全員テレポート (Turbo-Warp)
+--==============================
+_G.TurboWarpEnabled = false
+
+UltimateTab:AddToggle({
+    Name = "⚡ 爆速巡回 (Turbo-Warp)",
+    Default = false,
+    Callback = function(Value)
+        _G.TurboWarpEnabled = Value
+        local lp = game.Players.LocalPlayer
+        
+        if Value then
+            task.spawn(function()
+                while _G.TurboWarpEnabled do
+                    -- 巡回の間隔を極限まで短縮 (0.1秒)
+                    task.wait(0.1) 
+                    
+                    if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
+
+                    for _, p in ipairs(game.Players:GetPlayers()) do
+                        if not _G.TurboWarpEnabled then break end
+                        
+                        -- 生存チェック
+                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                            
+                            pcall(function()
+                                -- 通知を出すとラグくなるので、爆速モードでは通知をカット
+                                -- 頭上3スタッドにワープ (より密着)
+                                lp.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 3, 0)
+                            end)
+                            
+                            -- 滞在時間を0.3秒（元の1/3以下）に変更
+                            task.wait(0.3) 
+                        end
+                    end
+                end
+            end)
+        else
+            OrionLib:MakeNotification({
+                Name = "Turbo-Warp",
+                Content = "爆速巡回を停止しました",
+                Time = 2
+            })
+        end
+    end    
+})
+
+--==============================
 -- 特定プレイヤー：追跡・転送システム
 --==============================
 local SelectedTarget = "" 
