@@ -498,7 +498,7 @@ UltimateTab:AddToggle({
 
             task.spawn(function()
                 while _G.AutoWarpEnabled do
-                    task.wait(0.5) -- ワープの間隔（早すぎるとキック対策）
+                    task.wait(0.2) -- ワープの間隔（早すぎるとキック対策）
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
 
@@ -516,11 +516,11 @@ UltimateTab:AddToggle({
                                 OrionLib:MakeNotification({
                                     Name = "テレポート中",
                                     Content = p.Name .. " の場所へ移動しました",
-                                    Time = 1
+                                    Time = 0.5
                                 })
                             end)
                             
-                            task.wait(1) -- その場にとどまる時間（秒）
+                            task.wait(0.5) -- その場にとどまる時間（秒）
                         end
                     end
                 end
