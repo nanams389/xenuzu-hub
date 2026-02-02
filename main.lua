@@ -8,7 +8,7 @@ local Window = OrionLib:MakeWindow({
     Name = "Xenouzu Hub", 
     HidePremium = false, 
     SaveConfig = true, 
-    ConfigFolder = "XenouzuHub",
+    ConfigFolder = "nazer Hub",
     IntroEnabled = true,
     IntroText = "Xenouzu Hub 起動中..."
 })
@@ -534,12 +534,12 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 特定プレイヤー選択・抹殺システム
+-- 特定プレイヤー選択・確定抹殺システム
 --==============================
-local SelectedTargets = {} -- 選択されたプレイヤーを格納するテーブル
+local SelectedTargets = {} 
 _G.TargetKillEnabled = false
 
--- プレイヤーリストを更新する関数
+-- プレイヤーリスト取得用
 local function GetPlayerList()
     local plist = {}
     for _, p in ipairs(game.Players:GetPlayers()) do
@@ -550,32 +550,31 @@ local function GetPlayerList()
     return plist
 end
 
--- ターゲット選択ドロップダウン
+-- 1. ターゲット選択ドロップダウン
 local TargetDropdown = UltimateTab:AddDropdown({
     Name = "抹殺ターゲットを選択 (複数可)",
     Default = "",
     Options = GetPlayerList(),
     Callback = function(Value)
-        -- すでに選択リストにない場合のみ追加
         local found = false
         for i, v in ipairs(SelectedTargets) do
             if v == Value then 
-                table.remove(SelectedTargets, i) -- 再選択で解除
+                table.remove(SelectedTargets, i)
                 found = true
-                OrionLib:MakeNotification({Name = "解除", Content = Value .. " をターゲットから外しました", Time = 2})
+                OrionLib:MakeNotification({Name = "解除", Content = Value .. " をリストから外しました", Time = 2})
                 break 
             end
         end
         if not found and Value ~= "" then
             table.insert(SelectedTargets, Value)
-            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " をターゲットに追加しました", Time = 2})
+            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " をターゲットに追加", Time = 2})
         end
     end    
 })
 
--- ターゲット抹殺実行トグル
+-- 2. 確定抹殺実行トグル
 UltimateTab:AddToggle({
-    Name = "選択したターゲットを自動抹殺",
+    Name = "選択したターゲットを確定抹殺",
     Default = false,
     Callback = function(Value)
         _G.TargetKillEnabled = Value
@@ -594,27 +593,44 @@ UltimateTab:AddToggle({
                         local p = game.Players:FindFirstChild(targetName)
                         if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                             local tHRP = p.Character.HumanoidRootPart
+                            local tChar = p.Character
                             
                             pcall(function()
-                                -- 1. ターゲットへワープ
-                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
+                                -- 【A】ターゲットの頭上にワープ
+                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 8, 0)
                                 
-                                -- 2. 地底貫通 (Noclip Abyss) 実行
+                                -- 【B】所有権を奪取
                                 local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
                                 if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
 
-                                for i = 1, 10 do -- 執拗に10回叩きつける
-                                    task.wait(0.05)
-                                    for _, part in ipairs(p.Character:GetChildren()) do
-                                        if part:IsA("BasePart") then part.CanCollide = false end
+                                -- 【C】確定貫通ループ（執拗に叩き落とす）
+                                for i = 1, 15 do
+                                    task.wait(0.03)
+                                    -- 衝突判定を強制オフ
+                                    for _, part in ipairs(tChar:GetDescendants()) do
+                                        if part:IsA("BasePart") then 
+                                            part.CanCollide = false 
+                                            part.Velocity = Vector3.new(0, -1000, 0)
+                                        end
                                     end
-                                    tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -15, 0)
-                                    tHRP.Velocity = Vector3.new(0, -500, 0)
+                                    -- CFrameで地面を貫通させる
+                                    tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -40, 0)
                                     
+                                    -- 攻撃イベント
                                     local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                    if combat then combat:FireServer(p.Character, "Punch") end
+                                    if combat then combat:FireServer(tChar, "Punch") end
                                 end
+
+                                -- 【D】トドメ：マップの遥か底へ強制テレポート
+                                tHRP.CFrame = CFrame.new(tHRP.Position.X, -2000, tHRP.Position.Z)
+
+                                OrionLib:MakeNotification({
+                                    Name = "抹殺完了",
+                                    Content = p.Name .. " を奈落へ送りました",
+                                    Time = 2
+                                })
                             end)
+                            task.wait(0.2) -- 次のターゲットへ
                         end
                     end
                 end
@@ -623,7 +639,7 @@ UltimateTab:AddToggle({
     end    
 })
 
--- リスト更新ボタン（新しいプレイヤーが入ってきた時用）
+-- 3. 更新ボタン
 UltimateTab:AddButton({
     Name = "プレイヤーリストを更新",
     Callback = function()
