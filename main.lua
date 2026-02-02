@@ -534,12 +534,13 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 特定プレイヤー選択・確定地底貫通 (自分は固定)
+-- 特定プレイヤー選択・究極フリング抹殺
 --==============================
 local SelectedTargets = {} 
-_G.TargetAbyssEnabled = false
+_G.TargetKillEnabled = false
+local ultPower = 50000 -- 吹っ飛ばし威力
 
--- プレイヤーリスト取得用
+-- プレイヤーリスト取得 (維持)
 local function GetPlayerList()
     local plist = {}
     for _, p in ipairs(game.Players:GetPlayers()) do
@@ -550,9 +551,9 @@ local function GetPlayerList()
     return plist
 end
 
--- 1. ターゲット選択
+-- 1. ターゲット選択ドロップダウン (維持)
 local TargetDropdown = UltimateTab:AddDropdown({
-    Name = "抹殺ターゲットを選択",
+    Name = "抹殺ターゲットを選択 (複数可)",
     Default = "",
     Options = GetPlayerList(),
     Callback = function(Value)
@@ -570,52 +571,61 @@ local TargetDropdown = UltimateTab:AddDropdown({
     end    
 })
 
--- 2. 実行トグル (自分を空中に固定し、相手だけを落とす)
+-- 2. 実行トグル：究極フリング & 即時帰還
 UltimateTab:AddToggle({
-    Name = "選択したターゲットを地底へ沈める",
+    Name = "選択したターゲットを究極フリング",
     Default = false,
     Callback = function(Value)
-        _G.TargetAbyssEnabled = Value
+        _G.TargetKillEnabled = Value
         if Value then
             task.spawn(function()
-                while _G.TargetAbyssEnabled do
-                    task.wait(0.05)
+                while _G.TargetKillEnabled do
+                    task.wait(0.3) -- 巡回速度
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
 
                     for _, targetName in ipairs(SelectedTargets) do
-                        local player = game.Players:FindFirstChild(targetName)
+                        if not _G.TargetKillEnabled then break end
                         
-                        if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            local targetHRP = player.Character.HumanoidRootPart
+                        local p = game.Players:FindFirstChild(targetName)
+                        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
+                            local tHRP = p.Character.HumanoidRootPart
                             local myHRP = lp.Character.HumanoidRootPart
+                            local oldPos = myHRP.CFrame -- 【重要】元の位置を記録
 
-                            -- 【重要】自分を相手の「少し上」で完全に静止させる（物理干渉防止）
-                            myHRP.Velocity = Vector3.new(0, 0, 0)
-                            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 12, 0) -- 12スタッド上に浮く
+                            pcall(function()
+                                -- 【A】一瞬でターゲットへ移動
+                                myHRP.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
+                                
+                                -- 【B】提示された究極オーラロジックの適用
+                                local events = {
+                                    SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner"),
+                                    Combat = (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat")) or rs:FindFirstChild("HitEvent"),
+                                    Ragdoll = rs:FindFirstChild("PlayerEvents") and rs.PlayerEvents:FindFirstChild("RagdollPlayer")
+                                }
 
-                            if player.Character.Humanoid.Health > 0 then
-                                pcall(function()
-                                    -- 1. 所有権奪取
-                                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                    if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
+                                if events.SetNetworkOwner then events.SetNetworkOwner:FireServer(tHRP, tHRP.CFrame) end
+                                if events.Combat then events.Combat:FireServer(p.Character, "Punch") end
+                                if events.Ragdoll then events.Ragdoll:FireServer(p.Character) end
 
-                                    -- 2. 相手のパーツだけをNoclip化
-                                    for _, part in ipairs(player.Character:GetChildren()) do
-                                        if part:IsA("BasePart") then part.CanCollide = false end
-                                    end
+                                -- 【C】無限フリング & 上空吹っ飛ばし
+                                -- 凄まじい回転速度と上昇速度を付与
+                                tHRP.Velocity = Vector3.new(0, ultPower, 0)
+                                tHRP.RotVelocity = Vector3.new(ultPower, ultPower, ultPower)
+                                
+                                local bv = Instance.new("BodyVelocity")
+                                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                bv.Velocity = Vector3.new(0, ultPower, 0)
+                                bv.Parent = tHRP
+                                game:GetService("Debris"):AddItem(bv, 0.5) -- 0.5秒間上昇させ続ける
 
-                                    -- 3. 相手の座標だけを垂直落下させる (-50ずつ)
-                                    targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -50, 0)
-                                    targetHRP.Velocity = Vector3.new(0, -500, 0)
-
-                                    -- 4. ダメージ送信
-                                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                    if combatEvent then combatEvent:FireServer(player.Character, "Punch") end
-                                end)
-                            end
+                                -- 【D】即時帰還：自分を元の位置へ戻す
+                                task.wait(0.05) -- 処理のための一瞬の猶予
+                                myHRP.CFrame = oldPos
+                                myHRP.Velocity = Vector3.new(0,0,0) -- 慣性をリセット
+                            end)
                         end
                     end
                 end
