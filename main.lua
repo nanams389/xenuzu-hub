@@ -534,12 +534,12 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 特定プレイヤー選択・地底貫通システム
+-- 特定プレイヤー選択・確定地底貫通 (自分は固定)
 --==============================
 local SelectedTargets = {} 
 _G.TargetAbyssEnabled = false
 
--- プレイヤーリスト取得用 (Dropdown用)
+-- プレイヤーリスト取得用
 local function GetPlayerList()
     local plist = {}
     for _, p in ipairs(game.Players:GetPlayers()) do
@@ -550,7 +550,7 @@ local function GetPlayerList()
     return plist
 end
 
--- 1. ターゲット選択ドロップダウン
+-- 1. ターゲット選択
 local TargetDropdown = UltimateTab:AddDropdown({
     Name = "抹殺ターゲットを選択",
     Default = "",
@@ -561,18 +561,16 @@ local TargetDropdown = UltimateTab:AddDropdown({
             if v == Value then 
                 table.remove(SelectedTargets, i)
                 found = true
-                OrionLib:MakeNotification({Name = "解除", Content = Value .. " を除外しました", Time = 2})
                 break 
             end
         end
         if not found and Value ~= "" then
             table.insert(SelectedTargets, Value)
-            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " を地底送りターゲットに設定", Time = 2})
         end
     end    
 })
 
--- 2. 実行トグル (提示されたロジックをそのまま使用)
+-- 2. 実行トグル (自分を空中に固定し、相手だけを落とす)
 UltimateTab:AddToggle({
     Name = "選択したターゲットを地底へ沈める",
     Default = false,
@@ -581,53 +579,41 @@ UltimateTab:AddToggle({
         if Value then
             task.spawn(function()
                 while _G.TargetAbyssEnabled do
-                    task.wait(0.05) -- 高速ループ維持
+                    task.wait(0.05)
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
 
-                    -- リストに登録されたターゲットを順番に処理
                     for _, targetName in ipairs(SelectedTargets) do
-                        if not _G.TargetAbyssEnabled then break end
-                        
                         local player = game.Players:FindFirstChild(targetName)
                         
-                        -- ここから提示されたロジックを合体
-                        if player and player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                             local targetHRP = player.Character.HumanoidRootPart
-                            
-                            -- ターゲットに接近（自分がぶっ飛ぶのを防ぐため、少し離れた上空に固定）
-                            lp.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 8, 0)
-                            lp.Character.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                            local myHRP = lp.Character.HumanoidRootPart
+
+                            -- 【重要】自分を相手の「少し上」で完全に静止させる（物理干渉防止）
+                            myHRP.Velocity = Vector3.new(0, 0, 0)
+                            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 12, 0) -- 12スタッド上に浮く
 
                             if player.Character.Humanoid.Health > 0 then
                                 pcall(function()
-                                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-
                                     -- 1. 所有権奪取
-                                    if SetNetworkOwner then 
-                                        SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
-                                    end
+                                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                    if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
 
-                                    -- 2. Noclip効果
+                                    -- 2. 相手のパーツだけをNoclip化
                                     for _, part in ipairs(player.Character:GetChildren()) do
-                                        if part:IsA("BasePart") then
-                                            part.CanCollide = false
-                                        end
+                                        if part:IsA("BasePart") then part.CanCollide = false end
                                     end
 
-                                    -- 3. 地面の下へ強制移動 (abyssDepth = -50)
+                                    -- 3. 相手の座標だけを垂直落下させる (-50ずつ)
                                     targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -50, 0)
-
-                                    -- 4. 速度固定 (fallSpeed = -500)
                                     targetHRP.Velocity = Vector3.new(0, -500, 0)
 
-                                    -- 5. ダメージ
-                                    if combatEvent then
-                                        combatEvent:FireServer(player.Character, "Punch")
-                                    end
+                                    -- 4. ダメージ送信
+                                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                    if combatEvent then combatEvent:FireServer(player.Character, "Punch") end
                                 end)
                             end
                         end
