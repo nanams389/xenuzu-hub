@@ -534,6 +534,104 @@ UltimateTab:AddToggle({
 })
 
 --==============================
+-- 特定プレイヤー選択・抹殺システム
+--==============================
+local SelectedTargets = {} -- 選択されたプレイヤーを格納するテーブル
+_G.TargetKillEnabled = false
+
+-- プレイヤーリストを更新する関数
+local function GetPlayerList()
+    local plist = {}
+    for _, p in ipairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            table.insert(plist, p.Name)
+        end
+    end
+    return plist
+end
+
+-- ターゲット選択ドロップダウン
+local TargetDropdown = UltimateTab:AddDropdown({
+    Name = "抹殺ターゲットを選択 (複数可)",
+    Default = "",
+    Options = GetPlayerList(),
+    Callback = function(Value)
+        -- すでに選択リストにない場合のみ追加
+        local found = false
+        for i, v in ipairs(SelectedTargets) do
+            if v == Value then 
+                table.remove(SelectedTargets, i) -- 再選択で解除
+                found = true
+                OrionLib:MakeNotification({Name = "解除", Content = Value .. " をターゲットから外しました", Time = 2})
+                break 
+            end
+        end
+        if not found and Value ~= "" then
+            table.insert(SelectedTargets, Value)
+            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " をターゲットに追加しました", Time = 2})
+        end
+    end    
+})
+
+-- ターゲット抹殺実行トグル
+UltimateTab:AddToggle({
+    Name = "選択したターゲットを自動抹殺",
+    Default = false,
+    Callback = function(Value)
+        _G.TargetKillEnabled = Value
+        if Value then
+            task.spawn(function()
+                while _G.TargetKillEnabled do
+                    task.wait(0.3)
+                    local lp = game.Players.LocalPlayer
+                    local rs = game:GetService("ReplicatedStorage")
+                    
+                    if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
+
+                    for _, targetName in ipairs(SelectedTargets) do
+                        if not _G.TargetKillEnabled then break end
+                        
+                        local p = game.Players:FindFirstChild(targetName)
+                        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                            local tHRP = p.Character.HumanoidRootPart
+                            
+                            pcall(function()
+                                -- 1. ターゲットへワープ
+                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
+                                
+                                -- 2. 地底貫通 (Noclip Abyss) 実行
+                                local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
+
+                                for i = 1, 10 do -- 執拗に10回叩きつける
+                                    task.wait(0.05)
+                                    for _, part in ipairs(p.Character:GetChildren()) do
+                                        if part:IsA("BasePart") then part.CanCollide = false end
+                                    end
+                                    tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -15, 0)
+                                    tHRP.Velocity = Vector3.new(0, -500, 0)
+                                    
+                                    local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                    if combat then combat:FireServer(p.Character, "Punch") end
+                                end
+                            end)
+                        end
+                    end
+                end
+            end)
+        end
+    end    
+})
+
+-- リスト更新ボタン（新しいプレイヤーが入ってきた時用）
+UltimateTab:AddButton({
+    Name = "プレイヤーリストを更新",
+    Callback = function()
+        TargetDropdown:Refresh(GetPlayerList(), true)
+    end    
+})
+
+--==============================
 -- 初期化
 --==============================
 OrionLib:Init()
