@@ -536,62 +536,71 @@ UltimateTab:AddToggle({
 --==============================
 -- 特定プレイヤー：追跡・転送システム
 --==============================
-local SelectedTarget = "" -- 現在のターゲット（1人に絞ると安定します）
+local SelectedTarget = "" 
 _G.StalkerEnabled = false
-local stalkerOffset = CFrame.new(0, 5, 0) -- 5は頭上
+local stalkerOffset = CFrame.new(0, 5, 0)
+
+-- プレイヤーリスト取得関数
+local function GetPlayerList()
+    local plist = {}
+    for _, p in ipairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            table.insert(plist, p.Name)
+        end
+    end
+    return plist
+end
 
 -- 1. ターゲット選択ドロップダウン
 local TargetDropdown = UltimateTab:AddDropdown({
     Name = "ターゲットを選択",
     Default = "",
-    Options = GetPlayerList(), -- 既存のリスト取得関数
+    Options = GetPlayerList(),
     Callback = function(Value)
         SelectedTarget = Value
-        OrionLib:MakeNotification({Name = "ターゲットロック", Content = Value .. " を選択中", Time = 2})
+        OrionLib:MakeNotification({
+            Name = "ターゲットロック",
+            Content = Value .. " を捕捉しました",
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
     end    
 })
 
--- 2. 【テレポート】ボタン (押した瞬間、相手の場所へ)
+-- 2. 【テレポート】ボタン
 UltimateTab:AddButton({
     Name = "ターゲットへ即座にテレポート",
     Callback = function()
+        if SelectedTarget == "" then return end
         local lp = game.Players.LocalPlayer
         local targetPlayer = game.Players:FindFirstChild(SelectedTarget)
         
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local myHRP = lp.Character.HumanoidRootPart
-            local tHRP = targetPlayer.Character.HumanoidRootPart
-            
-            myHRP.CFrame = tHRP.CFrame * CFrame.new(0, 3, 0) -- 相手の少し上にテレポート
-            OrionLib:MakeNotification({Name = "転送完了", Content = SelectedTarget .. " の元へ移動しました", Time = 1})
-        else
-            OrionLib:MakeNotification({Name = "エラー", Content = "ターゲットが見つかりません", Time = 2})
+            lp.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 3, 0)
         end
     end    
 })
 
--- 3. 【ストーカー】トグル (ONの間ずっと貼り付く)
+-- 3. 【ストーカー】トグル
 UltimateTab:AddToggle({
-    Name = "自動ストーカー (持続追従)",
+    Name = "自動ストーカー (ONで貼り付き)",
     Default = false,
     Callback = function(Value)
         _G.StalkerEnabled = Value
         if Value then
             task.spawn(function()
                 while _G.StalkerEnabled do
-                    task.wait() -- 最速更新
+                    task.wait()
                     local lp = game.Players.LocalPlayer
                     local targetPlayer = game.Players:FindFirstChild(SelectedTarget)
                     
-                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and lp.Character then
-                        local myHRP = lp.Character:FindFirstChild("HumanoidRootPart")
+                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and lp.Character:FindFirstChild("HumanoidRootPart") then
+                        local myHRP = lp.Character.HumanoidRootPart
                         local tHRP = targetPlayer.Character.HumanoidRootPart
                         
-                        if myHRP and tHRP then
-                            -- 物理演算をリセットして座標を直書き（自分が吹っ飛ばない）
-                            myHRP.Velocity = Vector3.new(0,0,0)
-                            myHRP.CFrame = tHRP.CFrame * stalkerOffset
-                        end
+                        -- 物理的な衝突や吹っ飛びを防止
+                        myHRP.Velocity = Vector3.new(0,0,0)
+                        myHRP.CFrame = tHRP.CFrame * stalkerOffset
                     end
                 end
             end)
@@ -599,16 +608,19 @@ UltimateTab:AddToggle({
     end    
 })
 
--- 4. 追従位置スライダー
+-- 4. 追従高度調整スライダー
 UltimateTab:AddSlider({
-    Name = "ストーカー距離 (高さ)",
+    Name = "ストーカー高度 (上下距離)",
     Min = -15, Max = 30, Default = 5,
+    Color = Color3.fromRGB(255,255,255),
+    Increment = 1,
+    ValueName = "Studs",
     Callback = function(Value)
         stalkerOffset = CFrame.new(0, Value, 0)
     end    
 })
 
--- 5. リスト更新ボタン
+-- 5. プレイヤーリスト更新ボタン
 UltimateTab:AddButton({
     Name = "プレイヤーリストを更新",
     Callback = function()
