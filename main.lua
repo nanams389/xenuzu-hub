@@ -534,12 +534,12 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 特定プレイヤー選択・確定抹殺システム
+-- 特定プレイヤー選択・地底貫通システム
 --==============================
 local SelectedTargets = {} 
-_G.TargetKillEnabled = false
+_G.TargetAbyssEnabled = false
 
--- プレイヤーリスト取得用 (維持)
+-- プレイヤーリスト取得用 (Dropdown用)
 local function GetPlayerList()
     local plist = {}
     for _, p in ipairs(game.Players:GetPlayers()) do
@@ -550,9 +550,9 @@ local function GetPlayerList()
     return plist
 end
 
--- 1. ターゲット選択ドロップダウン (維持)
+-- 1. ターゲット選択ドロップダウン
 local TargetDropdown = UltimateTab:AddDropdown({
-    Name = "抹殺ターゲットを選択 (複数可)",
+    Name = "抹殺ターゲットを選択",
     Default = "",
     Options = GetPlayerList(),
     Callback = function(Value)
@@ -567,28 +567,29 @@ local TargetDropdown = UltimateTab:AddDropdown({
         end
         if not found and Value ~= "" then
             table.insert(SelectedTargets, Value)
-            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " をターゲットに追加", Time = 2})
+            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " を地底送りに設定", Time = 2})
         end
     end    
 })
 
--- 2. 確定抹殺実行トグル (最速ロジックへ入れ替え)
+-- 2. 指名手配オーラ実行トグル
 UltimateTab:AddToggle({
-    Name = "選択したターゲットを確定抹殺",
+    Name = "選択したターゲットを地底へ沈める",
     Default = false,
     Callback = function(Value)
-        _G.TargetKillEnabled = Value
+        _G.TargetAbyssEnabled = Value
         if Value then
             task.spawn(function()
-                while _G.TargetKillEnabled do
-                    task.wait(0.1) -- 巡回速度
+                while _G.TargetAbyssEnabled do
+                    task.wait(0.05) -- あなたのコードの高速リピートを維持
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
 
+                    -- 選択された全ターゲットをループ
                     for _, targetName in ipairs(SelectedTargets) do
-                        if not _G.TargetKillEnabled then break end
+                        if not _G.TargetAbyssEnabled then break end
                         
                         local p = game.Players:FindFirstChild(targetName)
                         if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
@@ -596,42 +597,27 @@ UltimateTab:AddToggle({
                             local tChar = p.Character
                             
                             pcall(function()
-                                -- 【A】ワープ：相手の頭上へ
+                                -- 【A】追跡：ターゲットの場所に瞬時に移動
                                 lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
-                                
-                                -- 【B】所有権を即座に奪取
-                                local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
 
-                                -- 【C】最速・確定キルロジック (ループなしの瞬間処理)
-                                -- 1. 衝突判定を完全無効化
-                                for _, part in ipairs(tChar:GetDescendants()) do
-                                    if part:IsA("BasePart") then 
-                                        part.CanCollide = false 
-                                        part.Velocity = Vector3.new(0, -999999, 0) -- 凄まじい下向きの力
-                                    end
+                                -- 【B】あなたの地底貫通ロジックを実行
+                                -- 1. 所有権奪取
+                                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                if SetNetworkOwner then SetNetworkOwner:FireServer(tHRP, tHRP.CFrame) end
+
+                                -- 2. Noclip化
+                                for _, part in ipairs(tChar:GetChildren()) do
+                                    if part:IsA("BasePart") then part.CanCollide = false end
                                 end
 
-                                -- 2. 攻撃イベントを3連打で送信
-                                local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                if combat then 
-                                    combat:FireServer(tChar, "Punch")
-                                    combat:FireServer(tChar, "Punch")
-                                    combat:FireServer(tChar, "Punch")
-                                end
+                                -- 3. 地底へめり込ませる (提示された abyssDepth を使用)
+                                tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -50, 0)
+                                tHRP.Velocity = Vector3.new(0, -500, 0)
 
-                                -- 3. 【重要】座標を直接「Void」判定の深さ（-5000）へ瞬間移動
-                                -- 地面を突き抜けるのを待たず、直接奈落の底へ書き換えます
-                                tHRP.CFrame = CFrame.new(tHRP.Position.X, -5000, tHRP.Position.Z)
-
-                                -- 通知
-                                OrionLib:MakeNotification({
-                                    Name = "抹殺完了",
-                                    Content = p.Name .. " を消去しました",
-                                    Time = 1
-                                })
+                                -- 4. ダメージ
+                                local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                if combatEvent then combatEvent:FireServer(tChar, "Punch") end
                             end)
-                            task.wait(0.2) -- 次のターゲットへ
                         end
                     end
                 end
@@ -640,7 +626,7 @@ UltimateTab:AddToggle({
     end    
 })
 
--- 3. 更新ボタン (維持)
+-- 3. リスト更新ボタン
 UltimateTab:AddButton({
     Name = "プレイヤーリストを更新",
     Callback = function()
