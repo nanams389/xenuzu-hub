@@ -561,18 +561,18 @@ local TargetDropdown = UltimateTab:AddDropdown({
             if v == Value then 
                 table.remove(SelectedTargets, i)
                 found = true
-                OrionLib:MakeNotification({Name = "解除", Content = Value .. " をリストから外しました", Time = 2})
+                OrionLib:MakeNotification({Name = "解除", Content = Value .. " を除外しました", Time = 2})
                 break 
             end
         end
         if not found and Value ~= "" then
             table.insert(SelectedTargets, Value)
-            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " を地底送りに設定", Time = 2})
+            OrionLib:MakeNotification({Name = "指名手配", Content = Value .. " を地底送りターゲットに設定", Time = 2})
         end
     end    
 })
 
--- 2. 指名手配オーラ実行トグル
+-- 2. 実行トグル (提示されたロジックをそのまま使用)
 UltimateTab:AddToggle({
     Name = "選択したターゲットを地底へ沈める",
     Default = false,
@@ -581,43 +581,55 @@ UltimateTab:AddToggle({
         if Value then
             task.spawn(function()
                 while _G.TargetAbyssEnabled do
-                    task.wait(0.05) -- あなたのコードの高速リピートを維持
+                    task.wait(0.05) -- 高速ループ維持
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
                     if not (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) then continue end
 
-                    -- 選択された全ターゲットをループ
+                    -- リストに登録されたターゲットを順番に処理
                     for _, targetName in ipairs(SelectedTargets) do
                         if not _G.TargetAbyssEnabled then break end
                         
-                        local p = game.Players:FindFirstChild(targetName)
-                        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-                            local tHRP = p.Character.HumanoidRootPart
-                            local tChar = p.Character
+                        local player = game.Players:FindFirstChild(targetName)
+                        
+                        -- ここから提示されたロジックを合体
+                        if player and player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            local targetHRP = player.Character.HumanoidRootPart
                             
-                            pcall(function()
-                                -- 【A】追跡：ターゲットの場所に瞬時に移動
-                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
+                            -- ターゲットに接近（自分がぶっ飛ぶのを防ぐため、少し離れた上空に固定）
+                            lp.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 8, 0)
+                            lp.Character.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
 
-                                -- 【B】あなたの地底貫通ロジックを実行
-                                -- 1. 所有権奪取
-                                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                if SetNetworkOwner then SetNetworkOwner:FireServer(tHRP, tHRP.CFrame) end
+                            if player.Character.Humanoid.Health > 0 then
+                                pcall(function()
+                                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
-                                -- 2. Noclip化
-                                for _, part in ipairs(tChar:GetChildren()) do
-                                    if part:IsA("BasePart") then part.CanCollide = false end
-                                end
+                                    -- 1. 所有権奪取
+                                    if SetNetworkOwner then 
+                                        SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
+                                    end
 
-                                -- 3. 地底へめり込ませる (提示された abyssDepth を使用)
-                                tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -50, 0)
-                                tHRP.Velocity = Vector3.new(0, -500, 0)
+                                    -- 2. Noclip効果
+                                    for _, part in ipairs(player.Character:GetChildren()) do
+                                        if part:IsA("BasePart") then
+                                            part.CanCollide = false
+                                        end
+                                    end
 
-                                -- 4. ダメージ
-                                local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                if combatEvent then combatEvent:FireServer(tChar, "Punch") end
-                            end)
+                                    -- 3. 地面の下へ強制移動 (abyssDepth = -50)
+                                    targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -50, 0)
+
+                                    -- 4. 速度固定 (fallSpeed = -500)
+                                    targetHRP.Velocity = Vector3.new(0, -500, 0)
+
+                                    -- 5. ダメージ
+                                    if combatEvent then
+                                        combatEvent:FireServer(player.Character, "Punch")
+                                    end
+                                end)
+                            end
                         end
                     end
                 end
@@ -626,7 +638,7 @@ UltimateTab:AddToggle({
     end    
 })
 
--- 3. リスト更新ボタン
+-- 3. 更新ボタン
 UltimateTab:AddButton({
     Name = "プレイヤーリストを更新",
     Callback = function()
