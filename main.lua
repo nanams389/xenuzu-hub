@@ -682,79 +682,62 @@ UltimateTab:AddButton({
     end    
 })
 
--- [[ 零秒・鉄壁 Anti-Gucci ]]
+-- [[ 鉄壁 Anti-Gucci 2.0 ]]
 local AntiGucciTab = Window:MakeTab({
-    Name = "Anti-Gucci 0.0",
+    Name = "Anti-Gucci 2.0",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-_G.AbsoluteZeroDefense = false
+_G.GodModeDefense = false
 
 AntiGucciTab:AddToggle({
-    Name = "Activate Absolute Zero (完全拒絶)",
+    Name = "Activate God-Defense (完全拒絶・修正版)",
     Default = false,
     Callback = function(Value)
-        _G.AbsoluteZeroDefense = Value
-        
-        if Value then
-            OrionLib:MakeNotification({
-                Name = "System",
-                Content = "絶対防衛圏：展開。もはやGucciはあなたを視認することも困難です。",
-                Time = 3
-            })
-        end
+        _G.GodModeDefense = Value
     end    
 })
 
--- [[ 最速を越えた防衛ロジック ]]
+-- [[ 物理演算・制約除去ループ ]]
 game:GetService("RunService").Stepped:Connect(function()
-    if _G.AbsoluteZeroDefense then
+    if _G.GodModeDefense then
         local lp = game.Players.LocalPlayer
         local char = lp.Character
-        if not char then return end
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
         pcall(function()
-            -- 1. 【物理消滅】全てのパーツから「触れる判定」を完全に抹消
-            -- task.waitを使わず、物理シミュレーションの毎ステップ(1/60秒以下)で実行
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanTouch = false
-                    part.CanQuery = false -- サーバー側からの「そこに誰かいるか？」という問い合わせを拒否
+            local hrp = char.HumanoidRootPart
+            
+            -- 1. 【制約の強制削除】掴みスクリプトが勝手につけてくる接続パーツを即消す
+            -- これで「掴まれて一緒に動かされる」のを防ぐ
+            for _, obj in ipairs(char:GetDescendants()) do
+                if obj:IsA("Weld") or obj:IsA("ManualWeld") or obj:IsA("AlignPosition") or obj:IsA("AlignOrientation") or obj:IsA("RopeConstraint") then
+                    -- 自分のアニメーションに必要なWeld以外を削除
+                    if not obj.Name:find("Root") and obj.Name ~= "Neck" then
+                        obj:Destroy()
+                    end
                 end
             end
 
-            -- 2. 【ステータス零固定】
-            -- 掴みに関連する全ての値を、計算が回る前に「False」へ固定
+            -- 2. 【ステータス・ロック】
             if lp:FindFirstChild("IsHeld") then lp.IsHeld.Value = false end
             if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
             
-            -- 3. 【疑似アンチ・アンカー】
-            -- 掴みスクリプトが強制的にかけてくる「Anchored」を物理演算の隙間なく解除
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.Anchored = false
-                -- 飛んでくる衝撃波を相殺
-                hrp.Velocity = Vector3.new(0, 0, 0)
-                hrp.RotVelocity = Vector3.new(0, 0, 0)
-            end
-            
-            -- 4. 【Gucci接近拒否：超広域】
-            -- 視界に入る前に無力化
-            for _, p in pairs(game.Players:GetPlayers()) do
-                if p ~= lp and (p.Name:find("Gucci") or p.DisplayName:find("Gucci")) then
-                    if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        local dist = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
-                        if dist < 30 then -- 30スタッド（かなり遠め）から発動
-                            local rs = game:GetService("ReplicatedStorage")
-                            local pe = rs:FindFirstChild("PlayerEvents")
-                            if pe and pe:FindFirstChild("RagdollPlayer") then
-                                -- 相手の腕が届く前に、サーバーに対して相手のラグドール化を連打
-                                pe.RagdollPlayer:FireServer(p.Character)
-                            end
-                        end
-                    end
+            -- 3. 【物理の正常化】地面との接触は維持し、相手からの干渉だけ消す
+            -- パーツごとに判定を細かく制御
+            for _, part in ipairs(char:GetChildren()) do
+                if part:IsA("BasePart") then
+                    -- 地面(Baseplate)等との接触は残しつつ、他プレイヤーとの衝突を避ける設定
+                    part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
                 end
+            end
+
+            -- 4. 【ジャンプ・移動エラー対策】
+            -- アンカーを外すだけでなく、速度の異常値をリセット
+            if hrp.Anchored then hrp.Anchored = false end
+            if hrp.Velocity.Magnitude > 100 then -- 異常に飛ばされた時だけリセット
+                hrp.Velocity = Vector3.new(0,0,0)
             end
         end)
     end
