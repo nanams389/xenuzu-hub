@@ -682,93 +682,81 @@ UltimateTab:AddButton({
     end    
 })
 
--- [[ Anti-Gucci 統合タブ ]]
+-- [[ 零秒・鉄壁 Anti-Gucci ]]
 local AntiGucciTab = Window:MakeTab({
-    Name = "Anti-Gucci",
+    Name = "Anti-Gucci 0.0",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-_G.UltimateAntiGucci = false
+_G.AbsoluteZeroDefense = false
 
 AntiGucciTab:AddToggle({
-    Name = "Activate Full Anti-Gucci",
+    Name = "Activate Absolute Zero (完全拒絶)",
     Default = false,
     Callback = function(Value)
-        _G.UltimateAntiGucci = Value
+        _G.AbsoluteZeroDefense = Value
         
-        -- オンにした瞬間の通知
         if Value then
             OrionLib:MakeNotification({
                 Name = "System",
-                Content = "鉄壁モード起動。Gucciはあなたに触れることすらできません。",
+                Content = "絶対防衛圏：展開。もはやGucciはあなたを視認することも困難です。",
                 Time = 3
             })
         end
     end    
 })
 
--- [[ 鉄壁ループ処理 ]]
-task.spawn(function()
-    while true do 
-        task.wait(0.01) -- 限界まで速いループ (0.01秒)
-        
-        if _G.UltimateAntiGucci then
-            local lp = game.Players.LocalPlayer
-            local char = lp.Character
-            if not char then continue end
+-- [[ 最速を越えた防衛ロジック ]]
+game:GetService("RunService").Stepped:Connect(function()
+    if _G.AbsoluteZeroDefense then
+        local lp = game.Players.LocalPlayer
+        local char = lp.Character
+        if not char then return end
+
+        pcall(function()
+            -- 1. 【物理消滅】全てのパーツから「触れる判定」を完全に抹消
+            -- task.waitを使わず、物理シミュレーションの毎ステップ(1/60秒以下)で実行
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanTouch = false
+                    part.CanQuery = false -- サーバー側からの「そこに誰かいるか？」という問い合わせを拒否
+                end
+            end
+
+            -- 2. 【ステータス零固定】
+            -- 掴みに関連する全ての値を、計算が回る前に「False」へ固定
+            if lp:FindFirstChild("IsHeld") then lp.IsHeld.Value = false end
+            if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
             
-            pcall(function()
-                -- 1. 【物理的拒否】パーツの接触判定をいじる
-                -- 相手のスクリプトが「触れた」と判定するのを防ぐ
-                for _, part in ipairs(char:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        -- CanTouchをオフにすると掴みスクリプトが反応しなくなることが多い
-                        part.CanTouch = false 
-                    end
-                end
-
-                -- 2. 【ステータスロック】掴みフラグを常に折り続ける
-                if lp:FindFirstChild("IsHeld") then lp.IsHeld.Value = false end
-                if lp:FindFirstChild("HeldTimer") then lp.HeldTimer.Value = 0 end
-                
-                -- 3. 【強制アンカー解除】一瞬でも固まるのを許さない
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp and hrp.Anchored then
-                    hrp.Anchored = false
-                end
-
-                -- 4. 【Fling拒否】近づく不審な動きを検知
-                for _, p in pairs(game.Players:GetPlayers()) do
-                    if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        -- 名前にGucciが入っているかチェック
-                        if p.Name:find("Gucci") or p.DisplayName:find("Gucci") then
-                            local enemyHrp = p.Character.HumanoidRootPart
-                            local dist = (enemyHrp.Position - hrp.Position).Magnitude
-                            
-                            -- 15スタッド以内に近づいたら強制的に相手をラグドール化（自衛）
-                            if dist < 15 then
-                                local rs = game:GetService("ReplicatedStorage")
-                                local pe = rs:FindFirstChild("PlayerEvents")
-                                if pe and pe:FindFirstChild("RagdollPlayer") then
-                                    pe.RagdollPlayer:FireServer(p.Character)
-                                end
+            -- 3. 【疑似アンチ・アンカー】
+            -- 掴みスクリプトが強制的にかけてくる「Anchored」を物理演算の隙間なく解除
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.Anchored = false
+                -- 飛んでくる衝撃波を相殺
+                hrp.Velocity = Vector3.new(0, 0, 0)
+                hrp.RotVelocity = Vector3.new(0, 0, 0)
+            end
+            
+            -- 4. 【Gucci接近拒否：超広域】
+            -- 視界に入る前に無力化
+            for _, p in pairs(game.Players:GetPlayers()) do
+                if p ~= lp and (p.Name:find("Gucci") or p.DisplayName:find("Gucci")) then
+                    if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
+                        if dist < 30 then -- 30スタッド（かなり遠め）から発動
+                            local rs = game:GetService("ReplicatedStorage")
+                            local pe = rs:FindFirstChild("PlayerEvents")
+                            if pe and pe:FindFirstChild("RagdollPlayer") then
+                                -- 相手の腕が届く前に、サーバーに対して相手のラグドール化を連打
+                                pe.RagdollPlayer:FireServer(p.Character)
                             end
                         end
                     end
                 end
-            end)
-        else
-            -- オフにした時は接触判定を元に戻す
-            pcall(function()
-                local char = game.Players.LocalPlayer.Character
-                if char then
-                    for _, part in ipairs(char:GetChildren()) do
-                        if part:IsA("BasePart") then part.CanTouch = true end
-                    end
-                end
-            end)
-        end
+            end
+        end)
     end
 end)
 
