@@ -539,7 +539,7 @@ UltimateTab:AddToggle({
 local SelectedTargets = {} 
 _G.TargetKillEnabled = false
 
--- プレイヤーリスト取得用
+-- プレイヤーリスト取得用 (維持)
 local function GetPlayerList()
     local plist = {}
     for _, p in ipairs(game.Players:GetPlayers()) do
@@ -550,7 +550,7 @@ local function GetPlayerList()
     return plist
 end
 
--- 1. ターゲット選択ドロップダウン
+-- 1. ターゲット選択ドロップダウン (維持)
 local TargetDropdown = UltimateTab:AddDropdown({
     Name = "抹殺ターゲットを選択 (複数可)",
     Default = "",
@@ -572,7 +572,7 @@ local TargetDropdown = UltimateTab:AddDropdown({
     end    
 })
 
--- 2. 確定抹殺実行トグル
+-- 2. 確定抹殺実行トグル (最速ロジックへ入れ替え)
 UltimateTab:AddToggle({
     Name = "選択したターゲットを確定抹殺",
     Default = false,
@@ -581,7 +581,7 @@ UltimateTab:AddToggle({
         if Value then
             task.spawn(function()
                 while _G.TargetKillEnabled do
-                    task.wait(0.3)
+                    task.wait(0.1) -- 巡回速度
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
@@ -596,38 +596,39 @@ UltimateTab:AddToggle({
                             local tChar = p.Character
                             
                             pcall(function()
-                                -- 【A】ターゲットの頭上にワープ
-                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 8, 0)
+                                -- 【A】ワープ：相手の頭上へ
+                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 5, 0)
                                 
-                                -- 【B】所有権を奪取
+                                -- 【B】所有権を即座に奪取
                                 local netOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
                                 if netOwner then netOwner:FireServer(tHRP, tHRP.CFrame) end
 
-                                -- 【C】確定貫通ループ（執拗に叩き落とす）
-                                for i = 1, 15 do
-                                    task.wait(0.03)
-                                    -- 衝突判定を強制オフ
-                                    for _, part in ipairs(tChar:GetDescendants()) do
-                                        if part:IsA("BasePart") then 
-                                            part.CanCollide = false 
-                                            part.Velocity = Vector3.new(0, -1000, 0)
-                                        end
+                                -- 【C】最速・確定キルロジック (ループなしの瞬間処理)
+                                -- 1. 衝突判定を完全無効化
+                                for _, part in ipairs(tChar:GetDescendants()) do
+                                    if part:IsA("BasePart") then 
+                                        part.CanCollide = false 
+                                        part.Velocity = Vector3.new(0, -999999, 0) -- 凄まじい下向きの力
                                     end
-                                    -- CFrameで地面を貫通させる
-                                    tHRP.CFrame = tHRP.CFrame * CFrame.new(0, -40, 0)
-                                    
-                                    -- 攻撃イベント
-                                    local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                    if combat then combat:FireServer(tChar, "Punch") end
                                 end
 
-                                -- 【D】トドメ：マップの遥か底へ強制テレポート
-                                tHRP.CFrame = CFrame.new(tHRP.Position.X, -2000, tHRP.Position.Z)
+                                -- 2. 攻撃イベントを3連打で送信
+                                local combat = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                if combat then 
+                                    combat:FireServer(tChar, "Punch")
+                                    combat:FireServer(tChar, "Punch")
+                                    combat:FireServer(tChar, "Punch")
+                                end
 
+                                -- 3. 【重要】座標を直接「Void」判定の深さ（-5000）へ瞬間移動
+                                -- 地面を突き抜けるのを待たず、直接奈落の底へ書き換えます
+                                tHRP.CFrame = CFrame.new(tHRP.Position.X, -5000, tHRP.Position.Z)
+
+                                -- 通知
                                 OrionLib:MakeNotification({
                                     Name = "抹殺完了",
-                                    Content = p.Name .. " を奈落へ送りました",
-                                    Time = 2
+                                    Content = p.Name .. " を消去しました",
+                                    Time = 1
                                 })
                             end)
                             task.wait(0.2) -- 次のターゲットへ
@@ -639,7 +640,7 @@ UltimateTab:AddToggle({
     end    
 })
 
--- 3. 更新ボタン
+-- 3. 更新ボタン (維持)
 UltimateTab:AddButton({
     Name = "プレイヤーリストを更新",
     Callback = function()
