@@ -704,106 +704,93 @@ BlobmansTab:AddButton({
     end
 })
 
--- [[ 1. 動作に必要なシステム定義（これがないとエラーでタブが消える） ]]
-local rs = game:GetService("ReplicatedStorage")
-local lp = game.Players.LocalPlayer
-local service = {Players = game:GetService("Players")}
-
--- 共通関数
-local function getLocalHum() return lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") end
-local function getLocalRoot() return lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") end
-local function get(o, n) return o:FindFirstChild(n) end
-
--- Blobman用関数
-local function spawnBlobman() return rs.ToyEvents.SpawnToy:InvokeServer("Blobman") end
-local function getBlobman()
-    for _, v in ipairs(workspace.PlotItems:GetChildren()) do
-        if v.Name == "Blobman" and v:FindFirstChild("Owner") and v.Owner.Value == lp.Name then return v end
+-- [[ ブロブマン・完全独立追加コード ]]
+task.spawn(function()
+    -- 既存のWindow変数が「Window」という名前である前提だぜ
+    -- もしあなたのコードで Window = OrionLib:MakeWindow... の左辺が違う名前ならそこだけ変えてくれ
+    if not Window then 
+        warn("Window変数が見つからないぜ。コードの上のほうで Window = ... ってなってる名前を確認してくれ。")
+        return 
     end
-end
-local function blobGrab(b, t, s) rs.ToyEvents.BlobmanGrab:FireServer(b, t, s) end
-local function blobKick(b, t, s) rs.ToyEvents.BlobmanKick:FireServer(b, t, s) end
-local function SetNetworkOwner(p) rs.GrabEvents.SetNetworkOwner:FireServer(p, p.CFrame) end
 
--- 設定（Kick用）
-local config = { Blobman = { ArmSide = { Value = "Right" } } }
+    local rs = game:GetService("ReplicatedStorage")
+    local lp = game.Players.LocalPlayer
 
--- [[ 2. Orion UI タブ作成 ]]
-local BlobmansTab = Window:MakeTab({
-    Name = "Blobman Beta",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- プレイヤー選択用
-local selectedTarget = ""
-local playerDropdown = BlobmansTab:AddDropdown({
-    Name = "Target Player (Select)",
-    Default = "",
-    Options = {},
-    Callback = function(Value)
-        selectedTarget = Value
-    end    
-})
-
--- リスト更新（これ押さないと名前が出てこない）
-BlobmansTab:AddButton({
-    Name = "Refresh Player List",
-    Callback = function()
-        local pList = {}
-        for _, v in ipairs(game.Players:GetPlayers()) do
-            if v ~= lp then table.insert(pList, v.Name) end
+    -- 必要な関数群（ボタン内で完結させる）
+    local function getBlobman()
+        for _, v in ipairs(workspace.PlotItems:GetChildren()) do
+            if v.Name == "Blobman" and v:FindFirstChild("Owner") and v.Owner.Value == lp.Name then return v end
         end
-        playerDropdown:Refresh(pList, true)
     end
-})
 
--- 本命：乗ってる時だけ発動する自動キック
-BlobmansTab:AddButton({
-    Name = "Sit & Kick Target",
-    Callback = function()
-        local blob = getBlobman()
-        local hum = getLocalHum()
-        
-        -- 条件チェック
-        if not blob then return warn("Blobmanがいないぜ") end
-        if not hum or not hum.Sit or hum.SeatPart.Parent ~= blob then 
-            return warn("Blobmanの座席に乗ってから押してくれ") 
+    -- タブ作成
+    local BTab = Window:MakeTab({
+        Name = "ブロブマン(修正版)",
+        Icon = "rbxassetid://4483345998",
+        PremiumOnly = false
+    })
+
+    -- ターゲット選択
+    local targetP = ""
+    local dropdown = BTab:AddDropdown({
+        Name = "ターゲット選択",
+        Default = "",
+        Options = {},
+        Callback = function(val) targetP = val end
+    })
+
+    -- プレイヤーリスト更新
+    BTab:AddButton({
+        Name = "プレイヤーリスト更新",
+        Callback = function()
+            local list = {}
+            for _, v in ipairs(game.Players:GetPlayers()) do
+                if v ~= lp then table.insert(list, v.Name) end
+            end
+            dropdown:Refresh(list, true)
         end
-        
-        local target = game.Players:FindFirstChild(selectedTarget)
-        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-            local root = getLocalRoot()
-            local targetRoot = target.Character.HumanoidRootPart
-            local oldPos = root.CFrame
+    })
 
-            -- 1. 相手に飛ぶ
-            root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -3)
-            task.wait(0.2)
-
-            -- 2. 相手を強制キャッチ（引き寄せ）
-            SetNetworkOwner(targetRoot)
-            targetRoot.CFrame = blob.RightDetector.CFrame -- 右手に固定
-            blobGrab(blob, targetRoot, "Right")
+    -- メイン機能：乗っている時だけキック
+    BTab:AddButton({
+        Name = "乗車中のみ：指定キック",
+        Callback = function()
+            local blob = getBlobman()
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
             
-            -- 3. 蹴る
-            task.wait(0.3)
-            blobKick(blob, targetRoot, "Right")
+            if not blob then return warn("Blobmanを出してくれ") end
+            if not hum or not hum.Sit then return warn("Blobmanに乗ってくれ") end
 
-            -- 4. 帰還
-            task.wait(0.1)
-            root.CFrame = oldPos
-        else
-            warn("ターゲットが見つからないか選択されてないぜ")
+            local target = game.Players:FindFirstChild(targetP)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local myRoot = char.HumanoidRootPart
+                local tRoot = target.Character.HumanoidRootPart
+                local oldPos = myRoot.CFrame
+
+                -- 相手へ飛んで掴んで蹴る一連の動作
+                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, -3)
+                task.wait(0.2)
+                
+                -- ネットワーク所有権の偽装リクエスト（通る場合のみ）
+                rs.GrabEvents.SetNetworkOwner:FireServer(tRoot, tRoot.CFrame)
+                tRoot.CFrame = blob.RightDetector.CFrame
+                
+                rs.ToyEvents.BlobmanGrab:FireServer(blob, tRoot, "Right")
+                task.wait(0.3)
+                rs.ToyEvents.BlobmanKick:FireServer(blob, tRoot, "Right")
+
+                task.wait(0.1)
+                myRoot.CFrame = oldPos
+            end
         end
-    end
-})
+    })
 
--- 予備：召喚ボタン
-BlobmansTab:AddButton({
-    Name = "Spawn Blobman",
-    Callback = function() spawnBlobman() end
-})
+    BTab:AddButton({
+        Name = "Blobman召喚",
+        Callback = function() rs.ToyEvents.SpawnToy:InvokeServer("Blobman") end
+    })
+end)
 
 --==============================
 -- 初期化
