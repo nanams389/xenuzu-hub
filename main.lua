@@ -743,6 +743,60 @@ game:GetService("RunService").Stepped:Connect(function()
     end
 end)
 
+local CombatTab = Window:MakeTab({
+    Name = "Combat Pro",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+_G.BlackHoleAura = false
+local BlackHolePos = Vector3.new(0, -500, 0) -- ここをブラックホールの座標に変える
+
+-- Remoteの定義 (Dexのスクショから抽出)
+local rs = game:GetService("ReplicatedStorage")
+local GrabRE = rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+local RagdollRE = rs.PlayerEvents:FindFirstChild("RagdollPlayer")
+
+CombatTab:AddToggle({
+    Name = "BlackHole Kick Aura",
+    Default = false,
+    Callback = function(Value)
+        _G.BlackHoleAura = Value
+    end    
+})
+
+task.spawn(function()
+    while true do
+        task.wait(0.1) -- 0.1秒間隔でスキャン
+        if _G.BlackHoleAura then
+            local lp = game.Players.LocalPlayer
+            if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
+
+            for _, p in pairs(game.Players:GetPlayers()) do
+                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHrp = p.Character.HumanoidRootPart
+                    local dist = (targetHrp.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                    
+                    -- 15スタッド以内に入ったらブラックホールへ強制転送
+                    if dist < 15 then
+                        pcall(function()
+                            -- 1. まずラグドール化させて抵抗不能にする
+                            RagdollRE:FireServer(p.Character)
+                            
+                            -- 2. ネットワーク所有権を奪い、座標をブラックホールへ飛ばす
+                            -- SetNetworkOwnerがサーバー側で位置同期を上書きするトリガーになることが多い
+                            GrabRE:FireServer(p.Character) 
+                            
+                            -- 3. 物理的に位置を固定（クライアント側で可能な場合）
+                            targetHrp.CFrame = CFrame.new(BlackHolePos)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
 --==============================
 -- 初期化
 --==============================
