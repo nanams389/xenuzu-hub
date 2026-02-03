@@ -704,41 +704,105 @@ BlobmansTab:AddButton({
     end
 })
 
-BlobmansTab:AddButton({
-    Name = "Target Kick (Auto Teleport)",
-    Callback = function()
-        local targetName = _G.SelectedPlayer
-        local target = game.Players:FindFirstChild(targetName)
-        local blob = getBlobman()
-        
-        -- 条件チェック：Blobmanがいて、自分が乗っているか
-        if not blob then return warn("Blobmanがいません") end
-        if not getLocalHum().Sit then return warn("Blobmanに乗ってください") end
-        if not target or not target.Character then return warn("ターゲットがいません") end
+-- [[ 1. 動作に必要なシステム定義（これがないとエラーでタブが消える） ]]
+local rs = game:GetService("ReplicatedStorage")
+local lp = game.Players.LocalPlayer
+local service = {Players = game:GetService("Players")}
 
-        local root = getLocalRoot()
-        local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
-        if not targetRoot then return end
+-- 共通関数
+local function getLocalHum() return lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") end
+local function getLocalRoot() return lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") end
+local function get(o, n) return o:FindFirstChild(n) end
 
-        local oldPos = root.CFrame -- 元の場所を記憶
-
-        -- 1. 相手の場所にテレポート
-        root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -3) -- 相手の目の前へ
-        task.wait(0.2)
-
-        -- 2. 相手を強制的にBlobmanの手に引き寄せる（ネットワーク所有権を利用）
-        SetNetworkOwner(targetRoot) 
-        targetRoot.CFrame = blob[config.Blobman.ArmSide.Value .. "Detector"].CFrame
-        
-        -- 3. 掴んでキック
-        blobGrab(blob, targetRoot, config.Blobman.ArmSide.Value)
-        task.wait(0.3)
-        blobKick(blob, targetRoot, config.Blobman.ArmSide.Value)
-
-        -- 4. 元の場所に戻る
-        task.wait(0.1)
-        root.CFrame = oldPos
+-- Blobman用関数
+local function spawnBlobman() return rs.ToyEvents.SpawnToy:InvokeServer("Blobman") end
+local function getBlobman()
+    for _, v in ipairs(workspace.PlotItems:GetChildren()) do
+        if v.Name == "Blobman" and v:FindFirstChild("Owner") and v.Owner.Value == lp.Name then return v end
     end
+end
+local function blobGrab(b, t, s) rs.ToyEvents.BlobmanGrab:FireServer(b, t, s) end
+local function blobKick(b, t, s) rs.ToyEvents.BlobmanKick:FireServer(b, t, s) end
+local function SetNetworkOwner(p) rs.GrabEvents.SetNetworkOwner:FireServer(p, p.CFrame) end
+
+-- 設定（Kick用）
+local config = { Blobman = { ArmSide = { Value = "Right" } } }
+
+-- [[ 2. Orion UI タブ作成 ]]
+local BlobmansTab = Window:MakeTab({
+    Name = "Blobman Beta",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- プレイヤー選択用
+local selectedTarget = ""
+local playerDropdown = BlobmansTab:AddDropdown({
+    Name = "Target Player (Select)",
+    Default = "",
+    Options = {},
+    Callback = function(Value)
+        selectedTarget = Value
+    end    
+})
+
+-- リスト更新（これ押さないと名前が出てこない）
+BlobmansTab:AddButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        local pList = {}
+        for _, v in ipairs(game.Players:GetPlayers()) do
+            if v ~= lp then table.insert(pList, v.Name) end
+        end
+        playerDropdown:Refresh(pList, true)
+    end
+})
+
+-- 本命：乗ってる時だけ発動する自動キック
+BlobmansTab:AddButton({
+    Name = "Sit & Kick Target",
+    Callback = function()
+        local blob = getBlobman()
+        local hum = getLocalHum()
+        
+        -- 条件チェック
+        if not blob then return warn("Blobmanがいないぜ") end
+        if not hum or not hum.Sit or hum.SeatPart.Parent ~= blob then 
+            return warn("Blobmanの座席に乗ってから押してくれ") 
+        end
+        
+        local target = game.Players:FindFirstChild(selectedTarget)
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local root = getLocalRoot()
+            local targetRoot = target.Character.HumanoidRootPart
+            local oldPos = root.CFrame
+
+            -- 1. 相手に飛ぶ
+            root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -3)
+            task.wait(0.2)
+
+            -- 2. 相手を強制キャッチ（引き寄せ）
+            SetNetworkOwner(targetRoot)
+            targetRoot.CFrame = blob.RightDetector.CFrame -- 右手に固定
+            blobGrab(blob, targetRoot, "Right")
+            
+            -- 3. 蹴る
+            task.wait(0.3)
+            blobKick(blob, targetRoot, "Right")
+
+            -- 4. 帰還
+            task.wait(0.1)
+            root.CFrame = oldPos
+        else
+            warn("ターゲットが見つからないか選択されてないぜ")
+        end
+    end
+})
+
+-- 予備：召喚ボタン
+BlobmansTab:AddButton({
+    Name = "Spawn Blobman",
+    Callback = function() spawnBlobman() end
 })
 
 --==============================
