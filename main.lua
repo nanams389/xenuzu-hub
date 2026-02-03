@@ -682,119 +682,62 @@ UltimateTab:AddButton({
     end    
 })
 
--- [[ 1. まずは「動かすための仕組み」を定義する（これがないとボタンは反応しない） ]]
-local rs = game:GetService("ReplicatedStorage")
-local lp = game.Players.LocalPlayer
-
-local function getLocalHum() return lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") end
-local function getLocalRoot() return lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") end
-local function get(o, n) return o:FindFirstChild(n) end
-
-local function spawnBlobman() 
-    return rs.ToyEvents.SpawnToy:InvokeServer("Blobman") 
-end
-
-local function getBlobman()
-    for _, v in ipairs(workspace.PlotItems:GetChildren()) do
-        if v.Name == "Blobman" and v:FindFirstChild("Owner") and v.Owner.Value == lp.Name then return v end
-    end
-end
-
-local function spawntoy(name, cf) return rs.ToyEvents.SpawnToy:InvokeServer(name, cf) end
-local function blobGrab(b, t, s) rs.ToyEvents.BlobmanGrab:FireServer(b, t, s) end
-local function blobKick(b, t, s) rs.ToyEvents.BlobmanKick:FireServer(b, t, s) end
-local function destroyToy(t) rs.ToyEvents.DestroyToy:FireServer(t) end
-local function SetNetworkOwner(p) rs.GrabEvents.SetNetworkOwner:FireServer(p, p.CFrame) end
-local function IsInPlot(p) return false end
-local function IsFriend(p) return lp:IsFriendsWith(p.UserId) end
-local function getLocalPlayer() return lp end
-
--- 設定用のダミーデータ（Kick Allでエラーを出さないため）
-local config = {
-    Blobman = { ArmSide = { Value = "Right" } },
-    Settings = { IgnoreIsInPlot = { Value = false }, IgnoreFriend = { Value = true } }
-}
-local service = { Players = game:GetService("Players") }
-
--- [[ 2. ここからタブとボタンの作成 ]]
-local BlobmansTab = Window:MakeTab({
-    Name = "Blobman",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
+-- [[ プレイヤーを選んで自動キックするボタン ]]
+BlobmansTab:AddDropdown({
+    Name = "Select Target Player",
+    Default = "",
+    Options = {}, -- 自動で更新される
+    Callback = function(Value)
+        _G.SelectedPlayer = Value
+    end    
 })
 
+-- プレイヤーリストを更新するボタン
 BlobmansTab:AddButton({
-    Name = "Spawn Blobman",
+    Name = "Refresh Player List",
     Callback = function()
-        spawnBlobman()
+        local players = {}
+        for _, v in ipairs(game.Players:GetPlayers()) do
+            if v ~= lp then table.insert(players, v.Name) end
+        end
+        -- ドロップダウンの更新用（OrionLibのDropdown変数を参照する必要があるが、一旦手動更新を想定）
     end
 })
 
 BlobmansTab:AddButton({
-    Name = "OP-Blobman",
+    Name = "Target Kick (Auto Teleport)",
     Callback = function()
-        local blob = getBlobman() or spawnBlobman()
-        if not getLocalHum().Sit then
-            blob.VehicleSeat:Sit(getLocalHum())
-        end
-        local pos = getLocalRoot().CFrame
-        task.wait()
-        if blob and getLocalHum() then
-            -- RIGHT
-            if blob:IsDescendantOf(workspace.PlotItems) then
-                getLocalRoot().CFrame = CFrame.new(0,0,0)
-                task.wait(.5)
-            end
-            local Toy = spawntoy("YouDecoy", getLocalRoot().CFrame)
-            SetNetworkOwner(Toy.HumanoidRootPart)
-            Toy.HumanoidRootPart.CFrame = blob.RightDetector.CFrame
-            task.wait()
-            blobGrab(blob, Toy.HumanoidRootPart, "Right")
-            task.wait(1.25)
-            destroyToy(Toy)
-            task.wait(.1)
+        local targetName = _G.SelectedPlayer
+        local target = game.Players:FindFirstChild(targetName)
+        local blob = getBlobman()
+        
+        -- 条件チェック：Blobmanがいて、自分が乗っているか
+        if not blob then return warn("Blobmanがいません") end
+        if not getLocalHum().Sit then return warn("Blobmanに乗ってください") end
+        if not target or not target.Character then return warn("ターゲットがいません") end
 
-            -- LEFT
-            local Toy2 = spawntoy("YouDecoy", getLocalRoot().CFrame)
-            SetNetworkOwner(Toy2.HumanoidRootPart)
-            Toy2.HumanoidRootPart.CFrame = blob.LeftDetector.CFrame
-            task.wait()
-            blobGrab(blob, Toy2.HumanoidRootPart, "Left")
-            task.wait(1.25)
-            destroyToy(Toy2)
-            task.wait(.1)
-        end
-        getLocalRoot().CFrame = pos
-    end
-})
+        local root = getLocalRoot()
+        local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
+        if not targetRoot then return end
 
-BlobmansTab:AddButton({
-    Name = "Kick All",
-    Callback = function()
-        local blob = getBlobman() or spawnBlobman()
-        if not getLocalHum().Sit then
-            blob.VehicleSeat:Sit(getLocalHum())
-        end
-        task.wait()
-        local pos = getLocalRoot().CFrame
-        if blob and getLocalHum().Sit then
-            blobGrab(blob, getLocalRoot(), config.Blobman.ArmSide.Value)
-            for _, v in ipairs(service.Players:GetPlayers()) do
-                if v == getLocalPlayer() then continue end
-                if not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v) then continue end
-                if config.Settings.IgnoreFriend.Value and IsFriend(v) then continue end
-                local character = v.Character
-                if not character then continue end
-                local root = get(character, "HumanoidRootPart")
-                if not root then continue end
-                getLocalRoot().CFrame = root.CFrame
-                task.wait(.25)
-                blobKick(blob, root, config.Blobman.ArmSide.Value)
-            end
-            task.wait(.1)
-            getLocalRoot().CFrame = pos
-            destroyToy(blob)
-        end
+        local oldPos = root.CFrame -- 元の場所を記憶
+
+        -- 1. 相手の場所にテレポート
+        root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -3) -- 相手の目の前へ
+        task.wait(0.2)
+
+        -- 2. 相手を強制的にBlobmanの手に引き寄せる（ネットワーク所有権を利用）
+        SetNetworkOwner(targetRoot) 
+        targetRoot.CFrame = blob[config.Blobman.ArmSide.Value .. "Detector"].CFrame
+        
+        -- 3. 掴んでキック
+        blobGrab(blob, targetRoot, config.Blobman.ArmSide.Value)
+        task.wait(0.3)
+        blobKick(blob, targetRoot, config.Blobman.ArmSide.Value)
+
+        -- 4. 元の場所に戻る
+        task.wait(0.1)
+        root.CFrame = oldPos
     end
 })
 
