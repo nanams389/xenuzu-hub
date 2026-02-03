@@ -682,96 +682,87 @@ UltimateTab:AddButton({
     end    
 })
 
--- Orion UIのメインウィンドウ変数が 'Window' だと仮定してるぜ
-local BlobmansTab = Window:MakeTab({
-	Name = "Blobmans",
-	Icon = "rbxassetid://4483345998",
-	PremiumOnly = false
-})
-
--- 1. Spawn Blobman ボタン
-BlobmansTab:AddButton({
-    Name = "Spawn Blobman",
-    Callback = function()
-        spawnBlobman()
-    end
-})
-
--- 2. OP-Blobman ボタン
-BlobmansTab:AddButton({
-    Name = "OP-Blobman",
-    Callback = function()
-        local blob=getBlobman()
-        if(not blob)then
-            blob=spawnBlobman()
+ BlobmansTab:AddButton({
+        Name = "Spawn Blobman",
+        Callback = function()
+            spawnBlobman()
         end
-        if(not getLocalHum().Sit)then
-            blob.VehicleSeat:Sit(getLocalHum())
-        end
-        local pos=getLocalRoot().CFrame
-        task.wait()
-        if(blob and getLocalHum())then
-            --// RIGHT
-            if(blob:IsDescendantOf(workspace.PlotItems))then
-                getLocalRoot().CFrame=CFrame.new(0,0,0)
-                task.wait(.5)
+    })
+
+    BlobmansTab:AddButton({
+        Name = "OP-Blobman",
+        Callback = function()
+            local blob=getBlobman()
+            if(not blob)then
+                blob=spawnBlobman()
             end
-            local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
-            SetNetworkOwner(Toy.HumanoidRootPart)
-            Toy.HumanoidRootPart.CFrame=blob.RightDetector.CFrame
-            task.wait()
-            blobGrab(blob,Toy.HumanoidRootPart,"Right")
-            task.wait(1.25)
-            destroyToy(Toy)
-            task.wait(.1)
-
-            --// LEFT
-            local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
-            SetNetworkOwner(Toy.HumanoidRootPart)
-            Toy.HumanoidRootPart.CFrame=blob.LeftDetector.CFrame
-            task.wait()
-            blobGrab(blob,Toy.HumanoidRootPart,"Left")
-            task.wait(1.25)
-            destroyToy(Toy)
-            task.wait(.1)
-        end
-        getLocalRoot().CFrame=pos
-    end
-})
-
--- 3. Kick All ボタン
-BlobmansTab:AddButton({
-    Name = "Kick All",
-    Callback = function()
-        local blob=getBlobman()
-        if(not blob)then
-            blob=spawnBlobman()
-        end
-        if(not getLocalHum().Sit)then
-            blob.VehicleSeat:Sit(getLocalHum())
-        end
-        task.wait()
-        local pos=getLocalRoot().CFrame
-        if(blob and getLocalHum().Sit)then
-            blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
-            for _,v in ipairs(service.Players:GetPlayers())do
-                if(v==getLocalPlayer())then continue end
-                if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
-                if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
-                local character=v.Character
-                if(not character)then continue end
-                local root=get(character,"HumanoidRootPart")
-                if(not root)then continue end
-                getLocalRoot().CFrame=root.CFrame
-                task.wait(.25)
-                blobKick(blob,root,config.Blobman.ArmSide.Value)
+            if(not getLocalHum().Sit)then
+                blob.VehicleSeat:Sit(getLocalHum())
             end
-            task.wait(.1)
+            local pos=getLocalRoot().CFrame
+            task.wait()
+            if(blob and getLocalHum())then
+                --// RIGHT
+                if(blob:IsDescendantOf(workspace.PlotItems))then
+                    getLocalRoot().CFrame=CFrame.new(0,0,0)
+                    task.wait(.5)
+                end
+                local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+                SetNetworkOwner(Toy.HumanoidRootPart)
+                Toy.HumanoidRootPart.CFrame=blob.RightDetector.CFrame
+                task.wait()
+                blobGrab(blob,Toy.HumanoidRootPart,"Right")
+                task.wait(1.25)
+                destroyToy(Toy)
+                task.wait(.1)
+
+                --// LEFT
+                local Toy=spawntoy("YouDecoy",getLocalRoot().CFrame)
+                SetNetworkOwner(Toy.HumanoidRootPart)
+                Toy.HumanoidRootPart.CFrame=blob.LeftDetector.CFrame
+                task.wait()
+                blobGrab(blob,Toy.HumanoidRootPart,"Left")
+                task.wait(1.25)
+                destroyToy(Toy)
+                task.wait(.1)
+            end
             getLocalRoot().CFrame=pos
-            destroyToy(blob)
         end
-    end
-})
+    })
+
+    BlobmansTab:AddButton({
+        Name = "Kick All",
+        Callback = function()
+            local blob=getBlobman()
+            if(not blob)then
+                blob=spawnBlobman()
+            end
+            if(not getLocalHum().Sit)then
+                blob.VehicleSeat:Sit(getLocalHum())
+            end
+            task.wait()
+            local pos=getLocalRoot().CFrame
+            if(blob and getLocalHum().Sit)then
+                blobGrab(blob,getLocalRoot(),config.Blobman.ArmSide.Value)
+                for _,v in ipairs(service.Players:GetPlayers())do
+                    if(v==getLocalPlayer())then continue end
+                    if(not config.Settings.IgnoreIsInPlot.Value and IsInPlot(v))then continue end
+                    if(config.Settings.IgnoreFriend.Value and IsFriend(v))then continue end
+                    local character=v.Character
+                    if(not character)then continue end
+                    local root=get(character,"HumanoidRootPart")
+                    if(not root)then continue end
+                    getLocalRoot().CFrame=root.CFrame
+                    task.wait(.25)
+                    blobKick(blob,root,config.Blobman.ArmSide.Value)
+                end
+                task.wait(.1)
+                getLocalRoot().CFrame=pos
+                destroyToy(blob)
+            end
+        end
+    })
+
 
 --==============================
 -- 初期化
