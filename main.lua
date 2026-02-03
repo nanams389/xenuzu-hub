@@ -744,48 +744,63 @@ game:GetService("RunService").Stepped:Connect(function()
 end)
 
 --==============================
--- タブ：ブラックホーr
+-- タブ：究極オーラ (Ultimate)
 --==============================
-local UltimateTab = Window:MakeTab({ Name = "ブラックオーラ", Icon = "rbxassetid://6031064398" })
+local UltimateTab = Window:MakeTab({ Name = "究極オーラ", Icon = "rbxassetid://6031064398" })
 
-_G.SystemKickEnabled = false
+_G.SystemCrashAura = false
 local ultRange = 25
 
--- RemoteEvents (Dexのスクショより)
+-- Remoteの取得 (Dexから確定したパス)
 local rs = game:GetService("ReplicatedStorage")
 local RagdollRE = rs:FindFirstChild("RagdollRemote", true)
 local GrabRE = rs:FindFirstChild("SetNetworkOwner", true)
+local StruggleRE = rs:FindFirstChild("Struggle", true) -- これもスクショにあったな。抵抗イベント
 
 UltimateTab:AddToggle({
-    Name = "物人システム強制発動 (BH送り)",
+    Name = "強制BH送りオーラ (システム破壊)",
     Default = false,
     Callback = function(Value)
-        _G.SystemKickEnabled = Value
+        _G.SystemCrashAura = Value
     end    
 })
 
+-- [[ 実行ループ：相手の回線とサーバー判定を破壊する ]]
 task.spawn(function()
     while true do
-        task.wait(0.05) -- 超高速スキャン
-        if _G.SystemKickEnabled then
+        -- 待機時間をほぼゼロにして、エンジンの限界速度で回す
+        game:GetService("RunService").Heartbeat:Wait()
+        
+        if _G.SystemCrashAura then
             local lp = game.Players.LocalPlayer
+            if not lp.Character then continue end
+
             for _, p in pairs(game.Players:GetPlayers()) do
                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (p.Character.HumanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                    local targetHrp = p.Character.HumanoidRootPart
+                    local dist = (targetHrp.Position - lp.Character.HumanoidRootPart.Position).Magnitude
                     
                     if dist < ultRange then
-                        -- [[ ラグ検知システムをバグらせる連打処理 ]]
-                        -- 1フレームで複数回イベントを送ることで、サーバーに「異常パケット」と認識させる
-                        for i = 1, 10 do
+                        -- [[ サーバー・エクスプロイト連打 ]]
+                        -- 1フレームで100回以上のパケットを送りつけ、相手を「通信過多」でブラックホールに落とす
+                        for i = 1, 50 do
                             pcall(function()
-                                -- ラグドールのオンオフを高速切り替え
+                                -- ラグドールと通常状態を光速で入れ替え（サーバーが処理しきれなくなる）
                                 RagdollRE:FireServer(true)
                                 RagdollRE:FireServer(false)
                                 
-                                -- 同時にネットワーク主導権の要求を送りつける
+                                -- ネットワーク所有権を強引に奪い合う信号を送る
                                 GrabRE:FireServer(p.Character)
+                                
+                                -- Struggle（もがき）イベントを連打して「異常な行動」として検知させる
+                                if StruggleRE then
+                                    StruggleRE:FireServer()
+                                end
                             end)
                         end
+                        
+                        -- 物理的なビジュアル干渉（こっちの画面からも確実に消す）
+                        targetHrp.Velocity = Vector3.new(50000, 50000, 50000) -- 宇宙まで飛ばす勢い
                     end
                 end
             end
