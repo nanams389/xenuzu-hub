@@ -1559,9 +1559,9 @@ BlobmanTab:AddButton({
     end
 })
 
--- 5. 全員を高速ループ掴み (テレポート殲滅版)
+-- 5. 全員を高速ループ掴み (極限スピード版)
 BlobmanTab:AddToggle({
-    Name = "全員を高速ループ掴み (TP型)",
+    Name = "全員を高速ループ掴み (極限TP)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLoop = Value
@@ -1585,37 +1585,45 @@ BlobmanTab:AddToggle({
                                     
                                     local targetHRP = p.Character.HumanoidRootPart
                                     
-                                    -- TP & 掴み
+                                    -- 超高速TP
                                     hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 3, 0)
-                                    task.wait(0.07) -- 少しだけ待機時間を伸ばして安定化
                                     
+                                    -- 待機なしでパケットを連射 (掴む→離すを1フレームで実行)
                                     for _, arm in ipairs({"Left", "Right"}) do
                                         local det = blobman:FindFirstChild(arm .. "Detector")
                                         local weld = det and det:FindFirstChild(arm .. "Weld")
                                         if det and weld then
                                             det.CFrame = targetHRP.CFrame
+                                            -- 3回連続で送ることでサーバーへの優先度を上げる
+                                            remote:FireServer(det, targetHRP, weld, 2)
+                                            remote:FireServer(det, targetHRP, weld, 1)
                                             remote:FireServer(det, targetHRP, weld, 2)
                                             remote:FireServer(det, targetHRP, weld, 1)
                                         end
                                     end
-                                    task.wait(0.05)
+                                    -- 次のターゲットへ行く時間を極限まで短縮 (0.01s)
+                                    task.wait(0.01)
                                 end
                             end
                             hrp.CFrame = oldPos
                         end
                     end
-                    task.wait(0.5)
+                    task.wait(0.1) -- 全員一周後のクールダウン
                 end
             end)
         end
     end
 })
 
-BlobmanTab:AddToggle({ Name = "フレンドを除外 (Whitelist)", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
-
--- 【重要】OrionLib:Init() は必ずスクリプトの最後に入れる
--- OrionLib:Init()
-
+-- 自殺 (Reset Character) ボタン
+BlobmanTab:AddButton({
+    Name = "自分をキル (Reset)",
+    Callback = function()
+        if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+            lp.Character.Humanoid.Health = 0
+        end
+    end
+})
 
 --==============================
 -- 初期化
