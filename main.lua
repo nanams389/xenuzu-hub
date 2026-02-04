@@ -916,7 +916,7 @@ local function doBlobmanFastGrab(targetPlayer, side)
 end
 
 -- [[ 3. UI構築 ]]
-local BlobmanTab = Window:MakeTab({ Name = "Blobman 究極改", Icon = "rbxassetid://6031064398" })
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 1", Icon = "rbxassetid://6031064398" })
 
 local PlayerSelector = BlobmanTab:AddDropdown({
     Name = "Select Player",
@@ -1095,7 +1095,7 @@ local function doBlobmanGrab(targetPlayer)
 end
 
 -- [[ 3. UI構築 ]]
-local BlobmanTab = Window:MakeTab({ Name = "Blobman 修正版", Icon = "rbxassetid://6031064398" })
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 2", Icon = "rbxassetid://6031064398" })
 
 -- 公式エラー誘発キック (blobman 引き寄せ)
 BlobmanTab:AddButton({
