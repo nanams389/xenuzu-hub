@@ -243,70 +243,64 @@ local bringAllSection = VoidTab:AddSection({
     Name = "Bring All Settings"
 })
 
+-- 依存関数をこの中で定義してエラーを確実に防ぐ
+local function SafeTeleport(targetCFrame)
+    pcall(function()
+        local lp = game.Players.LocalPlayer
+        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+            lp.Character.HumanoidRootPart.CFrame = targetCFrame
+        end
+    end)
+end
+
 bringalltoggle = bringAllSection:AddToggle({
-    Name = "Bring All",
+    Name = "Bring All (No Premium)",
     Default = false,
     Callback = function(bringAllEnabled)
         _G.BringAll = bringAllEnabled
+        
         if bringAllEnabled then
-            -- プレミアムチェック(GetKey)を削除して強制実行
-            local playerCFrame = GetPlayerCFrame()
-            local cameraCFrame = CFrame.lookAt(workspaceService.CurrentCamera.CFrame.Position + Vector3.new(- 15, 15, 0), playerCFrame.Position)
-            workspace.CurrentCamera.CFrame = cameraCFrame
-            
             task.spawn(function()
                 while _G.BringAll do
-                    FreezeCam(cameraCFrame)
-                    local playersService = game:GetService("Players")
-                    
-                    for _, player in pairs(playersService:GetPlayers()) do
-                        if not _G.BringAll then break end
-                        
-                        if CheckPlayerBring(player) then
-                            local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
-                            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-                            local isRagdolled
-                            
-                            if humanoid and humanoid:FindFirstChild("Ragdolled") then
-                                isRagdolled = humanoid.Ragdolled
-                            else
-                                isRagdolled = nil
-                            end
-                            
-                            if player and (humanoidRootPart and (humanoid and isRagdolled)) then
-                                for _ = 0, 50 do
-                                    if not _G.BringAll then break end
-                                    
-                                    dialogueFunction2()
-                                    SNOWshipOnce(humanoidRootPart)
-                                    
-                                    if CheckNetworkOwnerShipOnPlayer(player) then
-                                        if not isRagdolled.Value and player:DistanceFromCharacter(playerCFrame.Position) > 10 then
-                                            humanoidRootPart.CFrame = playerCFrame
-                                        end
-                                        CreateBringBody(humanoidRootPart, playerCFrame)
-                                        break
-                                    end
-                                    
-                                    task.wait()
-                                    
-                                    if humanoidRootPart.Position.Y <= - 12 then
-                                        TeleportPlayer(CFrame.new(humanoidRootPart.Position + Vector3.new(0, 5, - 15)))
-                                    else
-                                        TeleportPlayer(CFrame.new(humanoidRootPart.Position + Vector3.new(0, - 10, - 10)))
-                                    end
-                                end
-                            end
-                        end
+                    local lp = game.Players.LocalPlayer
+                    local char = lp.Character
+                    if not char or not char:FindFirstChild("HumanoidRootPart") then 
+                        task.wait(1) 
+                        continue 
                     end
                     
-                    TeleportPlayer(CFrame.new(527, 123, - 376))
-                    task.wait()
+                    local playerCFrame = char.HumanoidRootPart.CFrame
+                    
+                    for _, player in pairs(game.Players:GetPlayers()) do
+                        if not _G.BringAll then break end
+                        if player == lp then continue end
+                        
+                        pcall(function()
+                            local targetChar = player.Character
+                            local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+                            local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+                            
+                            -- ターゲットが存在し、生きている場合
+                            if targetHrp and targetHum and targetHum.Health > 0 then
+                                -- 1. 相手をラグドール化させて物理的に動かせるようにする
+                                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(targetChar)
+                                
+                                -- 2. 自分の位置へ強制テレポート（50回繰り返して所有権を奪う）
+                                for i = 1, 10 do
+                                    if not _G.BringAll then break end
+                                    targetHrp.CFrame = playerCFrame
+                                    -- ネットワーク所有権のシミュレーション
+                                    game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(targetHrp)
+                                    task.wait()
+                                end
+                            end
+                        end)
+                    end
+                    
+                    -- サーバーの検知を逃れるための位置微調整
+                    SafeTeleport(playerCFrame * CFrame.new(0, 0, -2))
+                    task.wait(0.5)
                 end
-                
-                unFreezeCam()
-                dialogueFunction1()
-                TeleportPlayer(playerCFrame)
             end)
         end
     end
