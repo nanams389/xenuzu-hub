@@ -1122,6 +1122,49 @@ BlobmanTab:AddButton({
     end
 })
 
+BlobmanTab:AddButton({
+    Name = "Rapid Grab & Release (周囲全員)",
+    Callback = function()
+        pcall(function()
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local seat = hum and hum.SeatPart
+            
+            if seat and seat.Parent then
+                local blobman = seat.Parent
+                local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                
+                if remote then
+                    -- 近くのプレイヤーを全員スキャン
+                    for _, p in pairs(players:GetPlayers()) do
+                        if p ~= lp and p.Character then
+                            local targetHRP = p.Character:FindFirstChild("HumanoidRootPart")
+                            -- 距離チェック（近すぎるやつを対象にする場合。全距離ならこのifを外してもOK）
+                            if targetHRP and (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 50 then
+                                
+                                -- 左右の手で交互に、あるいは高速にリモートを叩く
+                                local detectors = {"LeftDetector", "RightDetector"}
+                                for _, detName in pairs(detectors) do
+                                    local detector = blobman:FindFirstChild(detName)
+                                    local weld = detector and detector:FindFirstChildOfClass("Weld") or (detector and detector:FindFirstChild(detName:gsub("Detector", "Weld")))
+                                    
+                                    if detector and weld then
+                                        -- Mode 3 (Kick) を送ることで、掴んだ瞬間に物理的に弾き飛ばす（即離す挙動）
+                                        remote:FireServer(detector, targetHRP, weld, 3)
+                                    end
+                                end
+                                -- サーバーへの負荷を考えつつ、人間には見えない速さで待機
+                                task.wait(0.05)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+})
+
+
 --==============================
 -- 初期化
 --==============================
