@@ -1476,68 +1476,57 @@ BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = f
 --==============================
 local BlobTab = Window:MakeTab({ Name = "ブロブマン設定", Icon = "rbxassetid://4483345998" })
 
--- ブロブマン搭乗時のスピード調整
+local SelectedPlayer = ""
+local players = game:GetService("Players")
+local lp = players.LocalPlayer
+
+-- 1. スピード調整
 BlobTab:AddSlider({
     Name = "ブロブマン走行速度", 
-    Min = 16, 
-    Max = 500, 
-    Default = 50, 
-    Increment = 1,
+    Min = 16, Max = 500, Default = 50, Increment = 1,
     Callback = function(v)
         _G.BlobSpeed = v
-        -- 乗っている時にリアルタイムで適用するためのループ用
     end
 })
 
--- ブロブマン専用スピード適用ループ
-game:GetService("RunService").Heartbeat:Connect(function()
-    if _G.BlobSpeed then
-        local char = game.Players.LocalPlayer.Character
+-- 走行スピード適用ループ
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        local char = lp.Character
         if char and char:FindFirstChild("Humanoid") then
-            -- ブロブマンに乗っている（座っている、またはモデルが近くにある）判定
             if char.Humanoid.SeatPart and char.Humanoid.SeatPart.Parent.Name == "Blobman" then
-                char.Humanoid.WalkSpeed = _G.BlobSpeed
+                char.Humanoid.WalkSpeed = _G.BlobSpeed or 16
             end
         end
     end
 end)
 
--- ブロブマン飛行 (Fly)
+-- 2. 飛行モード
 BlobTab:AddToggle({
     Name = "ブロブマン飛行モード",
     Default = false,
     Callback = function(v)
         _G.BlobFly = v
-        local lp = game.Players.LocalPlayer
-        local char = lp.Character
-        
         if v then
-            -- 飛行開始処理
+            local char = lp.Character
             local bg = Instance.new("BodyGyro", char.HumanoidRootPart)
             bg.Name = "FlyGyro"
-            bg.P = 9e4
             bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-            bg.cframe = char.HumanoidRootPart.CFrame
-            
             local bv = Instance.new("BodyVelocity", char.HumanoidRootPart)
             bv.Name = "FlyVel"
-            bv.velocity = Vector3.new(0, 0.1, 0)
             bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
             
-            spawn(function()
+            task.spawn(function()
                 while _G.BlobFly do
-                    wait()
+                    task.wait()
                     local cam = workspace.CurrentCamera
                     local moveDir = Vector3.new(0,0,0)
                     local uis = game:GetService("UserInputService")
-                    
                     if uis:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
                     if uis:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
                     if uis:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
                     if uis:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
-                    if uis:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-                    if uis:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-                    
                     bv.velocity = moveDir * (_G.BlobSpeed or 50)
                     bg.cframe = cam.CFrame
                 end
@@ -1548,40 +1537,30 @@ BlobTab:AddToggle({
     end
 })
 
---==============================
--- タブ：Blobman Loop Kill
---==============================
-local KillTab = Window:MakeTab({ Name = "Blobman Loop Kill", Icon = "rbxassetid://4483345998" })
+BlobTab:AddSection({ Name = "ループ掴み (セーフゾーン無視)" })
 
-local SelectedPlayer = ""
-local players = game:GetService("Players")
-local lp = players.LocalPlayer
-
--- ターゲット選択
-KillTab:AddDropdown({
+-- 3. ターゲット選択
+BlobTab:AddDropdown({
     Name = "ターゲット選択",
     Default = "",
-    Options = {}, -- 自動で更新
-    Callback = function(Value)
-        SelectedPlayer = Value
-    end    
+    Options = {}, 
+    Callback = function(Value) SelectedPlayer = Value end    
 })
 
--- プレイヤーリストの更新ボタン
-KillTab:AddButton({
+-- リスト更新（これを押すとプレイヤー名が更新される）
+BlobTab:AddButton({
     Name = "プレイヤーリスト更新",
     Callback = function()
         local pList = {}
         for _, p in pairs(players:GetPlayers()) do
             if p ~= lp then table.insert(pList, p.Name) end
         end
-        -- ドロップダウンを更新（Orionの仕様により手動更新が必要な場合があります）
-        print("Player list updated")
+        -- ※OrionLibのDropdown更新が効かない場合は再実行が必要
     end
 })
 
--- 指定プレイヤーをループキル (掴み離し)
-KillTab:AddToggle({
+-- 4. 指定プレイヤーをループ掴み
+BlobTab:AddToggle({
     Name = "指定プレイヤーをループ掴み",
     Default = false,
     Callback = function(Value)
@@ -1590,35 +1569,31 @@ KillTab:AddToggle({
             task.spawn(function()
                 while _G.LoopGrabTarget do
                     local target = players:FindFirstChild(SelectedPlayer)
-                    local char = lp.Character
-                    local seat = char and char.Humanoid.SeatPart
-                    
-                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+                    local seat = lp.Character and lp.Character.Humanoid.SeatPart
+                    if target and target.Character and seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        local targetHRP = target.Character.HumanoidRootPart
-                        
-                        if remote then
+                        local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                        if remote and targetHRP then
                             for _, arm in ipairs({"Left", "Right"}) do
                                 local det = blobman:FindFirstChild(arm .. "Detector")
                                 local weld = det and det:FindFirstChild(arm .. "Weld")
                                 if det and weld then
                                     remote:FireServer(det, targetHRP, weld, 2) -- 掴む
-                                    task.wait(0.01)
                                     remote:FireServer(det, targetHRP, weld, 1) -- 離す
                                 end
                             end
                         end
                     end
-                    task.wait(0.05) -- 超高速ループ
+                    task.wait(0.05)
                 end
             end)
         end
     end
 })
 
--- サーバー全員をループキル
-KillTab:AddToggle({
+-- 5. 全員ループ掴み
+BlobTab:AddToggle({
     Name = "全員を高速ループ掴み",
     Default = false,
     Callback = function(Value)
@@ -1626,19 +1601,15 @@ KillTab:AddToggle({
         if Value then
             task.spawn(function()
                 while _G.BringAllLoop do
-                    local char = lp.Character
-                    local seat = char and char.Humanoid.SeatPart
+                    local seat = lp.Character and lp.Character.Humanoid.SeatPart
                     if seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        
                         if remote then
                             for _, p in pairs(players:GetPlayers()) do
                                 if not _G.BringAllLoop then break end
                                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                    -- フレンド除外チェック
                                     if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
-                                    
                                     local targetHRP = p.Character.HumanoidRootPart
                                     for _, arm in ipairs({"Left", "Right"}) do
                                         local det = blobman:FindFirstChild(arm .. "Detector")
@@ -1659,11 +1630,8 @@ KillTab:AddToggle({
     end
 })
 
-KillTab:AddToggle({ 
-    Name = "フレンドを除外 (Whitelist)", 
-    Default = false, 
-    Callback = function(v) _G.WhitelistFriends2 = v end 
-})
+BlobTab:AddToggle({ Name = "フレンドを除外 (Whitelist)", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
+
 
 --==============================
 -- 初期化
