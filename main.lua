@@ -853,7 +853,7 @@ local players = game:GetService("Players")
 local lp = players.LocalPlayer
 _G.BringAllLongReach = false
 _G.WhitelistFriends2 = false
-_G.PlayerToLongGrab = _G.PlayerToLongGrab or ""
+_G.PlayerToLongGrab = "" -- 初期化エラー防止
 
 -- [[ 1. プレイヤーリストを更新する関数 ]]
 local function getPlayerNames()
@@ -866,10 +866,9 @@ local function getPlayerNames()
     return names
 end
 
--- [[ 2. 掴み & 上昇 & キック (両手対応版) ]]
--- 引数に arm ("Left" か "Right") を追加
-local function doBlobmanGrab(targetPlayer, arm)
-    arm = arm or "Left" -- 指定がなければ左手
+-- [[ 2. 掴み & 上昇 & キック (左右対応版に改造) ]]
+local function doBlobmanGrab(targetPlayer, side)
+    side = side or "Left" -- 指定がない場合は左手
     pcall(function()
         local char = lp.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -881,16 +880,17 @@ local function doBlobmanGrab(targetPlayer, arm)
             local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
             
             if remote and targetHRP then
-                local detector = blobman:WaitForChild(arm .. "Detector")
-                local weld = detector:WaitForChild(arm .. "Weld")
-                
+                -- 左右のDetectorを動的に切り替え
+                local detector = blobman:WaitForChild(side .. "Detector")
+                local weld = detector:WaitForChild(side .. "Weld")
+
                 -- 掴み実行 (Mode 3: Kick)
                 remote:FireServer(detector, targetHRP, weld, 3)
                 
-                -- 上昇エフェクト (パワーアップ)
+                -- 上昇エフェクト (パワー倍増：150)
                 local bv = Instance.new("BodyVelocity")
                 bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                bv.Velocity = Vector3.new(0, 100, 0)
+                bv.Velocity = Vector3.new(0, 150, 0) 
                 bv.Parent = lp.Character.HumanoidRootPart
                 game:GetService("Debris"):AddItem(bv, 0.5)
             end
@@ -899,8 +899,7 @@ local function doBlobmanGrab(targetPlayer, arm)
 end
 
 -- [[ 3. UI構築 ]]
--- Window変数が他で定義されていることを前提とする
-local BlobmanTab = Window:MakeTab({ Name = "Blobman 両手強化版", Icon = "rbxassetid://6031064398" })
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 両手破壊版", Icon = "rbxassetid://6031064398" })
 
 -- プレイヤー選択ドロップダウン
 local PlayerSelector = BlobmanTab:AddDropdown({
@@ -912,19 +911,20 @@ local PlayerSelector = BlobmanTab:AddDropdown({
     end
 })
 
--- リスト更新 (Refreshがエラーを吐く場合のためにpcallで保護)
+-- リスト更新ボタン
 BlobmanTab:AddButton({
     Name = "Refresh Player List (リスト更新)",
     Callback = function()
+        -- エラーで止まらないようにpcallで保護
         pcall(function()
             PlayerSelector:Refresh(getPlayerNames(), true)
         end)
     end
 })
 
--- 単体キック (両手で掴みかかる)
+-- 単体実行を「両手」に強化
 BlobmanTab:AddButton({
-    Name = "Grab & Kick (両手同時)",
+    Name = "Grab & Kick (両手ギガインパクト)",
     Callback = function()
         local target = players:FindFirstChild(_G.PlayerToLongGrab)
         if target then 
@@ -935,26 +935,26 @@ BlobmanTab:AddButton({
     end
 })
 
--- サーバーデストロイ (両手交互回し)
+-- サーバーデストロイ (ここを「両手交互」に改造)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (両手 Auto Grab)",
+    Name = "Destroy Server (両手 Auto Kick)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
         if Value then
             task.spawn(function()
-                local useLeft = true -- 左右切り替えフラグ
+                local useLeft = true -- 左右切り替え用
                 while _G.BringAllLongReach do
                     for _, p in pairs(players:GetPlayers()) do
                         if not _G.BringAllLongReach then break end
                         if p ~= lp and p.Character and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
                             
-                            -- 左右交互に掴む
-                            local armSide = useLeft and "Left" or "Right"
-                            doBlobmanGrab(p, armSide)
+                            -- 左手と右手を交互に使って爆速化
+                            local arm = useLeft and "Left" or "Right"
+                            doBlobmanGrab(p, arm)
                             useLeft = not useLeft
                             
-                            task.wait(0.2) -- 速度重視
+                            task.wait(0.15) -- 待機時間を短縮して殲滅速度アップ
                         end
                     end
                     task.wait(0.5)
@@ -964,10 +964,13 @@ BlobmanTab:AddToggle({
     end
 })
 
+-- フレンド除外設定
 BlobmanTab:AddToggle({
     Name = "Whitelist Friends",
     Default = false,
-    Callback = function(v) _G.WhitelistFriends2 = v end
+    Callback = function(v)
+        _G.WhitelistFriends2 = v
+    end
 })
 
 --==============================
