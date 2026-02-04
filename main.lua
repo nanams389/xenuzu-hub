@@ -158,85 +158,83 @@ AuraTab:AddToggle({
     end    
 })
 
---==============================
--- Kick Aura セクション
---==============================
-local kickAuraSection = VoidTab:AddSection({ Name = "Kick Aura Settings" })
+-- ==============================
+-- Kick Aura (AuraTab の最後に追加)
+-- ==============================
 
-kickauratoggle = kickAuraSection:AddToggle({
-    Name = "Kick Aura",
+-- 初期設定
+_G.isKickAuraEnabled = false
+_G.WhitelistFriends = _G.WhitelistFriends or false -- 定義されていなければ作成
+
+-- キックオーラのトグル
+AuraTab:AddToggle({
+    Name = "Kick Aura (天国送り)",
     Default = false,
-    Callback = function(isKickAuraEnabled)
-        _G.KickAura = isKickAuraEnabled
-        if isKickAuraEnabled then
-            task.spawn(function() -- ループで固まらないようにspawn
-                while _G.KickAura do
-                    -- 【削除】GetKeyプレミアムチェックを撤廃
+    Callback = function(Value)
+        _G.isKickAuraEnabled = Value
+        if Value then
+            task.spawn(function()
+                while _G.isKickAuraEnabled do
+                    task.wait(0.1) -- 負荷軽減
+                    local lp = game.Players.LocalPlayer
+                    local rs = game:GetService("ReplicatedStorage")
                     
-                    local playersService = game:GetService("Players")
-                    local lp = playersService.LocalPlayer
-                    
-                    -- 元のコードのイテレータ構造を維持
-                    local getPlayersIterator, playerPairsIteratorState, playerIndex = pairs(playersService:GetPlayers())
-                    
-                    while true do
-                        local player
-                        playerIndex, player = getPlayersIterator(playerPairsIteratorState, playerIndex)
-                        
-                        if playerIndex == nil then
-                            break
-                        end
-                        
-                        -- 自分以外 ＆ フレンドホワイトリスト判定
-                        local isFriend = lp:IsFriendsWith(player.UserId)
-                        if player ~= lp and not (_G.WhitelistFriends and isFriend) then
+                    -- リモートイベントの存在確認 (エラー防止)
+                    local grabLine = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("CreateGrabLine")
+                    local struggle = rs:FindFirstChild("CharacterEvents") and rs.CharacterEvents:FindFirstChild("Struggle")
+
+                    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if not _G.isKickAuraEnabled then break end
                             
-                            local character = player.Character
-                            local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
-                            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                            
-                            -- 判定ロジック（SNOWship等の不明な関数を汎用的な距離判定と所有権奪取に置換）
-                            if humanoidRootPart and humanoid then
-                                local dist = (humanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude
-                                if dist < 20 then -- オーラ範囲（20スタッド）
-                                    pcall(function()
-                                        -- サーバーイベントを叩いて所有権に干渉（元の構造を尊重）
-                                        game:GetService("ReplicatedStorage").GrabEvents.CreateGrabLine:FireServer(humanoidRootPart)
-                                        
-                                        -- Kick実行（地底へ飛ばす）
-                                        humanoidRootPart.Velocity = Vector3.new(0, 1000, 0) -- 天国へ！
-                                        humanoidRootPart.CFrame = CFrame.new(0, -1000, 0)
-                                        
-                                        -- サーバー側へ位置を確定させる
-                                        game:GetService("ReplicatedStorage").CharacterEvents.Struggle:FireServer()
-                                    end)
+                            -- 自分以外 ＆ フレンド除外判定
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local isFriend = lp:IsFriendsWith(player.UserId)
+                                if not (_G.WhitelistFriends and isFriend) then
+                                    
+                                    local targetHRP = player.Character.HumanoidRootPart
+                                    local dist = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+
+                                    -- 射程 25 スタッド
+                                    if dist <= 25 then
+                                        pcall(function()
+                                            -- 所有権の強制奪取
+                                            if grabLine then grabLine:FireServer(targetHRP) end
+                                            
+                                            -- 物理的キック (奈落 & 速度)
+                                            targetHRP.CFrame = CFrame.new(0, -10000, 0)
+                                            targetHRP.Velocity = Vector3.new(0, -1000, 0)
+                                            
+                                            -- サーバー同期
+                                            if struggle then struggle:FireServer() end
+                                        end)
+                                    end
                                 end
                             end
                         end
                     end
-                    task.wait(0.1)
                 end
             end)
         end
     end
 })
 
-kickAuraSection:AddDropdown({
-    Name = "Kick Type",
-    Default = "Go to the heaven!",
-    Options = { "Go to the heaven!" },
-    Callback = function(kickAuraType)
-        _G.KickAuraType = kickAuraType
+-- フレンド除外のトグル
+AuraTab:AddToggle({
+    Name = "Whitelist Friends (Kick用)",
+    Default = false,
+    Callback = function(Value)
+        _G.WhitelistFriends = Value
     end
 })
 
--- ホワイトリストセクション（Orionのタブに合わせて変数名を調整してくれ）
-local aurasWhitelistSection = VoidTab:AddSection({ Name = "Whitelist" })
-aurasWhitelistSection:AddToggle({
-    Name = "Whitelist Friends",
-    Default = false,
-    Callback = function(whitelistFriendsEnabled)
-        _G.WhitelistFriends = whitelistFriendsEnabled
+-- キックタイプ（ビジュアル用）
+AuraTab:AddDropdown({
+    Name = "Kick Type",
+    Default = "Go to the heaven!",
+    Options = {"Go to the heaven!"},
+    Callback = function(t)
+        -- 将来的にタイプを増やしたい時用
     end
 })
 
