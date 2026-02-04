@@ -493,8 +493,8 @@ end)
 -- 地底貫通・抹殺オーラ (Noclip Abyss)
 --==============================
 _G.AbyssKillAuraEnabled = false
-local abyssDepth = -500 -- 1回で引きずり込む深さ
-local fallSpeed = -50000 -- 落下加速
+local abyssDepth = -50 -- 1回で引きずり込む深さ
+local fallSpeed = -5000 -- 落下加速
 
 UltimateTab:AddToggle({
     Name = "地底貫通 Kill Aura (Noclip)",
