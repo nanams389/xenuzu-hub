@@ -243,18 +243,8 @@ local bringAllSection = VoidTab:AddSection({
     Name = "Bring All Settings"
 })
 
--- 依存関数をこの中で定義してエラーを確実に防ぐ
-local function SafeTeleport(targetCFrame)
-    pcall(function()
-        local lp = game.Players.LocalPlayer
-        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-            lp.Character.HumanoidRootPart.CFrame = targetCFrame
-        end
-    end)
-end
-
 bringalltoggle = bringAllSection:AddToggle({
-    Name = "Bring All (No Premium)",
+    Name = "Bring All (Server Sync)",
     Default = false,
     Callback = function(bringAllEnabled)
         _G.BringAll = bringAllEnabled
@@ -269,7 +259,8 @@ bringalltoggle = bringAllSection:AddToggle({
                         continue 
                     end
                     
-                    local playerCFrame = char.HumanoidRootPart.CFrame
+                    local myRoot = char.HumanoidRootPart
+                    local playerCFrame = myRoot.CFrame
                     
                     for _, player in pairs(game.Players:GetPlayers()) do
                         if not _G.BringAll then break end
@@ -278,34 +269,34 @@ bringalltoggle = bringAllSection:AddToggle({
                         pcall(function()
                             local targetChar = player.Character
                             local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-                            local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
                             
-                            -- ターゲットが存在し、生きている場合
-                            if targetHrp and targetHum and targetHum.Health > 0 then
-                                -- 1. 相手をラグドール化させて物理的に動かせるようにする
+                            if targetHrp then
+                                -- 【重要】相手に自分の位置へ「テレポートした」と思わせるのではなく
+                                -- サーバー側に「自分が相手を掴んでいる」というイベントを送りつける
+                                
+                                -- 1. 相手を強制ラグドール化（物理判定をゆるくする）
                                 game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(targetChar)
                                 
-                                -- 2. 自分の位置へ強制テレポート（50回繰り返して所有権を奪う）
-                                for i = 1, 10 do
-                                    if not _G.BringAll then break end
-                                    targetHrp.CFrame = playerCFrame
-                                    -- ネットワーク所有権のシミュレーション
-                                    game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(targetHrp)
-                                    task.wait()
-                                end
+                                -- 2. 掴みイベントを連打して、相手の所有権（Ownership）に干渉する
+                                -- これにより、相手の座標がこちらの計算に従いやすくなる
+                                game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(targetHrp)
+                                
+                                -- 3. 直接座標を叩くのではなく、速度（Velocity）と座標を同時に送る
+                                -- これで「ビジュアルだけ」を防ぎ、サーバーへ位置を強制報告する
+                                targetHrp.Velocity = Vector3.new(0, 0, 0)
+                                targetHrp.CFrame = playerCFrame * CFrame.new(0, 0, -3) -- 自分の少し前に配置
+                                
+                                -- 4. サーバー側に「あがいている（Struggle）」信号を送って位置を確定させる
+                                game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
                             end
                         end)
                     end
-                    
-                    -- サーバーの検知を逃れるための位置微調整
-                    SafeTeleport(playerCFrame * CFrame.new(0, 0, -2))
-                    task.wait(0.5)
+                    task.wait(0.1) -- サーバーが処理しきれる速度に調整
                 end
             end)
         end
     end
 })
-
 
 -- [[ Anti-Grab Pro タブ ]]
 local AntiTab = Window:MakeTab({
