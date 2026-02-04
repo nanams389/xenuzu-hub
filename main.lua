@@ -375,6 +375,77 @@ UltimateTab:AddToggle({
     end    
 })
 
+--============================================================
+-- ここから下を追加：既存の Anti-Grab Pro コードの末尾に貼り付け
+--============================================================
+
+local invulnerabilitySection = AntiTab:AddSection({ Name = "追加防御機能" })
+
+-- Anti-Void
+invulnerabilitySection:AddToggle({
+    Name = "Anti-Void",
+    Default = false,
+    Callback = function(isAntiVoidEnabled)
+        _G.AntiVoid = isAntiVoidEnabled
+        local workspaceService = game:GetService("Workspace") -- 変数定義補完
+        if isAntiVoidEnabled then
+            workspaceService.FallenPartsDestroyHeight = - 1000
+            task.spawn(function() -- ループで止まらないようにspawn化
+                while _G.AntiVoid do
+                    -- GetPlayerCharacter()の代わりに直接取得
+                    local lp = game.Players.LocalPlayer
+                    local playerCharacter = lp.Character
+                    if playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart") then
+                        if playerCharacter.HumanoidRootPart.Position.Y < - 800 then
+                            playerCharacter:SetPrimaryPartCFrame(CFrame.new(0, 50, 0))
+                            if antivoidmesssage then antivoidmesssage() end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        else
+            workspaceService.FallenPartsDestroyHeight = - 100
+        end
+    end,
+    Save = true,
+    Flag = "antivoid_toggle"
+})
+
+-- Anti-Lag
+invulnerabilitySection:AddToggle({
+    Name = "Anti-Lag",
+    Default = false,
+    Callback = function(antiCreateLineLocalScriptDisabled)
+        if anticreatelinelocalscript then
+            anticreatelinelocalscript.Disabled = antiCreateLineLocalScriptDisabled
+        end
+    end,
+    Save = true,
+    Flag = "antilag_toggle"
+})
+
+-- Anti-Kick
+invulnerabilitySection:AddToggle({
+    Name = "Anti-Kick",
+    Default = false,
+    Callback = function(antiKickEnabled)
+        _G.AntiKick = antiKickEnabled
+        if antiKickEnabled then
+            task.spawn(function() -- spawn化
+                while _G.AntiKick do
+                    if GetKunai then GetKunai() end
+                    task.wait()
+                end
+            end)
+        end
+    end,
+    Save = true,
+    Flag = "antikick_toggle"
+})
+
+
+
 -- [[ 3. 設定用スライダー ]]
 UltimateTab:AddSlider({
     Name = "オーラ射程", Min = 5, Max = 50, Default = 25,
