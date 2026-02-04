@@ -158,6 +158,88 @@ AuraTab:AddToggle({
     end    
 })
 
+--==============================
+-- Kick Aura セクション
+--==============================
+local kickAuraSection = VoidTab:AddSection({ Name = "Kick Aura Settings" })
+
+kickauratoggle = kickAuraSection:AddToggle({
+    Name = "Kick Aura",
+    Default = false,
+    Callback = function(isKickAuraEnabled)
+        _G.KickAura = isKickAuraEnabled
+        if isKickAuraEnabled then
+            task.spawn(function() -- ループで固まらないようにspawn
+                while _G.KickAura do
+                    -- 【削除】GetKeyプレミアムチェックを撤廃
+                    
+                    local playersService = game:GetService("Players")
+                    local lp = playersService.LocalPlayer
+                    
+                    -- 元のコードのイテレータ構造を維持
+                    local getPlayersIterator, playerPairsIteratorState, playerIndex = pairs(playersService:GetPlayers())
+                    
+                    while true do
+                        local player
+                        playerIndex, player = getPlayersIterator(playerPairsIteratorState, playerIndex)
+                        
+                        if playerIndex == nil then
+                            break
+                        end
+                        
+                        -- 自分以外 ＆ フレンドホワイトリスト判定
+                        local isFriend = lp:IsFriendsWith(player.UserId)
+                        if player ~= lp and not (_G.WhitelistFriends and isFriend) then
+                            
+                            local character = player.Character
+                            local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+                            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                            
+                            -- 判定ロジック（SNOWship等の不明な関数を汎用的な距離判定と所有権奪取に置換）
+                            if humanoidRootPart and humanoid then
+                                local dist = (humanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                                if dist < 20 then -- オーラ範囲（20スタッド）
+                                    pcall(function()
+                                        -- サーバーイベントを叩いて所有権に干渉（元の構造を尊重）
+                                        game:GetService("ReplicatedStorage").GrabEvents.CreateGrabLine:FireServer(humanoidRootPart)
+                                        
+                                        -- Kick実行（地底へ飛ばす）
+                                        humanoidRootPart.Velocity = Vector3.new(0, 1000, 0) -- 天国へ！
+                                        humanoidRootPart.CFrame = CFrame.new(0, -1000, 0)
+                                        
+                                        -- サーバー側へ位置を確定させる
+                                        game:GetService("ReplicatedStorage").CharacterEvents.Struggle:FireServer()
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+kickAuraSection:AddDropdown({
+    Name = "Kick Type",
+    Default = "Go to the heaven!",
+    Options = { "Go to the heaven!" },
+    Callback = function(kickAuraType)
+        _G.KickAuraType = kickAuraType
+    end
+})
+
+-- ホワイトリストセクション（Orionのタブに合わせて変数名を調整してくれ）
+local aurasWhitelistSection = VoidTab:AddSection({ Name = "Whitelist" })
+aurasWhitelistSection:AddToggle({
+    Name = "Whitelist Friends",
+    Default = false,
+    Callback = function(whitelistFriendsEnabled)
+        _G.WhitelistFriends = whitelistFriendsEnabled
+    end
+})
+
 -- [[ Void Aura タブ ]]
 local VoidTab = Window:MakeTab({
     Name = "Void Aura",
