@@ -145,6 +145,25 @@ game:GetService("RunService").RenderStepped:Connect(function()
     end
 end)
 
+-- 一人称解除 (Force Third Person)
+VisualTab:AddToggle({
+    Name = "三人称視点を強制許可",
+    Default = false,
+    Callback = function(v)
+        local lp = game.Players.LocalPlayer
+        if v then
+            -- ズーム距離の制限を解除して、三人称にできるようにする
+            lp.CameraMaxZoomDistance = 100 -- 好きな距離まで引けるように設定
+            lp.CameraMinZoomDistance = 0.5
+            lp.CameraMode = Enum.CameraMode.Classic -- 一人称固定(LockFirstPerson)を解除
+        else
+            -- ゲームデフォルトの設定に戻す（必要に応じて数値を調整してくれ）
+            lp.CameraMaxZoomDistance = 12.8 
+            lp.CameraMode = Enum.CameraMode.Classic
+        end
+    end
+})
+
 --==============================
 -- タブ：移動ハック
 --==============================
