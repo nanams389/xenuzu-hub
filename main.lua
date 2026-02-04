@@ -1122,48 +1122,205 @@ BlobmanTab:AddButton({
     end
 })
 
-BlobmanTab:AddButton({
-    Name = "Rapid Grab & Release (周囲全員)",
-    Callback = function()
-        pcall(function()
-            local char = lp.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local seat = hum and hum.SeatPart
-            
-            if seat and seat.Parent then
-                local blobman = seat.Parent
-                local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                
-                if remote then
-                    -- 近くのプレイヤーを全員スキャン
-                    for _, p in pairs(players:GetPlayers()) do
-                        if p ~= lp and p.Character then
-                            local targetHRP = p.Character:FindFirstChild("HumanoidRootPart")
-                            -- 距離チェック（近すぎるやつを対象にする場合。全距離ならこのifを外してもOK）
-                            if targetHRP and (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 50 then
-                                
-                                -- 左右の手で交互に、あるいは高速にリモートを叩く
-                                local detectors = {"LeftDetector", "RightDetector"}
-                                for _, detName in pairs(detectors) do
-                                    local detector = blobman:FindFirstChild(detName)
-                                    local weld = detector and detector:FindFirstChildOfClass("Weld") or (detector and detector:FindFirstChild(detName:gsub("Detector", "Weld")))
-                                    
-                                    if detector and weld then
-                                        -- Mode 3 (Kick) を送ることで、掴んだ瞬間に物理的に弾き飛ばす（即離す挙動）
-                                        remote:FireServer(detector, targetHRP, weld, 3)
-                                    end
-                                end
-                                -- サーバーへの負荷を考えつつ、人間には見えない速さで待機
-                                task.wait(0.05)
-                            end
-                        end
-                    end
-                end
-            end
-        end)
+-- 変数とサービス
+
+local players = game:GetService("Players")
+
+local lp = players.LocalPlayer
+
+_G.BringAllLongReach = false
+
+_G.WhitelistFriends2 = false
+
+
+
+-- [[ 1. プレイヤーリストを更新する関数 ]]
+
+local function getPlayerNames()
+
+    local names = {}
+
+    for _, p in pairs(players:GetPlayers()) do
+
+        if p ~= lp then
+
+            table.insert(names, p.Name)
+
+        end
+
     end
+
+    return names
+
+end
+
+
+
+-- [[ 2. 掴み & 上昇 & キック の中身 (関数なしで直接書く) ]]
+
+local function doBlobmanGrab(targetPlayer)
+
+    pcall(function()
+
+        local char = lp.Character
+
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+        local seat = hum and hum.SeatPart
+
+        
+
+        if seat and seat.Parent and targetPlayer.Character then
+
+            local blobman = seat.Parent
+
+            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+            local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+
+            
+
+            if remote and targetHRP then
+
+                -- 掴み実行 (Mode 3: Kick)
+
+                remote:FireServer(
+
+                    blobman:WaitForChild("LeftDetector"),
+
+                    targetHRP,
+
+                    blobman:WaitForChild("LeftDetector"):WaitForChild("LeftWeld"),
+
+                    3
+
+                )
+
+                
+
+                -- 上昇エフェクト
+
+                local bv = Instance.new("BodyVelocity")
+
+                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+
+                bv.Velocity = Vector3.new(0, 50, 0)
+
+                bv.Parent = lp.Character.HumanoidRootPart
+
+                game:GetService("Debris"):AddItem(bv, 0.5)
+
+            end
+
+        end
+
+    end)
+
+end
+
+
+
+-- [[ 3. UI構築 ]]
+
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 修正版", Icon = "rbxassetid://6031064398" })
+
+
+
+-- プレイヤー選択ドロップダウン
+
+local PlayerSelector = BlobmanTab:AddDropdown({
+
+    Name = "Select Player",
+
+    Default = "",
+
+    Options = getPlayerNames(), -- 実行時に現在のプレイヤーを表示
+
+    Callback = function(t)
+
+        _G.PlayerToLongGrab = t
+
+    end
+
 })
 
+
+
+-- リスト更新ボタン (これ重要！)
+
+BlobmanTab:AddButton({
+
+    Name = "Refresh Player List (リスト更新)",
+
+    Callback = function()
+
+        PlayerSelector:Refresh(getPlayerNames(), true)
+
+    end
+
+})
+
+
+
+BlobmanTab:AddButton({
+
+    Name = "Grab & Kick (単体実行)",
+
+    Callback = function()
+
+        local target = players:FindFirstChild(_G.PlayerToLongGrab)
+
+        if target then doBlobmanGrab(target) end
+
+    end
+
+})
+
+
+
+-- サーバーデストロイ
+
+BlobmanTab:AddToggle({
+
+    Name = "Destroy Server (Auto Grab)",
+
+    Default = false,
+
+    Callback = function(Value)
+
+        _G.BringAllLongReach = Value
+
+        if Value then
+
+            task.spawn(function()
+
+                while _G.BringAllLongReach do
+
+                    for _, p in pairs(players:GetPlayers()) do
+
+                        if not _G.BringAllLongReach then break end
+
+                        if p ~= lp and p.Character and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+
+                            doBlobmanGrab(p)
+
+                            task.wait(0.3) -- 連続掴みのための待機
+
+                        end
+
+                    end
+
+                    task.wait(1)
+
+                end
+
+            end)
+
+        end
+
+    end
+
+})　
 
 --==============================
 -- 初期化
