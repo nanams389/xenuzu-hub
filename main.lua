@@ -1048,10 +1048,58 @@ BlobmanTab:AddToggle({
     end
 })
 
--- --- 公式エラー誘発キック (ボタンコード) ---
+-- 変数とサービス
+local players = game:GetService("Players")
+local lp = players.LocalPlayer
+_G.BringAllLongReach = false
+_G.WhitelistFriends2 = false
 
+-- [[ 1. プレイヤーリストを更新する関数 ]]
+local function getPlayerNames()
+    local names = {}
+    for _, p in pairs(players:GetPlayers()) do
+        if p ~= lp then
+            table.insert(names, p.Name)
+        end
+    end
+    return names
+end
+
+-- [[ 2. 掴み & 上昇 & キック の中身 ]]
+local function doBlobmanGrab(targetPlayer)
+    pcall(function()
+        local char = lp.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local seat = hum and hum.SeatPart
+        if seat and seat.Parent and targetPlayer.Character then
+            local blobman = seat.Parent
+            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+            if remote and targetHRP then
+                -- 掴み実行 (Mode 3: Kick)
+                remote:FireServer(
+                    blobman:WaitForChild("LeftDetector"),
+                    targetHRP,
+                    blobman:WaitForChild("LeftDetector"):WaitForChild("LeftWeld"),
+                    3
+                )
+                -- 上昇エフェクト
+                local bv = Instance.new("BodyVelocity")
+                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                bv.Velocity = Vector3.new(0, 50, 0)
+                bv.Parent = lp.Character.HumanoidRootPart
+                game:GetService("Debris"):AddItem(bv, 0.5)
+            end
+        end
+    end)
+end
+
+-- [[ 3. UI構築 ]]
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 修正版", Icon = "rbxassetid://6031064398" })
+
+-- 公式エラー誘発キック (blobman 引き寄せ)
 BlobmanTab:AddButton({
-    Name = "blobman 引き寄せ",
+    Name = "blobman 引き寄せ (公式エラー誘発)",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
@@ -1059,55 +1107,43 @@ BlobmanTab:AddButton({
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             local hrp = char:FindFirstChild("HumanoidRootPart")
             local seat = hum and hum.SeatPart
-            
             if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
                 local blobman = seat.Parent
                 local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                
-                -- 1. まず相手の場所にテレポート（掴み確実化）
+                -- 1. 相手の場所にテレポート
                 local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
                 if blobman.PrimaryPart then
                     blobman:SetPrimaryPartCFrame(targetPos)
                 else
                     seat.CFrame = targetPos
                 end
-                
                 task.wait(0.1)
-
-                -- 2. 両手でガッチリ掴む
+                -- 2. 両手で掴む
                 local arms = {"Left", "Right"}
                 for _, side in ipairs(arms) do
                     local detector = blobman:WaitForChild(side .. "Detector")
                     local weld = detector:WaitForChild(side .. "Weld")
                     remote:FireServer(detector, targetHRP, weld, 3)
                 end
-
-                -- 3. 【公式エラー誘発セクション】
-                -- 掴んだ状態でDetector（腕）を地面の奥底と上空へ超高速往復させる
-                -- これでターゲットの物理演算が崩壊し、公式の「Error」が足元に出る
+                -- 3. 公式エラー誘発
                 task.spawn(function()
                     local leftDetector = blobman:FindFirstChild("LeftDetector")
                     local rightDetector = blobman:FindFirstChild("RightDetector")
                     local originalCF = leftDetector.CFrame
-                    
-                    for i = 1, 15 do -- 15回高速往復（これで確実にバグらせる）
-                        local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0) -- 地面深く
+                    for i = 1, 15 do
+                        local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0)
                         if leftDetector then leftDetector.CFrame = shakePos end
                         if rightDetector then rightDetector.CFrame = shakePos end
                         task.wait(0.02)
-                        
-                        local shakePosUp = targetHRP.CFrame * CFrame.new(0, 20, 0) -- 上空
+                        local shakePosUp = targetHRP.CFrame * CFrame.new(0, 20, 0)
                         if leftDetector then leftDetector.CFrame = shakePosUp end
                         if rightDetector then rightDetector.CFrame = shakePosUp end
                         task.wait(0.02)
                     end
-                    
-                    -- 最後に元の位置へ戻す
                     if leftDetector then leftDetector.CFrame = originalCF end
                 end)
-
-                -- 4. 浮上してトドメ
+                -- 4. 浮上固定
                 if not hrp:FindFirstChild("ErrorFloat") then
                     local bv = Instance.new("BodyVelocity")
                     bv.Name = "ErrorFloat"
@@ -1122,105 +1158,23 @@ BlobmanTab:AddButton({
     end
 })
 
--- 変数とサービス
-
-local players = game:GetService("Players")
-
-local lp = players.LocalPlayer
-
-_G.BringAllLongReach = false
-
-_G.WhitelistFriends2 = false
-
-
-
--- [[ 1. プレイヤーリストを更新する関数 ]]
-
-local function getPlayerNames()
-
-    local names = {}
-
-    for _, p in pairs(players:GetPlayers()) do
-
-        if p ~= lp then
-
-            table.insert(names, p.Name)
-
-        end
-
-    end
-
-    return names
-
-end
-
-
-
--- [[ 2. 掴み & 上昇 & キック の中身 (関数なしで直接書く) ]]
-
-local function doBlobmanGrab(targetPlayer)
-
-    pcall(function()
-
-        local char = lp.Character
-
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-        local seat = hum and hum.SeatPart
-
-        
-
-        if seat and seat.Parent and targetPlayer.Character then
-
-            local blobman = seat.Parent
-
-            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-
-            local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-            if remote and targetHRP then
-                -- 掴み実行 (Mode 3: Kick)
-                remote:FireServer(
-                    blobman:WaitForChild("LeftDetector"),
-                    targetHRP,
-                    blobman:WaitForChild("LeftDetector"):WaitForChild("LeftWeld"),
-                    3
-                )
-
-                
-
-                -- 上昇エフェクト
-                local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                bv.Velocity = Vector3.new(0, 50, 0)
-                bv.Parent = lp.Character.HumanoidRootPart
-                game:GetService("Debris"):AddItem(bv, 0.5)
-            end
-        end
-    end)
-end
-
-
--- [[ 3. UI構築 ]]
-
-local BlobmanTab = Window:MakeTab({ Name = "Blobman 修正版", Icon = "rbxassetid://6031064398" })
 -- プレイヤー選択ドロップダウン
 local PlayerSelector = BlobmanTab:AddDropdown({
     Name = "Select Player",
     Default = "",
-    Options = getPlayerNames(), -- 実行時に現在のプレイヤーを表示
-    Callback = function(t)
-        _G.PlayerToLongGrab = t
-    end
+    Options = getPlayerNames(),
+    Callback = function(t) _G.PlayerToLongGrab = t end
 })
 
--- リスト更新ボタン (これ重要！)
-
+-- リスト更新ボタン
 BlobmanTab:AddButton({
     Name = "Refresh Player List (リスト更新)",
     Callback = function()
         PlayerSelector:Refresh(getPlayerNames(), true)
     end
 })
+
+-- 単体実行ボタン
 BlobmanTab:AddButton({
     Name = "Grab & Kick (単体実行)",
     Callback = function()
@@ -1228,6 +1182,45 @@ BlobmanTab:AddButton({
         if target then doBlobmanGrab(target) end
     end
 })
+
+-- デストロイサーバー (Rapid Grab/Release)
+BlobmanTab:AddToggle({
+    Name = "Destroy Server (Rapid Grab/Release)",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLongReach = Value
+        if Value then
+            task.spawn(function()
+                while _G.BringAllLongReach do
+                    local char = lp.Character
+                    local seat = char.Humanoid.SeatPart
+                    if seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        if remote then
+                            for _, p in pairs(players:GetPlayers()) do
+                                if not _G.BringAllLongReach then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    local detector = blobman:FindFirstChild("LeftDetector")
+                                    local weld = detector and detector:FindFirstChild("LeftWeld")
+                                    if detector and weld then
+                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
+                                        task.wait(0.05)
+                                        remote:FireServer(detector, targetHRP, weld, 1) -- 即離す
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.2)
+                end
+            end)
+        end
+    end
+})
+
+BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
 --==============================
 -- 初期化
