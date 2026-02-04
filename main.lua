@@ -854,19 +854,17 @@ local lp = players.LocalPlayer
 _G.BringAllLongReach = false
 _G.WhitelistFriends2 = false
 
--- [[ 1. プレイヤーリストを更新する関数 ]]
+-- [[ 1. プレイヤーリスト取得 ]]
 local function getPlayerNames()
     local names = {}
     for _, p in pairs(players:GetPlayers()) do
-        if p ~= lp then
-            table.insert(names, p.Name)
-        end
+        if p ~= lp then table.insert(names, p.Name) end
     end
     return names
 end
 
--- [[ 2. 掴み & 上昇 & キック の中身 (関数なしで直接書く) ]]
-local function doBlobmanGrab(targetPlayer)
+-- [[ 2. 強化版：両手掴み & 爆速キック実行 ]]
+local function doDualGrabKick(targetPlayer, armSide) -- armSide: "Left" か "Right"
     pcall(function()
         local char = lp.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -878,75 +876,85 @@ local function doBlobmanGrab(targetPlayer)
             local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
             
             if remote and targetHRP then
-                -- 掴み実行 (Mode 3: Kick)
-                remote:FireServer(
-                    blobman:WaitForChild("LeftDetector"),
-                    targetHRP,
-                    blobman:WaitForChild("LeftDetector"):WaitForChild("LeftWeld"),
-                    3
-                )
+                -- 指定された側の手で掴む
+                local detector = blobman:WaitForChild(armSide .. "Detector")
+                local weld = detector:WaitForChild(armSide .. "Weld")
                 
-                -- 上昇エフェクト
+                -- 掴み実行 (Mode 3: Kick)
+                remote:FireServer(detector, targetHRP, weld, 3)
+                
+                -- 上昇パワーを強化 (さらに高く！)
                 local bv = Instance.new("BodyVelocity")
                 bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                bv.Velocity = Vector3.new(0, 50, 0)
+                bv.Velocity = Vector3.new(0, 150, 0) -- 速度を3倍に
                 bv.Parent = lp.Character.HumanoidRootPart
-                game:GetService("Debris"):AddItem(bv, 0.5)
+                game:GetService("Debris"):AddItem(bv, 0.4)
             end
         end
     end)
 end
 
 -- [[ 3. UI構築 ]]
-local BlobmanTab = Window:MakeTab({ Name = "Blobman 修正版", Icon = "rbxassetid://6031064398" })
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 最終形態", Icon = "rbxassetid://6031064398" })
 
--- プレイヤー選択ドロップダウン
+-- プレイヤー選択
 local PlayerSelector = BlobmanTab:AddDropdown({
     Name = "Select Player",
     Default = "",
-    Options = getPlayerNames(), -- 実行時に現在のプレイヤーを表示
-    Callback = function(t)
-        _G.PlayerToLongGrab = t
-    end
-})
-
--- リスト更新ボタン (これ重要！)
-BlobmanTab:AddButton({
-    Name = "Refresh Player List (リスト更新)",
-    Callback = function()
-        PlayerSelector:Refresh(getPlayerNames(), true)
-    end
+    Options = getPlayerNames(),
+    Callback = function(t) _G.PlayerToLongGrab = t end
 })
 
 BlobmanTab:AddButton({
-    Name = "Grab & Kick (単体実行)",
+    Name = "Refresh List",
+    Callback = function() PlayerSelector:Refresh(getPlayerNames(), true) end
+})
+
+-- 単体：ギガキック (一瞬で両手で掴みかかる)
+BlobmanTab:AddButton({
+    Name = "GIGA GRAB & KICK (超強化)",
     Callback = function()
         local target = players:FindFirstChild(_G.PlayerToLongGrab)
-        if target then doBlobmanGrab(target) end
+        if target then 
+            doDualGrabKick(target, "Left")
+            task.wait(0.05)
+            doDualGrabKick(target, "Right") 
+        end
     end
 })
 
--- サーバーデストロイ
+-- 両手デストロイ (交互に爆速で掴む)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Auto Grab)",
+    Name = "両手 Destroy Server (全滅)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
         if Value then
             task.spawn(function()
+                local toggleSide = false
                 while _G.BringAllLongReach do
-                    for _, p in pairs(players:GetPlayers()) do
+                    local allPlayers = players:GetPlayers()
+                    for _, p in pairs(allPlayers) do
                         if not _G.BringAllLongReach then break end
                         if p ~= lp and p.Character and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                            doBlobmanGrab(p)
-                            task.wait(0.3) -- 連続掴みのための待機
+                            -- 左手と右手を交互に使って効率2倍
+                            local side = toggleSide and "Left" or "Right"
+                            doDualGrabKick(p, side)
+                            toggleSide = not toggleSide
+                            task.wait(0.15) -- 掴み速度をアップ
                         end
                     end
-                    task.wait(1)
+                    task.wait(0.5)
                 end
             end)
         end
     end
+})
+
+BlobmanTab:AddToggle({
+    Name = "Whitelist Friends",
+    Default = false,
+    Callback = function(v) _G.WhitelistFriends2 = v end
 })
 
 --==============================
