@@ -159,56 +159,64 @@ AuraTab:AddToggle({
 })
 
 -- ==============================
--- Kick Aura (AuraTab の最後に追加)
+-- 究極 Kick Aura (Server Synced)
 -- ==============================
+_G.UltimateKickEnabled = false
+local kickRange = 25
 
--- 初期設定
-_G.isKickAuraEnabled = false
-_G.WhitelistFriends = _G.WhitelistFriends or false -- 定義されていなければ作成
-
--- キックオーラのトグル
-AuraTab:AddToggle({
-    Name = "Kick Aura (天国送り)",
+UltimateTab:AddToggle({
+    Name = "究極 Kick Aura (Abyss Sync)",
     Default = false,
     Callback = function(Value)
-        _G.isKickAuraEnabled = Value
+        _G.UltimateKickEnabled = Value
         if Value then
             task.spawn(function()
-                while _G.isKickAuraEnabled do
-                    task.wait(0.1) -- 負荷軽減
+                while _G.UltimateKickEnabled do
+                    task.wait(0.1)
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
-                    -- リモートイベントの存在確認 (エラー防止)
+                    -- サーバー同期用の最重要リモート
                     local grabLine = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("CreateGrabLine")
                     local struggle = rs:FindFirstChild("CharacterEvents") and rs.CharacterEvents:FindFirstChild("Struggle")
+                    local setNetwork = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
                     if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                         for _, player in ipairs(game.Players:GetPlayers()) do
-                            if not _G.isKickAuraEnabled then break end
+                            if not _G.UltimateKickEnabled then break end
                             
-                            -- 自分以外 ＆ フレンド除外判定
                             if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                                local isFriend = lp:IsFriendsWith(player.UserId)
-                                if not (_G.WhitelistFriends and isFriend) then
-                                    
-                                    local targetHRP = player.Character.HumanoidRootPart
-                                    local dist = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                                -- フレンドホワイトリスト判定（設定されている場合）
+                                if _G.WhitelistFriends and lp:IsFriendsWith(player.UserId) then continue end
 
-                                    -- 射程 25 スタッド
-                                    if dist <= 25 then
-                                        pcall(function()
-                                            -- 所有権の強制奪取
-                                            if grabLine then grabLine:FireServer(targetHRP) end
-                                            
-                                            -- 物理的キック (奈落 & 速度)
-                                            targetHRP.CFrame = CFrame.new(0, -10000, 0)
-                                            targetHRP.Velocity = Vector3.new(0, -1000, 0)
-                                            
-                                            -- サーバー同期
-                                            if struggle then struggle:FireServer() end
-                                        end)
-                                    end
+                                local targetHRP = player.Character.HumanoidRootPart
+                                local dist = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+
+                                if dist <= kickRange then
+                                    pcall(function()
+                                        -- 【1】所有権の強制奪取 (これが「ビジュアル」を防ぐ鍵)
+                                        if setNetwork then 
+                                            setNetwork:FireServer(targetHRP, targetHRP.CFrame) 
+                                        end
+                                        if grabLine then 
+                                            grabLine:FireServer(targetHRP) 
+                                        end
+
+                                        -- 【2】Noclip化（地面を確実に貫通させる）
+                                        for _, part in ipairs(player.Character:GetDescendants()) do
+                                            if part:IsA("BasePart") then part.CanCollide = false end
+                                        end
+
+                                        -- 【3】極限の座標飛ばし（サーバーが追いつけない位置へ）
+                                        -- 座標を垂直に -10万飛ばし、速度を音速レベルで下向きに固定
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -100000, 0)
+                                        targetHRP.Velocity = Vector3.new(0, -5000, 0)
+
+                                        -- 【4】サーバーに「あがき」を送り、この異常な座標を強制承認させる
+                                        if struggle then 
+                                            struggle:FireServer() 
+                                        end
+                                    end)
                                 end
                             end
                         end
@@ -219,22 +227,13 @@ AuraTab:AddToggle({
     end
 })
 
--- フレンド除外のトグル
-AuraTab:AddToggle({
-    Name = "Whitelist Friends (Kick用)",
-    Default = false,
+UltimateTab:AddSlider({
+    Name = "Kick Range (射程)",
+    Min = 5,
+    Max = 50,
+    Default = 25,
     Callback = function(Value)
-        _G.WhitelistFriends = Value
-    end
-})
-
--- キックタイプ（ビジュアル用）
-AuraTab:AddDropdown({
-    Name = "Kick Type",
-    Default = "Go to the heaven!",
-    Options = {"Go to the heaven!"},
-    Callback = function(t)
-        -- 将来的にタイプを増やしたい時用
+        kickRange = Value
     end
 })
 
