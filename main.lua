@@ -386,7 +386,7 @@ local UltimateTab = Window:MakeTab({ Name = "究極オーラ", Icon = "rbxasseti
 _G.UltimateAuraEnabled = false
 _G.LevitateKillAura = false
 local ultRange = 25
-local ultPower = 50000
+local ultPower = 500000
 
 -- [[ 1. 究極ハイブリッドオーラ（元のコード維持） ]]
 UltimateTab:AddToggle({
@@ -493,8 +493,8 @@ end)
 -- 地底貫通・抹殺オーラ (Noclip Abyss)
 --==============================
 _G.AbyssKillAuraEnabled = false
-local abyssDepth = -50 -- 1回で引きずり込む深さ
-local fallSpeed = -500 -- 落下加速
+local abyssDepth = -500 -- 1回で引きずり込む深さ
+local fallSpeed = -50000 -- 落下加速
 
 UltimateTab:AddToggle({
     Name = "地底貫通 Kill Aura (Noclip)",
