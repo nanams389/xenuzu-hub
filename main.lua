@@ -1048,10 +1048,10 @@ BlobmanTab:AddToggle({
     end
 })
 
--- --- TP上昇キック確定コンボ (ボタンコード) ---
+-- --- TP & 空中固定キック (ボタンコード) ---
 
 BlobmanTab:AddButton({
-    Name = "TP & Rise Kick (テレポート上昇キック)",
+    Name = "TP & Anchor Kick (空中固定キック)",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
@@ -1065,49 +1065,49 @@ BlobmanTab:AddButton({
                 local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                 
-                -- 1. 相手の場所にBlobmanごとテレポート
-                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0) -- 相手の少し上
+                -- 1. 相手の場所にテレポート
+                local targetPos = targetHRP.CFrame * CFrame.new(0, 6, 0)
                 if blobman.PrimaryPart then
                     blobman:SetPrimaryPartCFrame(targetPos)
                 else
                     seat.CFrame = targetPos
                 end
                 
-                task.wait(0.1) -- 位置同期の微待機
+                task.wait(0.1) -- 同期待ち
                 
                 -- 2. 掴み実行 (両手)
                 local arms = {"Left", "Right"}
                 for _, side in ipairs(arms) do
                     local detector = blobman:WaitForChild(side .. "Detector")
                     local weld = detector:WaitForChild(side .. "Weld")
-                    
-                    -- 掴み(Mode 3)
                     remote:FireServer(detector, targetHRP, weld, 3)
                 end
                 
-                -- 3. 効率的な上昇キック（ずっと上がらない設定）
-                if not hrp:FindFirstChild("KickFloat") then
-                    local bv = Instance.new("BodyVelocity")
-                    bv.Name = "KickFloat"
-                    bv.MaxForce = Vector3.new(0, 1e9, 0)
-                    bv.Velocity = Vector3.new(0, 45, 0) -- キックを乗せるための上昇力
-                    bv.Parent = hrp
-                    
-                    -- 0.5秒だけ浮かせて、その後ピタッと止める
-                    task.delay(0.5, function()
-                        if bv.Parent then
-                            bv.Velocity = Vector3.new(0, 0, 0) -- 高度を固定
-                        end
-                    end)
-                    
-                    -- 1.5秒後に浮遊パーツ自体を消去（リセット用）
-                    game:GetService("Debris"):AddItem(bv, 1.5)
-                end
+                -- 3. 空中固定ロジック
+                -- BodyVelocityを強力にして、一定時間「絶対に落ちない」ようにする
+                local bv = hrp:FindFirstChild("AnchorFloat") or Instance.new("BodyVelocity")
+                bv.Name = "AnchorFloat"
+                bv.MaxForce = Vector3.new(0, 1e9, 0) -- Y軸（高さ）を完全に制御
+                bv.Velocity = Vector3.new(0, 40, 0) -- まずは少し浮かせる
+                bv.Parent = hrp
+                
+                -- 0.4秒後に上昇を止めて、その高さで「固定」する
+                task.delay(0.4, function()
+                    if bv.Parent then
+                        bv.Velocity = Vector3.new(0, 0, 0) -- 速度0 ＝ 空中で静止
+                    end
+                end)
+                
+                -- キックが完了して相手が飛んでいくまで（約1.5秒間）固定を維持して、その後解除
+                task.delay(1.5, function()
+                    if bv.Parent then
+                        bv:Destroy() -- ここで初めて重力が戻る
+                    end
+                end)
             end
         end)
     end
 })
-
 --==============================
 -- 初期化
 --==============================
