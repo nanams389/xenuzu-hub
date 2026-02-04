@@ -360,44 +360,16 @@ invulnerabilitySection:AddToggle({
 --============================================================
 -- 強化版 Anti-Kick (既存の Anti-Lag の下に追加してくれ)
 --============================================================
-invulnerabilitySection:AddToggle({
-    Name = "Ultra Anti-Kick",
+antikicktoggle = invulnerabilitySection:AddToggle({
+    Name = "Anti-Kick",
     Default = false,
-    Callback = function(state)
-        _G.UltraAntiKick = state
-        
-        if state then
-            -- サーバーからのKick命令そのものをフックして無効化する
-            local mt = getrawmetatable(game)
-            local oldNamecall = mt.__namecall
-            setreadonly(mt, false)
-
-            mt.__namecall = newcclosure(function(self, ...)
-                local method = getnamecallmethod()
-                
-                -- Kick命令が呼ばれたら、実行せずにスルーする
-                if _G.UltraAntiKick and (tostring(method) == "Kick" or tostring(method) == "kick") then
-                    warn("Anti-Kick: サーバーからのキック命令をブロックしました。")
-                    return nil
-                end
-                
-                return oldNamecall(self, ...)
-            end)
-
-            setreadonly(mt, true)
-
-            -- 元々お前が持っていた GetKunai ループも並行して動かす
-            task.spawn(function()
-                while _G.UltraAntiKick do
-                    pcall(function()
-                        if GetKunai then GetKunai() end
-                    end)
-                    task.wait(0.5)
-                end
-            end)
-        else
-            -- オフにした時は警告を出す（メタテーブルは一度書き換えると戻すのが難しいため基本ON推奨）
-            warn("Anti-Kick: 停止しましたが、メタテーブル保護はセッション終了まで継続する場合があります。")
+    Callback = function(antiKickEnabled)
+        _G.AntiKick = antiKickEnabled
+        if antiKickEnabled then
+            while _G.AntiKick do
+                GetKunai()
+                task.wait()
+            end
         end
     end,
     Save = true,
