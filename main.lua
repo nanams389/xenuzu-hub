@@ -1472,6 +1472,83 @@ BlobmanTab:AddToggle({
 BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
 --==============================
+-- タブ：ブロブマン設定
+--==============================
+local BlobTab = Window:MakeTab({ Name = "ブロブマン設定", Icon = "rbxassetid://4483345998" })
+
+-- ブロブマン搭乗時のスピード調整
+BlobTab:AddSlider({
+    Name = "ブロブマン走行速度", 
+    Min = 16, 
+    Max = 500, 
+    Default = 50, 
+    Increment = 1,
+    Callback = function(v)
+        _G.BlobSpeed = v
+        -- 乗っている時にリアルタイムで適用するためのループ用
+    end
+})
+
+-- ブロブマン専用スピード適用ループ
+game:GetService("RunService").Heartbeat:Connect(function()
+    if _G.BlobSpeed then
+        local char = game.Players.LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            -- ブロブマンに乗っている（座っている、またはモデルが近くにある）判定
+            if char.Humanoid.SeatPart and char.Humanoid.SeatPart.Parent.Name == "Blobman" then
+                char.Humanoid.WalkSpeed = _G.BlobSpeed
+            end
+        end
+    end
+end)
+
+-- ブロブマン飛行 (Fly)
+BlobTab:AddToggle({
+    Name = "ブロブマン飛行モード",
+    Default = false,
+    Callback = function(v)
+        _G.BlobFly = v
+        local lp = game.Players.LocalPlayer
+        local char = lp.Character
+        
+        if v then
+            -- 飛行開始処理
+            local bg = Instance.new("BodyGyro", char.HumanoidRootPart)
+            bg.Name = "FlyGyro"
+            bg.P = 9e4
+            bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+            bg.cframe = char.HumanoidRootPart.CFrame
+            
+            local bv = Instance.new("BodyVelocity", char.HumanoidRootPart)
+            bv.Name = "FlyVel"
+            bv.velocity = Vector3.new(0, 0.1, 0)
+            bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
+            
+            spawn(function()
+                while _G.BlobFly do
+                    wait()
+                    local cam = workspace.CurrentCamera
+                    local moveDir = Vector3.new(0,0,0)
+                    local uis = game:GetService("UserInputService")
+                    
+                    if uis:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                    if uis:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                    if uis:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                    if uis:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                    if uis:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                    if uis:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                    
+                    bv.velocity = moveDir * (_G.BlobSpeed or 50)
+                    bg.cframe = cam.CFrame
+                end
+                bg:Destroy()
+                bv:Destroy()
+            end)
+        end
+    end
+})
+
+--==============================
 -- 初期化
 --==============================
 OrionLib:Init()
