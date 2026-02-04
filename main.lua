@@ -1472,16 +1472,16 @@ BlobmanTab:AddToggle({
 BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
 --==============================
--- タブ：ブロブマン設定
+-- タブ：ブロブマン設定 (変数名を統一)
 --==============================
-local BlobTab = Window:MakeTab({ Name = "ブロブマン設定", Icon = "rbxassetid://4483345998" })
+local BlobmanTab = Window:MakeTab({ Name = "ブロブマン設定", Icon = "rbxassetid://4483345998" })
 
 local SelectedPlayer = ""
 local players = game:GetService("Players")
 local lp = players.LocalPlayer
 
 -- 1. スピード調整
-BlobTab:AddSlider({
+BlobmanTab:AddSlider({
     Name = "ブロブマン走行速度", 
     Min = 16, Max = 500, Default = 50, Increment = 1,
     Callback = function(v)
@@ -1495,6 +1495,7 @@ task.spawn(function()
         task.wait(0.1)
         local char = lp.Character
         if char and char:FindFirstChild("Humanoid") then
+            -- 座っているパーツの親がBlobmanかチェック
             if char.Humanoid.SeatPart and char.Humanoid.SeatPart.Parent.Name == "Blobman" then
                 char.Humanoid.WalkSpeed = _G.BlobSpeed or 16
             end
@@ -1503,7 +1504,7 @@ task.spawn(function()
 end)
 
 -- 2. 飛行モード
-BlobTab:AddToggle({
+BlobmanTab:AddToggle({
     Name = "ブロブマン飛行モード",
     Default = false,
     Callback = function(v)
@@ -1537,6 +1538,27 @@ BlobTab:AddToggle({
     end
 })
 
+-- 3. ターゲット選択
+local PlayerDropdown = BlobmanTab:AddDropdown({
+    Name = "ターゲット選択",
+    Default = "",
+    Options = {"プレイヤーを更新してください"}, 
+    Callback = function(Value) 
+        SelectedPlayer = Value 
+    end    
+})
+
+BlobmanTab:AddButton({
+    Name = "プレイヤーリスト更新",
+    Callback = function()
+        local pList = {}
+        for _, p in pairs(game.Players:GetPlayers()) do
+            if p ~= lp then table.insert(pList, p.Name) end
+        end
+        PlayerDropdown:Refresh(pList, true)
+    end
+})
+
 -- 5. 全員を高速ループ掴み (テレポート殲滅版)
 BlobmanTab:AddToggle({
     Name = "全員を高速ループ掴み (TP型)",
@@ -1553,46 +1575,46 @@ BlobmanTab:AddToggle({
                     if hrp and seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        local oldPos = hrp.CFrame -- 開始時の場所を記憶
+                        local oldPos = hrp.CFrame
 
                         if remote then
                             for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLoop then break end
-                                
-                                -- 自分とフレンドを除外
                                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                     if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
                                     
                                     local targetHRP = p.Character.HumanoidRootPart
                                     
-                                    -- ターゲットの場所へ瞬時にワープ (バリア貫通のため少し上に)
+                                    -- TP & 掴み
                                     hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 3, 0)
-                                    task.wait(0.05) -- 同期待ち
+                                    task.wait(0.07) -- 少しだけ待機時間を伸ばして安定化
                                     
-                                    -- 高速掴み & 離し (左右同時)
                                     for _, arm in ipairs({"Left", "Right"}) do
                                         local det = blobman:FindFirstChild(arm .. "Detector")
                                         local weld = det and det:FindFirstChild(arm .. "Weld")
                                         if det and weld then
-                                            -- Detectorをターゲットに直接めり込ませる
                                             det.CFrame = targetHRP.CFrame
-                                            remote:FireServer(det, targetHRP, weld, 2) -- 掴む
-                                            remote:FireServer(det, targetHRP, weld, 1) -- 離す
+                                            remote:FireServer(det, targetHRP, weld, 2)
+                                            remote:FireServer(det, targetHRP, weld, 1)
                                         end
                                     end
-                                    task.wait(0.05) -- 次のターゲットへ行く前の微調整
+                                    task.wait(0.05)
                                 end
                             end
-                            -- 全員一周したら元の場所（家の中など）に一度戻る
                             hrp.CFrame = oldPos
                         end
                     end
-                    task.wait(0.5) -- サーバー負荷軽減のためのインターバル
+                    task.wait(0.5)
                 end
             end)
         end
     end
 })
+
+BlobmanTab:AddToggle({ Name = "フレンドを除外 (Whitelist)", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
+
+-- 【重要】OrionLib:Init() は必ずスクリプトの最後に入れる
+-- OrionLib:Init()
 
 
 --==============================
