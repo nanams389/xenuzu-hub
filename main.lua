@@ -236,89 +236,77 @@ task.spawn(function()
     end
 end)
 
--- [[ Kill & Kick セクション作成 ]]
-local annoyPlayersSection = VoidTab:AddSection({ Name = "Server Hostility" })
+-- [[ 接近強制同期オーラ セクション ]]
+local auraSection = VoidTab:AddSection({ Name = "Auto-Hostility Aura" })
 
--- 1. Kill All
-killalltoggle = annoyPlayersSection:AddToggle({
-    Name = "Kill All",
+local killAuraEnabled = false
+local kickAuraEnabled = false
+local auraRange = 25
+
+auraSection:AddToggle({
+    Name = "Kill Aura (Near Players)",
     Default = false,
-    Callback = function(killAllEnabled)
-        _G.KillAll = killAllEnabled
-        if killAllEnabled then
-            -- プレミアム制限解除
-            task.spawn(function()
-                while _G.KillAll do
-                    local lp = game.Players.LocalPlayer
-                    if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then task.wait(1) continue end
-                    
-                    local ipos = lp.Character.HumanoidRootPart.CFrame
-                    
-                    for _, player in pairs(game.Players:GetPlayers()) do
-                        if not _G.KillAll then break end
-                        if player == lp then continue end
-                        
-                        pcall(function()
-                            local char = player.Character
-                            local hum = char and char:FindFirstChildOfClass("Humanoid")
-                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                            
-                            if hrp and hum and hum.Health > 0 then
-                                -- 所有権奪取と殺害ロジック
-                                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(char)
-                                
-                                -- 死亡状態へ強制変更
-                                hum.BreakJointsOnDeath = false
-                                hum:ChangeState(Enum.HumanoidStateType.Dead)
-                                hum.Health = 0 -- サーバー同期を強める
-                            end
-                        end)
-                    end
-                    task.wait(0.5)
-                end
-            end)
-        end
-    end
+    Callback = function(Value) killAuraEnabled = Value end
 })
 
--- 2. Kick All
-kickalltoggle = annoyPlayersSection:AddToggle({
-    Name = "Kick All",
+auraSection:AddToggle({
+    Name = "Kick Aura (Near Players)",
     Default = false,
-    Callback = function(kickAllEnabled)
-        _G.KickAll = kickAllEnabled
-        if kickAllEnabled then
-            -- プレミアム制限解除
-            task.spawn(function()
-                while _G.KickAll do
-                    local lp = game.Players.LocalPlayer
-                    if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then task.wait(1) continue end
-                    
-                    local ipos = lp.Character.HumanoidRootPart.CFrame
-                    
-                    for _, player in pairs(game.Players:GetPlayers()) do
-                        if not _G.KickAll then break end
-                        if player == lp then continue end
-                        
+    Callback = function(Value) kickAuraEnabled = Value end
+})
+
+auraSection:AddSlider({
+    Name = "Aura Range",
+    Min = 5,
+    Max = 50,
+    Default = 25,
+    Callback = function(Value) auraRange = Value end
+})
+
+-- [[ オーラ実行ロジック ]]
+task.spawn(function()
+    while task.wait(0.1) do
+        if killAuraEnabled or kickAuraEnabled then
+            local lp = game.Players.LocalPlayer
+            local char = lp.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then continue end
+
+            for _, p in pairs(game.Players:GetPlayers()) do
+                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHrp = p.Character.HumanoidRootPart
+                    local targetHum = p.Character:FindFirstChildOfClass("Humanoid")
+                    local dist = (targetHrp.Position - hrp.Position).Magnitude
+
+                    if dist <= auraRange then
                         pcall(function()
-                            local char = player.Character
-                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                            -- 1. 物理干渉のトリガー（掴みイベントを空撃ちして同期を奪う）
+                            -- これが「掴んだ時と同じ状態」を自動で作るトリックだ
+                            game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(targetHrp)
                             
-                            if hrp then
-                                -- Kickを誘発させるための不正座標送り
-                                -- (ゲーム側のアンチチートに「異常な位置」と認識させてキックさせる)
-                                game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(hrp)
-                                hrp.CFrame = CFrame.new(999999, 999999, 999999) 
+                            -- 2. 強制ラグドール（これで相手の自律移動を殺す）
+                            game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
+
+                            if killAuraEnabled and targetHum and targetHum.Health > 0 then
+                                -- 即死同期
+                                targetHum.BreakJointsOnDeath = false
+                                targetHum:ChangeState(Enum.HumanoidStateType.Dead)
+                                -- サーバーに「こいつ死んだぞ」とわからせるための微弱ダメージか座標更新
+                                targetHrp.Velocity = Vector3.new(0, -100, 0) 
+                            end
+
+                            if kickAuraEnabled then
+                                -- キック同期（座標を奈落の果てへ飛ばしてアンチチートを起動させる）
+                                targetHrp.CFrame = CFrame.new(9999, -9999, 9999)
                                 game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
                             end
                         end)
                     end
-                    task.wait(0.5)
                 end
-            end)
+            end
         end
     end
-})
+end)
 
 -- [[ Anti-Grab Pro タブ ]]
 local AntiTab = Window:MakeTab({
