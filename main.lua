@@ -866,8 +866,7 @@ local function getPlayerNames()
     return names
 end
 
--- [[ 2. 掴み & 高度固定キック ロジック ]]
--- 引数：対象プレイヤー、使用する手 ("Left" or "Right")
+-- [[ 2. 掴み & 高度固定キック ロジック (全距離対応版) ]]
 local function doBlobmanFastGrab(targetPlayer, side)
     side = side or "Left"
     pcall(function()
@@ -884,24 +883,33 @@ local function doBlobmanFastGrab(targetPlayer, side)
                 local detector = blobman:WaitForChild(side .. "Detector")
                 local weld = detector:WaitForChild(side .. "Weld")
 
-                -- 【爆速サイクル】掴みと同時にMode 3(Kick)を送信
+                -- 【全距離対応の裏技】
+                -- 掴む瞬間にだけ、自分の「手の当たり判定」を相手の目の前に瞬間移動させる
+                local oldCFrame = detector.CFrame
+                detector.CFrame = targetHRP.CFrame
+                
+                -- 掴み実行 (Mode 3: Kick)
                 remote:FireServer(detector, targetHRP, weld, 3)
                 
-                -- 【高度固定ロジック】
-                -- すでに上昇中なら重ねて作成しない
+                -- 0.05秒だけ待って判定を元の場所に戻す（これで見かけ上の不自然さを減らす）
+                task.delay(0.05, function()
+                    detector.CFrame = oldCFrame
+                end)
+                
+                -- 【高度固定ロジック】(維持)
                 if not lp.Character.HumanoidRootPart:FindFirstChild("TsunamiFloat") then
                     local bv = Instance.new("BodyVelocity")
                     bv.Name = "TsunamiFloat"
-                    bv.MaxForce = Vector3.new(0, 1e9, 0) -- Y軸（高さ）だけ制御
-                    bv.Velocity = Vector3.new(0, 25, 0) -- 少しだけ浮かせる
+                    bv.MaxForce = Vector3.new(0, 1e9, 0)
+                    bv.Velocity = Vector3.new(0, 25, 0)
                     bv.Parent = lp.Character.HumanoidRootPart
                     
                     task.delay(0.8, function()
                         if bv.Parent then
-                            bv.Velocity = Vector3.new(0, 0, 0) -- 0.8秒後に上昇を止めて「固定」
+                            bv.Velocity = Vector3.new(0, 0, 0)
                         end
                     end)
-                    game:GetService("Debris"):AddItem(bv, 1.5) -- 一定時間で削除してリセット可能に
+                    game:GetService("Debris"):AddItem(bv, 1.5)
                 end
             end
         end
