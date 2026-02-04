@@ -55,6 +55,97 @@ game:GetService("UserInputService").JumpRequest:Connect(function()
 end)
 
 --==============================
+-- タブ：ビジュアル・カメラ
+--==============================
+local VisualTab = Window:MakeTab({ Name = "ビジュアル・カメラ", Icon = "rbxassetid://4483345998" })
+
+-- 自由視点 (Freecam) の設定
+VisualTab:AddToggle({
+    Name = "自由視点 (Freecam)",
+    Default = false,
+    Callback = function(v)
+        _G.Freecam = v
+        local cam = workspace.CurrentCamera
+        if v then
+            cam.CameraType = Enum.CameraType.Scriptable
+        else
+            cam.CameraType = Enum.CameraType.Custom
+        end
+    end
+})
+
+-- 自由視点の移動制御 (WASDで移動)
+game:GetService("RunService").RenderStepped:Connect(function()
+    if _G.Freecam then
+        local cam = workspace.CurrentCamera
+        local uis = game:GetService("UserInputService")
+        local speed = 1.0 -- 移動速度
+        if uis:IsKeyDown(Enum.KeyCode.W) then cam.CFrame = cam.CFrame * CFrame.new(0, 0, -speed) end
+        if uis:IsKeyDown(Enum.KeyCode.S) then cam.CFrame = cam.CFrame * CFrame.new(0, 0, speed) end
+        if uis:IsKeyDown(Enum.KeyCode.A) then cam.CFrame = cam.CFrame * CFrame.new(-speed, 0, 0) end
+        if uis:IsKeyDown(Enum.KeyCode.D) then cam.CFrame = cam.CFrame * CFrame.new(speed, 0, 0) end
+        if uis:IsKeyDown(Enum.KeyCode.E) then cam.CFrame = cam.CFrame * CFrame.new(0, speed, 0) end
+        if uis:IsKeyDown(Enum.KeyCode.Q) then cam.CFrame = cam.CFrame * CFrame.new(0, -speed, 0) end
+    end
+end)
+
+-- 詳細ESPの設定
+VisualTab:AddToggle({
+    Name = "プレイヤー詳細ESP",
+    Default = false,
+    Callback = function(v)
+        _G.ESPEnabled = v
+        if not v then
+            -- OFFにした時に表示を消す処理
+            for _, player in pairs(game.Players:GetPlayers()) do
+                if player.Character and player.Character:FindFirstChild("ESP_UI") then
+                    player.Character.ESP_UI:Destroy()
+                end
+            end
+        end
+    end
+})
+
+-- ESPの描画処理
+game:GetService("RunService").RenderStepped:Connect(function()
+    if _G.ESPEnabled then
+        for _, player in pairs(game.Players:GetPlayers()) do
+            if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+                local head = player.Character.Head
+                local billboard = head:FindFirstChild("ESP_UI")
+                
+                if not billboard then
+                    billboard = Instance.new("BillboardGui", head)
+                    billboard.Name = "ESP_UI"
+                    billboard.Size = UDim2.new(0, 200, 0, 100)
+                    billboard.AlwaysOnTop = true
+                    billboard.ExtentsOffset = Vector3.new(0, 3, 0)
+
+                    local frame = Instance.new("Frame", billboard)
+                    frame.Size = UDim2.new(1, 0, 1, 0)
+                    frame.BackgroundTransparency = 1
+
+                    local textLabel = Instance.new("TextLabel", frame)
+                    textLabel.Size = UDim2.new(1, 0, 0.7, 0)
+                    textLabel.BackgroundTransparency = 1
+                    textLabel.TextColor3 = Color3.new(1, 1, 1)
+                    textLabel.TextStrokeTransparency = 0
+                    textLabel.TextScaled = true
+
+                    local img = Instance.new("ImageLabel", frame)
+                    img.Size = UDim2.new(0, 40, 0, 40)
+                    img.Position = UDim2.new(0.5, -20, 0, -45)
+                    img.Image = game.Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+                end
+
+                local dist = math.floor((game.Players.LocalPlayer.Character.HumanoidRootPart.Position - head.Position).Magnitude)
+                billboard.Frame.TextLabel.Text = string.format("Display: %s\nID: %d\nDist: %dm", player.DisplayName, player.UserId, dist)
+            end
+        end
+    end
+end)
+
+--==============================
 -- タブ：移動ハック
 --==============================
 local StealthTab = Window:MakeTab({ Name = "移動ハック", Icon = "rbxassetid://4483345998" })
