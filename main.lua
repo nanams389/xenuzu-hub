@@ -1177,150 +1177,57 @@ local function doBlobmanGrab(targetPlayer)
             local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
 
             local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-
-            
-
             if remote and targetHRP then
-
                 -- 掴み実行 (Mode 3: Kick)
-
                 remote:FireServer(
-
                     blobman:WaitForChild("LeftDetector"),
-
                     targetHRP,
-
                     blobman:WaitForChild("LeftDetector"):WaitForChild("LeftWeld"),
-
                     3
-
                 )
 
                 
 
                 -- 上昇エフェクト
-
                 local bv = Instance.new("BodyVelocity")
-
                 bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-
                 bv.Velocity = Vector3.new(0, 50, 0)
-
                 bv.Parent = lp.Character.HumanoidRootPart
-
                 game:GetService("Debris"):AddItem(bv, 0.5)
-
             end
-
         end
-
     end)
-
 end
-
 
 
 -- [[ 3. UI構築 ]]
 
 local BlobmanTab = Window:MakeTab({ Name = "Blobman 修正版", Icon = "rbxassetid://6031064398" })
-
-
-
 -- プレイヤー選択ドロップダウン
-
 local PlayerSelector = BlobmanTab:AddDropdown({
-
     Name = "Select Player",
-
     Default = "",
-
     Options = getPlayerNames(), -- 実行時に現在のプレイヤーを表示
-
     Callback = function(t)
-
         _G.PlayerToLongGrab = t
-
     end
-
 })
-
-
 
 -- リスト更新ボタン (これ重要！)
 
 BlobmanTab:AddButton({
-
     Name = "Refresh Player List (リスト更新)",
-
     Callback = function()
-
         PlayerSelector:Refresh(getPlayerNames(), true)
-
     end
-
 })
-
-
-
 BlobmanTab:AddButton({
-
     Name = "Grab & Kick (単体実行)",
-
     Callback = function()
-
         local target = players:FindFirstChild(_G.PlayerToLongGrab)
-
         if target then doBlobmanGrab(target) end
-
     end
-
 })
-
-
-
--- サーバーデストロイ
-
-BlobmanTab:AddToggle({
-
-    Name = "Destroy Server (Auto Grab)",
-
-    Default = false,
-
-    Callback = function(Value)
-
-        _G.BringAllLongReach = Value
-
-        if Value then
-
-            task.spawn(function()
-
-                while _G.BringAllLongReach do
-
-                    for _, p in pairs(players:GetPlayers()) do
-
-                        if not _G.BringAllLongReach then break end
-
-                        if p ~= lp and p.Character and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-
-                            doBlobmanGrab(p)
-
-                            task.wait(0.3) -- 連続掴みのための待機
-
-                        end
-
-                    end
-
-                    task.wait(1)
-
-                end
-
-            end)
-
-        end
-
-    end
-
-})　
 
 --==============================
 -- 初期化
