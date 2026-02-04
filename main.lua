@@ -1610,36 +1610,83 @@ BlobTab:AddToggle({
     end
 })
 
--- 7. 特定プレイヤーのキック & バリア破壊通知
-BlobTab:AddButton({
-    Name = "ターゲットをキック (バリア破壊)",
+
+-- ターゲットキック & バリア貫通排除
+BlobmanTab:AddButton({
+    Name = "真・バリア破壊キック (引きずり出し)",
     Callback = function()
-        local target = game.Players:FindFirstChild(SelectedPlayer)
-        if target then
-            -- バリア破壊の演出（通知）
-            OrionLib:MakeNotification({
-                Name = "System",
-                Content = target.Name .. "のセーフゾーンバリアを破壊しました！",
-                Image = "rbxassetid://4483345998",
-                Time = 5
-            })
-            
-            -- キック実行（ブロブマンの機能を利用したキック）
+        pcall(function()
+            local target = game.Players:FindFirstChild(SelectedPlayer)
             local char = lp.Character
-            local seat = char and char.Humanoid.SeatPart
-            if seat and seat.Parent then
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local seat = hum and hum.SeatPart
+            
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
                 local blobman = seat.Parent
+                local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                -- 掴みモード3（Kick/Kill設定がある場合）または高速排除を試行
-                if remote and target.Character:FindFirstChild("HumanoidRootPart") then
-                    remote:FireServer(blobman.LeftDetector, target.Character.HumanoidRootPart, blobman.LeftDetector.LeftWeld, 3)
+                
+                -- 1. バリア破壊通知（ハッタリではなく実行開始の合図）
+                OrionLib:MakeNotification({
+                    Name = "System",
+                    Content = target.Name .. "のセーフゾーンを貫通中...",
+                    Time = 3
+                })
+
+                -- 2. ブロブマン本体をターゲットの「真上」に超高速TP
+                -- これによりバリアの判定を飛び越えて中に入る
+                local oldPos = hrp.CFrame
+                local penetrationPos = targetHRP.CFrame * CFrame.new(0, 2, 0)
+                
+                if blobman.PrimaryPart then
+                    blobman:SetPrimaryPartCFrame(penetrationPos)
+                else
+                    seat.CFrame = penetrationPos
                 end
+                
+                task.wait(0.05) -- サーバー同期
+
+                -- 3. 強制掴み実行 (Mode 3: 強制排除モード)
+                -- 左右の手をターゲットの座標に直接「めり込ませる」
+                for _, side in ipairs({"Left", "Right"}) do
+                    local detector = blobman:FindFirstChild(side .. "Detector")
+                    local weld = detector and detector:FindFirstChild(side .. "Weld")
+                    if detector and weld then
+                        -- Detectorの座標をターゲットに直接固定してバリアを無視
+                        detector.CFrame = targetHRP.CFrame
+                        remote:FireServer(detector, targetHRP, weld, 3)
+                    end
+                end
+
+                -- 4. 引きずり出し (相手を場外へ飛ばす)
+                task.spawn(function()
+                    for i = 1, 10 do
+                        -- ターゲットを掴んだまま、物凄い速さで上下に揺さぶってバリアから引き抜く
+                        local shakeDown = targetHRP.CFrame * CFrame.new(0, -50, 0)
+                        local shakeUp = targetHRP.CFrame * CFrame.new(0, 50, 100) -- そのまま空へ
+                        
+                        if blobman:FindFirstChild("LeftDetector") then blobman.LeftDetector.CFrame = shakeDown end
+                        task.wait(0.02)
+                        if blobman:FindFirstChild("LeftDetector") then blobman.LeftDetector.CFrame = shakeUp end
+                        task.wait(0.02)
+                    end
+                end)
+
+                -- 5. 元の場所に戻る
+                task.wait(0.2)
+                hrp.CFrame = oldPos
+                
+                OrionLib:MakeNotification({
+                    Name = "Success",
+                    Content = "バリア内部からの排除に成功しました",
+                    Time = 3
+                })
             end
-        else
-            OrionLib:MakeNotification({Name = "Error", Content = "ターゲットが見つかりません", Time = 3})
-        end
+        end)
     end
 })
+
 -- 5. 全員ループ掴み
 BlobTab:AddToggle({
     Name = "全員を高速ループ掴み",
