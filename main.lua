@@ -1564,39 +1564,82 @@ BlobTab:AddButton({
     end
 })
 
--- 4. 指定プレイヤーをループ掴み
+-- 6. 超距離・瞬間移動ループ掴み (TP Grab)
 BlobTab:AddToggle({
-    Name = "指定プレイヤーをループ掴み",
+    Name = "超距離TPループ掴み",
     Default = false,
     Callback = function(Value)
-        _G.LoopGrabTarget = Value
+        _G.TPGrab = Value
         if Value then
             task.spawn(function()
-                while _G.LoopGrabTarget do
-                    local target = players:FindFirstChild(SelectedPlayer)
-                    local seat = lp.Character and lp.Character.Humanoid.SeatPart
-                    if target and target.Character and seat and seat.Parent then
+                while _G.TPGrab do
+                    local target = game.Players:FindFirstChild(SelectedPlayer)
+                    local char = lp.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local seat = char and char.Humanoid.SeatPart
+                    
+                    if target and target.Character and hrp and seat and seat.Parent then
+                        local oldPos = hrp.CFrame -- 元の場所を記憶
+                        local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
-                        if remote and targetHRP then
+                        
+                        if targetHRP and remote then
+                            -- 相手の場所に一瞬TP
+                            hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 5, 0)
+                            task.wait(0.05) -- サーバーに位置を認識させる
+                            
+                            -- 掴んで離す
                             for _, arm in ipairs({"Left", "Right"}) do
                                 local det = blobman:FindFirstChild(arm .. "Detector")
                                 local weld = det and det:FindFirstChild(arm .. "Weld")
                                 if det and weld then
-                                    remote:FireServer(det, targetHRP, weld, 2) -- 掴む
-                                    remote:FireServer(det, targetHRP, weld, 1) -- 離す
+                                    remote:FireServer(det, targetHRP, weld, 2)
+                                    remote:FireServer(det, targetHRP, weld, 1)
                                 end
                             end
+                            
+                            task.wait(0.05)
+                            hrp.CFrame = oldPos -- 元の場所（家の中など）に戻る
                         end
                     end
-                    task.wait(0.05)
+                    task.wait(0.3) -- TP戻り待機
                 end
             end)
         end
     end
 })
 
+-- 7. 特定プレイヤーのキック & バリア破壊通知
+BlobTab:AddButton({
+    Name = "ターゲットをキック (バリア破壊)",
+    Callback = function()
+        local target = game.Players:FindFirstChild(SelectedPlayer)
+        if target then
+            -- バリア破壊の演出（通知）
+            OrionLib:MakeNotification({
+                Name = "System",
+                Content = target.Name .. "のセーフゾーンバリアを破壊しました！",
+                Image = "rbxassetid://4483345998",
+                Time = 5
+            })
+            
+            -- キック実行（ブロブマンの機能を利用したキック）
+            local char = lp.Character
+            local seat = char and char.Humanoid.SeatPart
+            if seat and seat.Parent then
+                local blobman = seat.Parent
+                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                -- 掴みモード3（Kick/Kill設定がある場合）または高速排除を試行
+                if remote and target.Character:FindFirstChild("HumanoidRootPart") then
+                    remote:FireServer(blobman.LeftDetector, target.Character.HumanoidRootPart, blobman.LeftDetector.LeftWeld, 3)
+                end
+            end
+        else
+            OrionLib:MakeNotification({Name = "Error", Content = "ターゲットが見つかりません", Time = 3})
+        end
+    end
+})
 -- 5. 全員ループ掴み
 BlobTab:AddToggle({
     Name = "全員を高速ループ掴み",
