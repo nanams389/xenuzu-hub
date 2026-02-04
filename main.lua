@@ -713,64 +713,71 @@ BlobmansTab:AddButton({
     end
 })
 
-local BlobmansTab = Window:MakeTab({
-    Name = "Blobman",
+-- [[ ESPタブ作成 ]]
+local ESPTab = Window:MakeTab({
+    Name = "ESP Settings",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-local selectedTarget = ""
-local playerDropdown = BlobmansTab:AddDropdown({
-    Name = "Target Player",
-    Default = "",
-    Options = {},
-    Callback = function(v) selectedTarget = v end
+local ESP_Section2 = ESPTab:AddSection({
+    Name = "Visuals"
 })
 
-BlobmansTab:AddButton({
-    Name = "Refresh List",
-    Callback = function()
-        local pList = {}
-        for _, v in ipairs(game.Players:GetPlayers()) do
-            if v ~= lp then table.insert(pList, v.Name) end
+-- あなたが提供したコードをそのまま移植
+ESP_Section2:AddToggle({
+    Name = "ESP (Icon)",
+    Default = false,
+    Callback = function(espIconEnabled)
+        _G.ESP_Icon = espIconEnabled
+        if espIconEnabled then
+            local characterAddedConnections = {}
+            local function disconnectCharacterAddedConnections()
+                local connectionPairsIterator, connectionState, connectionIndex = pairs(characterAddedConnections)
+                while true do
+                    local rbxScriptConnection
+                    connectionIndex, rbxScriptConnection = connectionPairsIterator(connectionState, connectionIndex)
+                    if connectionIndex == nil then
+                        break
+                    end
+                    if typeof(rbxScriptConnection) == "RBXScriptConnection" then
+                        rbxScriptConnection:Disconnect()
+                        print("Desconectado!")
+                    end
+                end
+                table.clear(characterAddedConnections)
+            end
+            local function onPlayerAdded(player)
+                if player ~= localPlayer and (player.Character or player.CharacterAdded:Wait()) then
+                    CreateIconOnPlayer(player)
+                    characterAddedConnections[# characterAddedConnections + 1] = player.CharacterAdded:Connect(function(_)
+                        CreateIconOnPlayer(player)
+                    end)
+                end
+            end
+            local function onPlayerAddedAll() -- 名前重複回避のため微調整（中身は変えてないぜ）
+                local players = playersService
+                local pairsIterator2, playerPairsIterator, playerIndex2 = pairs(players:GetPlayers())
+                while true do
+                    local player2
+                    playerIndex2, player2 = pairsIterator2(playerPairsIterator, playerIndex2)
+                    if playerIndex2 == nil then
+                        break
+                    end
+                    onPlayerAdded(player2)
+                end
+            end
+            local playerAddedConnection = playersService.PlayerAdded:Connect(function(unknownParameter)
+                onPlayerAdded(unknownParameter)
+            end)
+            onPlayerAddedAll()
+            while _G.ESP_Icon do
+                wait(0.1)
+            end
+            playerAddedConnection:Disconnect()
+            disconnectCharacterAddedConnections()
         end
-        playerDropdown:Refresh(pList, true)
     end
-})
-
-BlobmansTab:AddButton({
-    Name = "Sit & Kick (TP)",
-    Callback = function()
-        local blob = getBlobman()
-        local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
-        
-        if not blob or not hum or not hum.Sit then 
-            return warn("Blobmanに乗ってくれ！") 
-        end
-
-        local target = game.Players:FindFirstChild(selectedTarget)
-        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-            local root = lp.Character.HumanoidRootPart
-            local tRoot = target.Character.HumanoidRootPart
-            local oldPos = root.CFrame
-
-            -- 強制連行＆キック
-            root.CFrame = tRoot.CFrame * CFrame.new(0, 0, -3)
-            task.wait(0.2)
-            rs.GrabEvents.SetNetworkOwner:FireServer(tRoot, tRoot.CFrame)
-            tRoot.CFrame = blob.RightDetector.CFrame
-            rs.ToyEvents.BlobmanGrab:FireServer(blob, tRoot, "Right")
-            task.wait(0.3)
-            rs.ToyEvents.BlobmanKick:FireServer(blob, tRoot, "Right")
-            task.wait(0.1)
-            root.CFrame = oldPos
-        end
-    end
-})
-
-BlobmansTab:AddButton({
-    Name = "Spawn Blobman",
-    Callback = function() rs.ToyEvents.SpawnToy:InvokeServer("Blobman") end
 })
 
 --==============================
