@@ -1539,23 +1539,28 @@ BlobTab:AddToggle({
 
 BlobTab:AddSection({ Name = "ループ掴み (セーフゾーン無視)" })
 
--- 3. ターゲット選択
-BlobTab:AddDropdown({
+-- ドロップダウンを変数に入れておく（後で中身を書き換えるため）
+local PlayerDropdown = BlobTab:AddDropdown({
     Name = "ターゲット選択",
     Default = "",
-    Options = {}, 
-    Callback = function(Value) SelectedPlayer = Value end    
+    Options = {"プレイヤーを更新してください"}, 
+    Callback = function(Value) 
+        SelectedPlayer = Value 
+    end    
 })
 
--- リスト更新（これを押すとプレイヤー名が更新される）
+-- リスト更新ボタンの修正
 BlobTab:AddButton({
     Name = "プレイヤーリスト更新",
     Callback = function()
         local pList = {}
-        for _, p in pairs(players:GetPlayers()) do
-            if p ~= lp then table.insert(pList, p.Name) end
+        for _, p in pairs(game.Players:GetPlayers()) do
+            if p ~= game.Players.LocalPlayer then 
+                table.insert(pList, p.Name) 
+            end
         end
-        -- ※OrionLibのDropdown更新が効かない場合は再実行が必要
+        -- ドロップダウンの中身を最新のリストで上書きする
+        PlayerDropdown:Refresh(pList, true)
     end
 })
 
