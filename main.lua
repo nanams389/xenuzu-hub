@@ -159,11 +159,23 @@ AuraTab:AddToggle({
 })
 
 -- ==============================
--- 究極 Kick Aura (Server Synced)
+-- 究極オーラ (Ultimate) 安定版
 -- ==============================
+
+-- 1. 存在しない関数を呼び出しても死なないように空の関数で保護
+local function safeCall(func, ...)
+    if func then
+        local success, result = pcall(func, ...)
+        return success, result
+    end
+    return false, nil
+end
+
+-- 変数の初期化（エラー防止）
 _G.UltimateKickEnabled = false
 local kickRange = 25
 
+-- [[ 究極 Kick Aura (Server Synced) ]]
 UltimateTab:AddToggle({
     Name = "究極 Kick Aura (Abyss Sync)",
     Default = false,
@@ -176,7 +188,7 @@ UltimateTab:AddToggle({
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
                     
-                    -- サーバー同期用の最重要リモート
+                    -- 各イベントの存在チェック（これがないとタブが死ぬ）
                     local grabLine = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("CreateGrabLine")
                     local struggle = rs:FindFirstChild("CharacterEvents") and rs.CharacterEvents:FindFirstChild("Struggle")
                     local setNetwork = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
@@ -185,8 +197,9 @@ UltimateTab:AddToggle({
                         for _, player in ipairs(game.Players:GetPlayers()) do
                             if not _G.UltimateKickEnabled then break end
                             
+                            -- 条件チェックを安全に実行
                             if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                                -- フレンドホワイトリスト判定（設定されている場合）
+                                -- フレンドホワイトリスト判定（グローバル変数が定義されていなくてもOKな書き方）
                                 if _G.WhitelistFriends and lp:IsFriendsWith(player.UserId) then continue end
 
                                 local targetHRP = player.Character.HumanoidRootPart
@@ -194,28 +207,21 @@ UltimateTab:AddToggle({
 
                                 if dist <= kickRange then
                                     pcall(function()
-                                        -- 【1】所有権の強制奪取 (これが「ビジュアル」を防ぐ鍵)
-                                        if setNetwork then 
-                                            setNetwork:FireServer(targetHRP, targetHRP.CFrame) 
-                                        end
-                                        if grabLine then 
-                                            grabLine:FireServer(targetHRP) 
-                                        end
+                                        -- サーバー同期（存在する場合のみ実行）
+                                        if setNetwork then setNetwork:FireServer(targetHRP, targetHRP.CFrame) end
+                                        if grabLine then grabLine:FireServer(targetHRP) end
 
-                                        -- 【2】Noclip化（地面を確実に貫通させる）
+                                        -- 物理干渉
                                         for _, part in ipairs(player.Character:GetDescendants()) do
                                             if part:IsA("BasePart") then part.CanCollide = false end
                                         end
 
-                                        -- 【3】極限の座標飛ばし（サーバーが追いつけない位置へ）
-                                        -- 座標を垂直に -10万飛ばし、速度を音速レベルで下向きに固定
+                                        -- 奈落送り
                                         targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -100000, 0)
                                         targetHRP.Velocity = Vector3.new(0, -5000, 0)
 
-                                        -- 【4】サーバーに「あがき」を送り、この異常な座標を強制承認させる
-                                        if struggle then 
-                                            struggle:FireServer() 
-                                        end
+                                        -- 同期確定
+                                        if struggle then struggle:FireServer() end
                                     end)
                                 end
                             end
@@ -230,7 +236,7 @@ UltimateTab:AddToggle({
 UltimateTab:AddSlider({
     Name = "Kick Range (射程)",
     Min = 5,
-    Max = 50,
+    Max = 100,
     Default = 25,
     Callback = function(Value)
         kickRange = Value
