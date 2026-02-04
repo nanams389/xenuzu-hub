@@ -236,6 +236,74 @@ task.spawn(function()
     end
 end)
 
+bringalltoggle = bringAllSection:AddToggle({
+    Name = "Bring All",
+    Default = false,
+    Callback = function(bringAllEnabled)
+        _G.BringAll = bringAllEnabled
+        if bringAllEnabled then
+            if GetKey() ~= "Xana" then
+                _G.BringAll = false
+                bringalltoggle:Set(false)
+                showNotification("Only for premium users! Buy premium in my discord server!")
+                return
+            end
+            local playerCFrame = GetPlayerCFrame()
+            local cameraCFrame = CFrame.lookAt(workspaceService.CurrentCamera.CFrame.Position + Vector3.new(- 15, 15, 0), playerCFrame.Position)
+            workspace.CurrentCamera.CFrame = cameraCFrame
+            while _G.BringAll do
+                FreezeCam(cameraCFrame)
+                local playersService = playersService
+                local playerIterator, playerIterator5, playerIndex = pairs(playersService:GetPlayers())
+                while true do
+                    local player
+                    playerIndex, player = playerIterator(playerIterator5, playerIndex)
+                    if playerIndex == nil then
+                        break
+                    end
+                    if CheckPlayerBring(player) then
+                        local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+                        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                        local isRagdolled
+                        if humanoid and humanoid:FindFirstChild("Ragdolled") then
+                            isRagdolled = humanoid.Ragdolled
+                        else
+                            isRagdolled = nil
+                        end
+                        if player and (humanoidRootPart and (humanoid and isRagdolled)) then
+                            for _ = 0, 50 do
+                                if not _G.BringAll then
+                                    break
+                                end
+                                dialogueFunction2()
+                                SNOWshipOnce(humanoidRootPart)
+                                if CheckNetworkOwnerShipOnPlayer(player) then
+                                    if not isRagdolled.Value and player:DistanceFromCharacter(playerCFrame.Position) > 10 then
+                                        humanoidRootPart.CFrame = playerCFrame
+                                    end
+                                    CreateBringBody(humanoidRootPart, playerCFrame)
+                                    break
+                                end
+                                task.wait()
+                                if humanoidRootPart.Position.Y <= - 12 then
+                                    TeleportPlayer(CFrame.new(humanoidRootPart.Position + Vector3.new(0, 5, - 15)))
+                                else
+                                    TeleportPlayer(CFrame.new(humanoidRootPart.Position + Vector3.new(0, - 10, - 10)))
+                                end
+                            end
+                        end
+                    end
+                end
+                TeleportPlayer(CFrame.new(527, 123, - 376))
+                task.wait()
+            end
+            unFreezeCam()
+            dialogueFunction1()
+            TeleportPlayer(playerCFrame)
+        end
+    end
+})
+
 
 -- [[ Anti-Grab Pro タブ ]]
 local AntiTab = Window:MakeTab({
