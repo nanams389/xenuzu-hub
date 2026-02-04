@@ -1048,10 +1048,10 @@ BlobmanTab:AddToggle({
     end
 })
 
--- --- TP & 空中固定キック (ボタンコード) ---
+-- --- 公式エラー誘発キック (ボタンコード) ---
 
 BlobmanTab:AddButton({
-    Name = "TP & Anchor Kick (空中固定キック)",
+    Name = "Trigger Official Error (公式エラー誘発)",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
@@ -1065,49 +1065,63 @@ BlobmanTab:AddButton({
                 local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                 
-                -- 1. 相手の場所にテレポート
-                local targetPos = targetHRP.CFrame * CFrame.new(0, 6, 0)
+                -- 1. まず相手の場所にテレポート（掴み確実化）
+                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
                 if blobman.PrimaryPart then
                     blobman:SetPrimaryPartCFrame(targetPos)
                 else
                     seat.CFrame = targetPos
                 end
                 
-                task.wait(0.1) -- 同期待ち
-                
-                -- 2. 掴み実行 (両手)
+                task.wait(0.1)
+
+                -- 2. 両手でガッチリ掴む
                 local arms = {"Left", "Right"}
                 for _, side in ipairs(arms) do
                     local detector = blobman:WaitForChild(side .. "Detector")
                     local weld = detector:WaitForChild(side .. "Weld")
                     remote:FireServer(detector, targetHRP, weld, 3)
                 end
-                
-                -- 3. 空中固定ロジック
-                -- BodyVelocityを強力にして、一定時間「絶対に落ちない」ようにする
-                local bv = hrp:FindFirstChild("AnchorFloat") or Instance.new("BodyVelocity")
-                bv.Name = "AnchorFloat"
-                bv.MaxForce = Vector3.new(0, 1e9, 0) -- Y軸（高さ）を完全に制御
-                bv.Velocity = Vector3.new(0, 40, 0) -- まずは少し浮かせる
-                bv.Parent = hrp
-                
-                -- 0.4秒後に上昇を止めて、その高さで「固定」する
-                task.delay(0.4, function()
-                    if bv.Parent then
-                        bv.Velocity = Vector3.new(0, 0, 0) -- 速度0 ＝ 空中で静止
+
+                -- 3. 【公式エラー誘発セクション】
+                -- 掴んだ状態でDetector（腕）を地面の奥底と上空へ超高速往復させる
+                -- これでターゲットの物理演算が崩壊し、公式の「Error」が足元に出る
+                task.spawn(function()
+                    local leftDetector = blobman:FindFirstChild("LeftDetector")
+                    local rightDetector = blobman:FindFirstChild("RightDetector")
+                    local originalCF = leftDetector.CFrame
+                    
+                    for i = 1, 15 do -- 15回高速往復（これで確実にバグらせる）
+                        local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0) -- 地面深く
+                        if leftDetector then leftDetector.CFrame = shakePos end
+                        if rightDetector then rightDetector.CFrame = shakePos end
+                        task.wait(0.02)
+                        
+                        local shakePosUp = targetHRP.CFrame * CFrame.new(0, 20, 0) -- 上空
+                        if leftDetector then leftDetector.CFrame = shakePosUp end
+                        if rightDetector then rightDetector.CFrame = shakePosUp end
+                        task.wait(0.02)
                     end
+                    
+                    -- 最後に元の位置へ戻す
+                    if leftDetector then leftDetector.CFrame = originalCF end
                 end)
-                
-                -- キックが完了して相手が飛んでいくまで（約1.5秒間）固定を維持して、その後解除
-                task.delay(1.5, function()
-                    if bv.Parent then
-                        bv:Destroy() -- ここで初めて重力が戻る
-                    end
-                end)
+
+                -- 4. 浮上してトドメ
+                if not hrp:FindFirstChild("ErrorFloat") then
+                    local bv = Instance.new("BodyVelocity")
+                    bv.Name = "ErrorFloat"
+                    bv.MaxForce = Vector3.new(0, 1e9, 0)
+                    bv.Velocity = Vector3.new(0, 35, 0)
+                    bv.Parent = hrp
+                    task.delay(0.6, function() if bv.Parent then bv.Velocity = Vector3.new(0, 0, 0) end end)
+                    game:GetService("Debris"):AddItem(bv, 2.0)
+                end
             end
         end)
     end
 })
+
 --==============================
 -- 初期化
 --==============================
