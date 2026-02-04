@@ -975,6 +975,49 @@ BlobmanTab:AddToggle({
 
 BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
+-- --- テレポート系セクション (ボタンとして追加) ---
+
+-- 特定プレイヤーへ瞬間移動
+BlobmanTab:AddButton({
+    Name = "TP to Selected Player (瞬間移動)",
+    Callback = function()
+        pcall(function()
+            local target = players:FindFirstChild(_G.PlayerToLongGrab)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                -- Blobmanごと移動するために lp.Character を飛ばす
+                lp.Character:SetPrimaryPartCFrame(target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 8, 0))
+            end
+        end)
+    end
+})
+
+-- 全プレイヤー巡回テレポート（トグル形式が便利なのでトグルにしてるぞ）
+_G.AutoTPAll = false
+BlobmanTab:AddToggle({
+    Name = "Auto TP to All (全プレイヤー巡回)",
+    Default = false,
+    Callback = function(Value)
+        _G.AutoTPAll = Value
+        if Value then
+            task.spawn(function()
+                while _G.AutoTPAll do
+                    local allPlayers = players:GetPlayers()
+                    for _, p in pairs(allPlayers) do
+                        if not _G.AutoTPAll then break end
+                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                            -- 相手の頭上にテレポート
+                            lp.Character:SetPrimaryPartCFrame(p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0))
+                            -- 「ゆっくり」巡回するために3秒待機（ここを短くすれば爆速巡回になるぞ）
+                            task.wait(3) 
+                        end
+                    end
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
 --==============================
 -- 初期化
 --==============================
