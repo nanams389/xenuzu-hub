@@ -314,65 +314,50 @@ task.spawn(function()
     end
 end)
 
--- [[ Anti-Grab Pro タブ内のセクション追加 ]]
--- ※もし AntiTab が定義されていないというエラーが出るなら、ここを Window:MakeTab に書き換える必要がある
+-- [[ Anti-Grab Pro タブ内のセクション ]]
 local invulnerabilitySection = AntiTab:AddSection({ Name = "追加防御機能" })
 
--- 1. Anti-Void (落下防止)
+-- 1. Anti-Void (落下防止：これで奈落ダイブして戻れるかチェック)
 invulnerabilitySection:AddToggle({
     Name = "Anti-Void",
     Default = false,
-    Callback = function(isAntiVoidEnabled)
-        _G.AntiVoid = isAntiVoidEnabled
-        local workspace = game:GetService("Workspace")
-        local lp = game.Players.LocalPlayer
-        
-        if isAntiVoidEnabled then
-            workspace.FallenPartsDestroyHeight = -1500 -- 余裕を持って下げる
+    Callback = function(state)
+        _G.AntiVoid = state
+        if state then
+            game:GetService("Workspace").FallenPartsDestroyHeight = -2000
             task.spawn(function()
                 while _G.AntiVoid do
-                    local char = lp.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    
-                    if hrp then
-                        -- Y座標が-800より下（奈落）に行ったらワープ
-                        if hrp.Position.Y < -800 then
-                            -- 安全な場所（マップ中央の少し上）へ飛ばす
-                            char:SetPrimaryPartCFrame(CFrame.new(0, 50, 0))
-                            
-                            -- メッセージ関数がある場合だけ実行（エラー防止）
-                            if pcall(function() return antivoidmesssage end) and antivoidmesssage then
-                                antivoidmesssage()
-                            end
+                    pcall(function()
+                        local char = game.Players.LocalPlayer.Character
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        if hrp and hrp.Position.Y < -800 then
+                            -- 強制的に上空（初期位置付近）へ戻す
+                            hrp.CFrame = CFrame.new(0, 50, 0)
                         end
-                    end
+                    end)
                     task.wait(0.1)
                 end
             end)
         else
-            workspace.FallenPartsDestroyHeight = -100
+            game:GetService("Workspace").FallenPartsDestroyHeight = -100
         end
-    end,
-    Save = true,
-    Flag = "antivoid_toggle"
+    end
 })
 
--- 2. Anti-Lag
+-- 2. Anti-Lag (ゲーム内の「Line」という名前のスクリプトを全部止める)
 invulnerabilitySection:AddToggle({
     Name = "Anti-Lag",
     Default = false,
     Callback = function(state)
-        -- スクリプトを名前で探して無効化する（エラー回避版）
-        local scriptToDisable = game:FindFirstChild("anticreatelinelocalscript", true)
-        if scriptToDisable and scriptToDisable:IsA("LocalScript") then
-            scriptToDisable.Disabled = state
+        for _, v in pairs(game:GetDescendants()) do
+            if v:IsA("LocalScript") and (v.Name:lower():find("line") or v.Name:lower():find("lag")) then
+                v.Disabled = state
+            end
         end
-    end,
-    Save = true,
-    Flag = "antilag_toggle"
+    end
 })
 
--- 3. Anti-Kick
+-- 3. Anti-Kick (関数がなくてもエラーを出さない)
 invulnerabilitySection:AddToggle({
     Name = "Anti-Kick",
     Default = false,
@@ -381,18 +366,15 @@ invulnerabilitySection:AddToggle({
         if state then
             task.spawn(function()
                 while _G.AntiKick do
-                    -- GetKunai関数が存在するか確認してから実行
-                    local success, func = pcall(function() return GetKunai end)
-                    if success and typeof(func) == "function" then
-                        func()
-                    end
-                    task.wait(0.5) -- 負荷軽減のため少し待機を伸ばした
+                    -- GetKunai があれば実行、なければ無視
+                    pcall(function() 
+                        if GetKunai then GetKunai() end 
+                    end)
+                    task.wait(0.5)
                 end
             end)
         end
-    end,
-    Save = true,
-    Flag = "antikick_toggle"
+    end
 })
 
 --==============================
