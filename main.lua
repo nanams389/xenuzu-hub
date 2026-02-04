@@ -1219,9 +1219,9 @@ BlobmanTab:AddToggle({
         end
     end
 })
--- デストロイサーバー (BlitzHub風・公式エラー誘発スライド)
+-- デストロイサーバー (極限・即掴み即離し)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Blitz Error Mode)",
+    Name = "Destroy Server (Instant Release)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1229,8 +1229,7 @@ BlobmanTab:AddToggle({
             task.spawn(function()
                 while _G.BringAllLongReach do
                     local char = lp.Character
-                    local hum = char and char:FindFirstChildOfClass("Humanoid")
-                    local seat = hum and hum.SeatPart
+                    local seat = char and char.Humanoid.SeatPart
                     
                     if seat and seat.Parent then
                         local blobman = seat.Parent
@@ -1242,7 +1241,8 @@ BlobmanTab:AddToggle({
                                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
                                     
                                     local targetHRP = p.Character.HumanoidRootPart
-                                    -- 左手と右手両方で交互に爆速処理
+                                    
+                                    -- 左右の手で実行
                                     for _, armSide in ipairs({"Left", "Right"}) do
                                         local detector = blobman:FindFirstChild(armSide .. "Detector")
                                         local weld = detector and detector:FindFirstChild(armSide .. "Weld")
@@ -1251,11 +1251,9 @@ BlobmanTab:AddToggle({
                                             -- 1. 掴む (Mode 2)
                                             remote:FireServer(detector, targetHRP, weld, 2)
                                             
-                                            -- 2. 相手をスライドさせるための極小待機 (BlitzHubはこの一瞬のズレでエラーを出す)
-                                            -- サーバーのフレームレートに合わせて調整
-                                            task.wait() 
-                                            
-                                            -- 3. 即座に離す (Mode 1)
+                                            -- 2. 即座に（待ち時間なしで）離す (Mode 1)
+                                            -- 念のため2回送ってサーバーに「離せ」と強制する
+                                            remote:FireServer(detector, targetHRP, weld, 1)
                                             remote:FireServer(detector, targetHRP, weld, 1)
                                         end
                                     end
@@ -1263,7 +1261,7 @@ BlobmanTab:AddToggle({
                             end
                         end
                     end
-                    -- サーバー全体へのループ速度（早すぎるとキックされるので微調整）
+                    -- ループの間隔を極限まで短く（0.1秒）
                     task.wait(0.1) 
                 end
             end)
