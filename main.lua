@@ -1048,15 +1048,16 @@ BlobmanTab:AddToggle({
     end
 })
 
--- --- 究極・全距離引きこもりキック (ボタンコード) ---
+-- --- TP上昇キック確定コンボ (ボタンコード) ---
 
 BlobmanTab:AddButton({
-    Name = "Global Safezone Kick (全距離・家の中から)",
+    Name = "TP & Rise Kick (テレポート上昇キック)",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
             local char = lp.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
             local seat = hum and hum.SeatPart
             
             if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
@@ -1064,27 +1065,43 @@ BlobmanTab:AddButton({
                 local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                 
-                -- 左手・右手を順番に処理
+                -- 1. 相手の場所にBlobmanごとテレポート
+                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0) -- 相手の少し上
+                if blobman.PrimaryPart then
+                    blobman:SetPrimaryPartCFrame(targetPos)
+                else
+                    seat.CFrame = targetPos
+                end
+                
+                task.wait(0.1) -- 位置同期の微待機
+                
+                -- 2. 掴み実行 (両手)
                 local arms = {"Left", "Right"}
                 for _, side in ipairs(arms) do
                     local detector = blobman:WaitForChild(side .. "Detector")
                     local weld = detector:WaitForChild(side .. "Weld")
                     
-                    -- 【最重要】サーバーを騙すための座標偽装
-                    -- 判定（Detector）をターゲットの座標に完全に重ねる
-                    local originalCF = detector.CFrame
-                    detector.CFrame = targetHRP.CFrame
-                    
-                    -- サーバーが位置を認識するまで、ごくわずかに待つ（ここが「たまに」を「確実」に変えるコツ）
-                    task.wait(0.03) 
-                    
-                    -- 掴み実行 (Mode 3: Kick)
+                    -- 掴み(Mode 3)
                     remote:FireServer(detector, targetHRP, weld, 3)
+                end
+                
+                -- 3. 効率的な上昇キック（ずっと上がらない設定）
+                if not hrp:FindFirstChild("KickFloat") then
+                    local bv = Instance.new("BodyVelocity")
+                    bv.Name = "KickFloat"
+                    bv.MaxForce = Vector3.new(0, 1e9, 0)
+                    bv.Velocity = Vector3.new(0, 45, 0) -- キックを乗せるための上昇力
+                    bv.Parent = hrp
                     
-                    -- 実行後、少しだけ判定をその場に残してから戻す
-                    task.delay(0.1, function()
-                        if detector then detector.CFrame = originalCF end
+                    -- 0.5秒だけ浮かせて、その後ピタッと止める
+                    task.delay(0.5, function()
+                        if bv.Parent then
+                            bv.Velocity = Vector3.new(0, 0, 0) -- 高度を固定
+                        end
                     end)
+                    
+                    -- 1.5秒後に浮遊パーツ自体を消去（リセット用）
+                    game:GetService("Debris"):AddItem(bv, 1.5)
                 end
             end
         end)
