@@ -848,6 +848,111 @@ ESP_Section2:AddToggle({
     end
 })
 
+-- ==============================
+-- タブ設定 (Ultimate Blobman)
+-- ==============================
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 究極", Icon = "rbxassetid://6031064398" })
+
+-- 変数管理
+_G.PlayerToLongGrab = ""
+_G.WhitelistFriends2 = false
+_G.LoopKick = false
+_G.BringAllLongReach = false
+
+-- [[ 内部関数：上昇しながらキック実行 ]]
+local function kickWithLift(targetName)
+    local player = game.Players:FindFirstChild(targetName)
+    local lp = game.Players.LocalPlayer
+    
+    if player and player.Character and lp.Character then
+        local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+        local myHumanoid = lp.Character:FindFirstChildOfClass("Humanoid")
+        
+        if myHumanoid and myHumanoid.SeatPart and myHumanoid.SeatPart.Parent then
+            local seatParent = myHumanoid.SeatPart.Parent -- Blobmanの本体
+            local grabEvent = seatParent:WaitForChild("BlobmanSeatAndOwnerScript"):WaitForChild("CreatureGrab")
+            
+            -- 【1】 掴みパラメータ設定 (Mode 3 = Kick)
+            local params = {
+                seatParent:WaitForChild("LeftDetector"),
+                targetHRP,
+                seatParent:WaitForChild("LeftDetector"):WaitForChild("LeftWeld"),
+                3 -- Kick Mode
+            }
+            
+            -- 【2】 サーバーへ掴み実行
+            grabEvent:FireServer(unpack(params))
+            
+            -- 【3】 掴みと同時に自分(Blobman)を浮かせる
+            task.spawn(function()
+                local floatBV = Instance.new("BodyVelocity")
+                floatBV.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                floatBV.Velocity = Vector3.new(0, 50, 0) -- 上昇速度
+                floatBV.Parent = lp.Character.HumanoidRootPart
+                
+                task.wait(0.5) -- 0.5秒間だけ浮上してキックを確定させる
+                floatBV:Destroy()
+            end)
+        else
+            OrionLib:MakeNotification({Name = "Error", Content = "Blobmanに座ってください！", Time = 3})
+        end
+    end
+end
+
+-- [[ UIセクション：プレイヤー選択 ]]
+local GrabSection = BlobmanTab:AddSection({ Name = "Target Select" })
+
+GrabSection:AddDropdown({
+    Name = "Select Player",
+    Default = "",
+    Options = {""}, -- スクリプト実行時にプレイヤーリストを入れる処理を推奨
+    Callback = function(inputString)
+        _G.PlayerToLongGrab = string.split(inputString, " ")[1]
+    end
+})
+
+GrabSection:AddButton({
+    Name = "Auto Lift Kick (自動上昇キック)",
+    Callback = function()
+        kickWithLift(_G.PlayerToLongGrab)
+    end
+})
+
+-- [[ UIセクション：サーバー破壊 (Bring All) ]]
+local DestroySection = BlobmanTab:AddSection({ Name = "Server Destroy" })
+
+DestroySection:AddToggle({
+    Name = "Destroy Server (No Premium)",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLongReach = Value
+        if Value then
+            task.spawn(function()
+                while _G.BringAllLongReach do
+                    -- プレミアムチェックを削除
+                    local lp = game.Players.LocalPlayer
+                    if lp.Character and lp.Character:FindFirstChildOfClass("Humanoid").SeatPart then
+                        -- 全員掴み実行
+                        for _, p in pairs(game.Players:GetPlayers()) do
+                            if p ~= lp and p.Character and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                kickWithLift(p.Name)
+                            end
+                        end
+                    end
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+DestroySection:AddToggle({
+    Name = "Whitelist Friends",
+    Default = false,
+    Callback = function(Value)
+        _G.WhitelistFriends2 = Value
+    end
+})
 
 --==============================
 -- 初期化
