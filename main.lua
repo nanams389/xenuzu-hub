@@ -236,62 +236,84 @@ task.spawn(function()
     end
 end)
 
---==============================
--- Bring All セクション追加
---==============================
-local bringAllSection = VoidTab:AddSection({
-    Name = "Bring All Settings"
-})
+-- [[ Kill & Kick セクション作成 ]]
+local annoyPlayersSection = VoidTab:AddSection({ Name = "Server Hostility" })
 
-bringalltoggle = bringAllSection:AddToggle({
-    Name = "Bring All (Server Sync)",
+-- 1. Kill All
+killalltoggle = annoyPlayersSection:AddToggle({
+    Name = "Kill All",
     Default = false,
-    Callback = function(bringAllEnabled)
-        _G.BringAll = bringAllEnabled
-        
-        if bringAllEnabled then
+    Callback = function(killAllEnabled)
+        _G.KillAll = killAllEnabled
+        if killAllEnabled then
+            -- プレミアム制限解除
             task.spawn(function()
-                while _G.BringAll do
+                while _G.KillAll do
                     local lp = game.Players.LocalPlayer
-                    local char = lp.Character
-                    if not char or not char:FindFirstChild("HumanoidRootPart") then 
-                        task.wait(1) 
-                        continue 
-                    end
+                    if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then task.wait(1) continue end
                     
-                    local myRoot = char.HumanoidRootPart
-                    local playerCFrame = myRoot.CFrame
+                    local ipos = lp.Character.HumanoidRootPart.CFrame
                     
                     for _, player in pairs(game.Players:GetPlayers()) do
-                        if not _G.BringAll then break end
+                        if not _G.KillAll then break end
                         if player == lp then continue end
                         
                         pcall(function()
-                            local targetChar = player.Character
-                            local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+                            local char = player.Character
+                            local hum = char and char:FindFirstChildOfClass("Humanoid")
+                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
                             
-                            if targetHrp then
-                                -- 【重要】相手に自分の位置へ「テレポートした」と思わせるのではなく
-                                -- サーバー側に「自分が相手を掴んでいる」というイベントを送りつける
+                            if hrp and hum and hum.Health > 0 then
+                                -- 所有権奪取と殺害ロジック
+                                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(char)
                                 
-                                -- 1. 相手を強制ラグドール化（物理判定をゆるくする）
-                                game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(targetChar)
-                                
-                                -- 2. 掴みイベントを連打して、相手の所有権（Ownership）に干渉する
-                                -- これにより、相手の座標がこちらの計算に従いやすくなる
-                                game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(targetHrp)
-                                
-                                -- 3. 直接座標を叩くのではなく、速度（Velocity）と座標を同時に送る
-                                -- これで「ビジュアルだけ」を防ぎ、サーバーへ位置を強制報告する
-                                targetHrp.Velocity = Vector3.new(0, 0, 0)
-                                targetHrp.CFrame = playerCFrame * CFrame.new(0, 0, -3) -- 自分の少し前に配置
-                                
-                                -- 4. サーバー側に「あがいている（Struggle）」信号を送って位置を確定させる
+                                -- 死亡状態へ強制変更
+                                hum.BreakJointsOnDeath = false
+                                hum:ChangeState(Enum.HumanoidStateType.Dead)
+                                hum.Health = 0 -- サーバー同期を強める
+                            end
+                        end)
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+-- 2. Kick All
+kickalltoggle = annoyPlayersSection:AddToggle({
+    Name = "Kick All",
+    Default = false,
+    Callback = function(kickAllEnabled)
+        _G.KickAll = kickAllEnabled
+        if kickAllEnabled then
+            -- プレミアム制限解除
+            task.spawn(function()
+                while _G.KickAll do
+                    local lp = game.Players.LocalPlayer
+                    if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then task.wait(1) continue end
+                    
+                    local ipos = lp.Character.HumanoidRootPart.CFrame
+                    
+                    for _, player in pairs(game.Players:GetPlayers()) do
+                        if not _G.KickAll then break end
+                        if player == lp then continue end
+                        
+                        pcall(function()
+                            local char = player.Character
+                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                            
+                            if hrp then
+                                -- Kickを誘発させるための不正座標送り
+                                -- (ゲーム側のアンチチートに「異常な位置」と認識させてキックさせる)
+                                game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(hrp)
+                                hrp.CFrame = CFrame.new(999999, 999999, 999999) 
                                 game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
                             end
                         end)
                     end
-                    task.wait(0.1) -- サーバーが処理しきれる速度に調整
+                    task.wait(0.5)
                 end
             end)
         end
