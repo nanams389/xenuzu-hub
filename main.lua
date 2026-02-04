@@ -1219,7 +1219,57 @@ BlobmanTab:AddToggle({
         end
     end
 })
-
+-- デストロイサーバー (BlitzHub風・公式エラー誘発スライド)
+BlobmanTab:AddToggle({
+    Name = "Destroy Server (Blitz Error Mode)",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLongReach = Value
+        if Value then
+            task.spawn(function()
+                while _G.BringAllLongReach do
+                    local char = lp.Character
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local seat = hum and hum.SeatPart
+                    
+                    if seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        
+                        if remote then
+                            for _, p in pairs(players:GetPlayers()) do
+                                if not _G.BringAllLongReach then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                    
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    -- 左手と右手両方で交互に爆速処理
+                                    for _, armSide in ipairs({"Left", "Right"}) do
+                                        local detector = blobman:FindFirstChild(armSide .. "Detector")
+                                        local weld = detector and detector:FindFirstChild(armSide .. "Weld")
+                                        
+                                        if detector and weld then
+                                            -- 1. 掴む (Mode 2)
+                                            remote:FireServer(detector, targetHRP, weld, 2)
+                                            
+                                            -- 2. 相手をスライドさせるための極小待機 (BlitzHubはこの一瞬のズレでエラーを出す)
+                                            -- サーバーのフレームレートに合わせて調整
+                                            task.wait() 
+                                            
+                                            -- 3. 即座に離す (Mode 1)
+                                            remote:FireServer(detector, targetHRP, weld, 1)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    -- サーバー全体へのループ速度（早すぎるとキックされるので微調整）
+                    task.wait(0.1) 
+                end
+            end)
+        end
+    end
+})
 BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
 --==============================
