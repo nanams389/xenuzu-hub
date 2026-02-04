@@ -1048,10 +1048,10 @@ BlobmanTab:AddToggle({
     end
 })
 
--- --- セーフゾーン貫通・全距離キック (ボタンコード) ---
+-- --- 究極・全距離引きこもりキック (ボタンコード) ---
 
 BlobmanTab:AddButton({
-    Name = "Safezone Bypass Kick (セーフゾーン貫通)",
+    Name = "Global Safezone Kick (全距離・家の中から)",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
@@ -1064,25 +1064,27 @@ BlobmanTab:AddButton({
                 local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                 
-                -- 両手で一気に仕留める
+                -- 左手・右手を順番に処理
                 local arms = {"Left", "Right"}
                 for _, side in ipairs(arms) do
                     local detector = blobman:WaitForChild(side .. "Detector")
                     local weld = detector:WaitForChild(side .. "Weld")
                     
-                    -- 【セーフゾーン貫通の核】
-                    -- 腕の判定をターゲットの目の前（セーフゾーン外）に瞬間移動
-                    local oldCFrame = detector.CFrame
-                    detector.CFrame = targetHRP.CFrame * CFrame.new(0, 0, -2)
+                    -- 【最重要】サーバーを騙すための座標偽装
+                    -- 判定（Detector）をターゲットの座標に完全に重ねる
+                    local originalCF = detector.CFrame
+                    detector.CFrame = targetHRP.CFrame
+                    
+                    -- サーバーが位置を認識するまで、ごくわずかに待つ（ここが「たまに」を「確実」に変えるコツ）
+                    task.wait(0.03) 
                     
                     -- 掴み実行 (Mode 3: Kick)
                     remote:FireServer(detector, targetHRP, weld, 3)
                     
-                    -- 0.05秒だけ待ってセーフゾーン内に腕を戻す
-                    task.delay(0.05, function()
-                        detector.CFrame = oldCFrame
+                    -- 実行後、少しだけ判定をその場に残してから戻す
+                    task.delay(0.1, function()
+                        if detector then detector.CFrame = originalCF end
                     end)
-                    task.wait(0.05)
                 end
             end
         end)
