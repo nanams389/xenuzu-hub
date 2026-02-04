@@ -1051,7 +1051,7 @@ BlobmanTab:AddToggle({
 -- --- 公式エラー誘発キック (ボタンコード) ---
 
 BlobmanTab:AddButton({
-    Name = "Trigger Official Error (公式エラー誘発)",
+    Name = "blobman 引き寄せ",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
