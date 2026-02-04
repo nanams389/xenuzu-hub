@@ -691,40 +691,44 @@ UltimateTab:AddButton({
     end    
 })
 
--- [[ プレイヤーを選んで自動キックするボタン ]]
-BlobmansTab:AddDropdown({
-    Name = "Select Target Player",
-    Default = "",
-    Options = {}, -- 自動で更新される
-    Callback = function(Value)
-        _G.SelectedPlayer = Value
-    end    
-})
+-- [[ サービスと変数の定義 (コードが動くために必要) ]]
+local playersService = game:GetService("Players")
+local localPlayer = playersService.LocalPlayer
 
--- プレイヤーリストを更新するボタン
-BlobmansTab:AddButton({
-    Name = "Refresh Player List",
-    Callback = function()
-        local players = {}
-        for _, v in ipairs(game.Players:GetPlayers()) do
-            if v ~= lp then table.insert(players, v.Name) end
-        end
-        -- ドロップダウンの更新用（OrionLibのDropdown変数を参照する必要があるが、一旦手動更新を想定）
-    end
-})
+-- アイコン作成用関数 (これがないとエラーで動かない)
+local function CreateIconOnPlayer(player)
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+    
+    -- 既存のESPを削除
+    if head:FindFirstChild("ESPIcon") then head.ESPIcon:Destroy() end
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESPIcon"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(2, 0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.ExtentsOffset = Vector3.new(0, 3, 0)
+    billboard.Parent = head
 
--- [[ ESPタブ作成 ]]
-local ESPTab = Window:MakeTab({
-    Name = "ESP Settings",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Text = "👤" -- アイコン
+    label.TextScaled = true
+    label.TextColor3 = Color3.fromRGB(255, 0, 0)
+    label.Parent = billboard
+end
 
-local ESP_Section2 = ESPTab:AddSection({
-    Name = "Visuals"
-})
+--==============================
+-- タブ：ESP設定
+--==============================
+local ESPTab = Window:MakeTab({ Name = "ESP設定", Icon = "rbxassetid://4483345998" })
+local ESP_Section2 = ESPTab:AddSection({ Name = "ビジュアル" })
 
--- あなたが提供したコードをそのまま移植
+_G.ESP_Icon = false
+
 ESP_Section2:AddToggle({
     Name = "ESP (Icon)",
     Default = false,
@@ -732,53 +736,53 @@ ESP_Section2:AddToggle({
         _G.ESP_Icon = espIconEnabled
         if espIconEnabled then
             local characterAddedConnections = {}
+            
             local function disconnectCharacterAddedConnections()
-                local connectionPairsIterator, connectionState, connectionIndex = pairs(characterAddedConnections)
-                while true do
-                    local rbxScriptConnection
-                    connectionIndex, rbxScriptConnection = connectionPairsIterator(connectionState, connectionIndex)
-                    if connectionIndex == nil then
-                        break
-                    end
-                    if typeof(rbxScriptConnection) == "RBXScriptConnection" then
-                        rbxScriptConnection:Disconnect()
-                        print("Desconectado!")
+                for _, conn in pairs(characterAddedConnections) do
+                    if typeof(conn) == "RBXScriptConnection" then
+                        conn:Disconnect()
                     end
                 end
                 table.clear(characterAddedConnections)
             end
-            local function onPlayerAdded(player)
-                if player ~= localPlayer and (player.Character or player.CharacterAdded:Wait()) then
-                    CreateIconOnPlayer(player)
-                    characterAddedConnections[# characterAddedConnections + 1] = player.CharacterAdded:Connect(function(_)
+
+            local function setupPlayerESP(player)
+                if player ~= localPlayer then
+                    if player.Character then CreateIconOnPlayer(player) end
+                    local conn = player.CharacterAdded:Connect(function()
+                        task.wait(0.5)
                         CreateIconOnPlayer(player)
                     end)
+                    table.insert(characterAddedConnections, conn)
                 end
             end
-            local function onPlayerAddedAll() -- 名前重複回避のため微調整（中身は変えてないぜ）
-                local players = playersService
-                local pairsIterator2, playerPairsIterator, playerIndex2 = pairs(players:GetPlayers())
-                while true do
-                    local player2
-                    playerIndex2, player2 = pairsIterator2(playerPairsIterator, playerIndex2)
-                    if playerIndex2 == nil then
-                        break
+
+            -- 既存のプレイヤーに適用
+            for _, p in pairs(playersService:GetPlayers()) do
+                setupPlayerESP(p)
+            end
+
+            -- 新規プレイヤーに適用
+            local playerAddedConn = playersService.PlayerAdded:Connect(setupPlayerESP)
+
+            -- オフになるまで待機
+            task.spawn(function()
+                while _G.ESP_Icon do task.wait(0.5) end
+                playerAddedConn:Disconnect()
+                disconnectCharacterAddedConnections()
+                -- アイコン全削除
+                for _, p in pairs(playersService:GetPlayers()) do
+                    if p.Character and p.Character:FindFirstChild("Head") and p.Character.Head:FindFirstChild("ESPIcon") then
+                        p.Character.Head.ESPIcon:Destroy()
                     end
-                    onPlayerAdded(player2)
                 end
-            end
-            local playerAddedConnection = playersService.PlayerAdded:Connect(function(unknownParameter)
-                onPlayerAdded(unknownParameter)
             end)
-            onPlayerAddedAll()
-            while _G.ESP_Icon do
-                wait(0.1)
-            end
-            playerAddedConnection:Disconnect()
-            disconnectCharacterAddedConnections()
         end
     end
 })
+
+-- 最後に必ずこれを入れること
+OrionLib:Init()
 
 --==============================
 -- 初期化
