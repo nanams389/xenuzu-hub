@@ -975,40 +975,70 @@ BlobmanTab:AddToggle({
 
 BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
--- --- テレポート系セクション (ボタンとして追加) ---
+-- --- テレポート系セクション (Blobman搭乗対応版) ---
 
--- 特定プレイヤーへ瞬間移動
+-- 1. 特定プレイヤーへBlobmanごと瞬間移動
 BlobmanTab:AddButton({
-    Name = "TP to Selected Player (瞬間移動)",
+    Name = "TP to Selected (Blobman移動)",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local seat = hum and hum.SeatPart
+            
             if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                -- Blobmanごと移動するために lp.Character を飛ばす
-                lp.Character:SetPrimaryPartCFrame(target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 8, 0))
+                local targetPos = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 8, 0)
+                
+                if seat and seat.Parent then
+                    -- Blobmanに乗っている場合、BlobmanのPrimaryPart（または外枠）を移動させる
+                    local model = seat.Parent
+                    if model:IsA("Model") and model.PrimaryPart then
+                        model:SetPrimaryPartCFrame(targetPos)
+                    else
+                        -- PrimaryPartがない場合はSeat自体を動かして物理移動させる
+                        seat.CFrame = targetPos
+                    end
+                else
+                    -- 乗っていない場合は自分だけ飛ぶ
+                    char:SetPrimaryPartCFrame(targetPos)
+                end
             end
         end)
     end
 })
 
--- 全プレイヤー巡回テレポート（トグル形式が便利なのでトグルにしてるぞ）
+-- 2. 全プレイヤーをBlobmanごとゆっくり巡回
 _G.AutoTPAll = false
 BlobmanTab:AddToggle({
-    Name = "Auto TP to All (全プレイヤー巡回)",
+    Name = "Auto TP All (Blobman巡回)",
     Default = false,
     Callback = function(Value)
         _G.AutoTPAll = Value
         if Value then
             task.spawn(function()
                 while _G.AutoTPAll do
-                    local allPlayers = players:GetPlayers()
-                    for _, p in pairs(allPlayers) do
+                    for _, p in pairs(players:GetPlayers()) do
                         if not _G.AutoTPAll then break end
                         if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                            -- 相手の頭上にテレポート
-                            lp.Character:SetPrimaryPartCFrame(p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0))
-                            -- 「ゆっくり」巡回するために3秒待機（ここを短くすれば爆速巡回になるぞ）
-                            task.wait(3) 
+                            pcall(function()
+                                local targetPos = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 12, 0)
+                                local seat = lp.Character.Humanoid:GetState() == Enum.HumanoidStateType.Seated and lp.Character.Humanoid.SeatPart
+                                
+                                if seat and seat.Parent then
+                                    -- Blobmanごと巡回
+                                    local model = seat.Parent
+                                    if model.PrimaryPart then
+                                        model:SetPrimaryPartCFrame(targetPos)
+                                    else
+                                        seat.CFrame = targetPos
+                                    end
+                                else
+                                    -- 自分だけで巡回
+                                    lp.Character:SetPrimaryPartCFrame(targetPos)
+                                end
+                            end)
+                            task.wait(3) -- 3秒ごとに次のプレイヤーへ
                         end
                     end
                     task.wait(1)
