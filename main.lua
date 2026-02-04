@@ -1048,6 +1048,47 @@ BlobmanTab:AddToggle({
     end
 })
 
+-- --- セーフゾーン貫通・全距離キック (ボタンコード) ---
+
+BlobmanTab:AddButton({
+    Name = "Safezone Bypass Kick (セーフゾーン貫通)",
+    Callback = function()
+        pcall(function()
+            local target = players:FindFirstChild(_G.PlayerToLongGrab)
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local seat = hum and hum.SeatPart
+            
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+                local blobman = seat.Parent
+                local targetHRP = target.Character.HumanoidRootPart
+                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                
+                -- 両手で一気に仕留める
+                local arms = {"Left", "Right"}
+                for _, side in ipairs(arms) do
+                    local detector = blobman:WaitForChild(side .. "Detector")
+                    local weld = detector:WaitForChild(side .. "Weld")
+                    
+                    -- 【セーフゾーン貫通の核】
+                    -- 腕の判定をターゲットの目の前（セーフゾーン外）に瞬間移動
+                    local oldCFrame = detector.CFrame
+                    detector.CFrame = targetHRP.CFrame * CFrame.new(0, 0, -2)
+                    
+                    -- 掴み実行 (Mode 3: Kick)
+                    remote:FireServer(detector, targetHRP, weld, 3)
+                    
+                    -- 0.05秒だけ待ってセーフゾーン内に腕を戻す
+                    task.delay(0.05, function()
+                        detector.CFrame = oldCFrame
+                    end)
+                    task.wait(0.05)
+                end
+            end
+        end)
+    end
+})
+
 --==============================
 -- 初期化
 --==============================
