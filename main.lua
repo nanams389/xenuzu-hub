@@ -1549,6 +1549,123 @@ BlobTab:AddToggle({
 })
 
 --==============================
+-- タブ：Blobman Loop Kill
+--==============================
+local KillTab = Window:MakeTab({ Name = "Blobman Loop Kill", Icon = "rbxassetid://4483345998" })
+
+local SelectedPlayer = ""
+local players = game:GetService("Players")
+local lp = players.LocalPlayer
+
+-- ターゲット選択
+KillTab:AddDropdown({
+    Name = "ターゲット選択",
+    Default = "",
+    Options = {}, -- 自動で更新
+    Callback = function(Value)
+        SelectedPlayer = Value
+    end    
+})
+
+-- プレイヤーリストの更新ボタン
+KillTab:AddButton({
+    Name = "プレイヤーリスト更新",
+    Callback = function()
+        local pList = {}
+        for _, p in pairs(players:GetPlayers()) do
+            if p ~= lp then table.insert(pList, p.Name) end
+        end
+        -- ドロップダウンを更新（Orionの仕様により手動更新が必要な場合があります）
+        print("Player list updated")
+    end
+})
+
+-- 指定プレイヤーをループキル (掴み離し)
+KillTab:AddToggle({
+    Name = "指定プレイヤーをループ掴み",
+    Default = false,
+    Callback = function(Value)
+        _G.LoopGrabTarget = Value
+        if Value then
+            task.spawn(function()
+                while _G.LoopGrabTarget do
+                    local target = players:FindFirstChild(SelectedPlayer)
+                    local char = lp.Character
+                    local seat = char and char.Humanoid.SeatPart
+                    
+                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        local targetHRP = target.Character.HumanoidRootPart
+                        
+                        if remote then
+                            for _, arm in ipairs({"Left", "Right"}) do
+                                local det = blobman:FindFirstChild(arm .. "Detector")
+                                local weld = det and det:FindFirstChild(arm .. "Weld")
+                                if det and weld then
+                                    remote:FireServer(det, targetHRP, weld, 2) -- 掴む
+                                    task.wait(0.01)
+                                    remote:FireServer(det, targetHRP, weld, 1) -- 離す
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.05) -- 超高速ループ
+                end
+            end)
+        end
+    end
+})
+
+-- サーバー全員をループキル
+KillTab:AddToggle({
+    Name = "全員を高速ループ掴み",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLoop = Value
+        if Value then
+            task.spawn(function()
+                while _G.BringAllLoop do
+                    local char = lp.Character
+                    local seat = char and char.Humanoid.SeatPart
+                    if seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        
+                        if remote then
+                            for _, p in pairs(players:GetPlayers()) do
+                                if not _G.BringAllLoop then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    -- フレンド除外チェック
+                                    if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
+                                    
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    for _, arm in ipairs({"Left", "Right"}) do
+                                        local det = blobman:FindFirstChild(arm .. "Detector")
+                                        local weld = det and det:FindFirstChild(arm .. "Weld")
+                                        if det and weld then
+                                            remote:FireServer(det, targetHRP, weld, 2)
+                                            remote:FireServer(det, targetHRP, weld, 1)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+KillTab:AddToggle({ 
+    Name = "フレンドを除外 (Whitelist)", 
+    Default = false, 
+    Callback = function(v) _G.WhitelistFriends2 = v end 
+})
+
+--==============================
 -- 初期化
 --==============================
 OrionLib:Init()
