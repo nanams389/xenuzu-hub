@@ -1038,10 +1038,10 @@ BlobmanTab:AddToggle({
                                     lp.Character:SetPrimaryPartCFrame(targetPos)
                                 end
                             end)
-                            task.wait(3) -- 3秒ごとに次のプレイヤーへ
+                            task.wait(0.5) -- 3秒ごとに次のプレイヤーへ
                         end
                     end
-                    task.wait(1)
+                    task.wait(0.3)
                 end
             end)
         end
