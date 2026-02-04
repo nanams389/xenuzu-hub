@@ -853,7 +853,7 @@ local players = game:GetService("Players")
 local lp = players.LocalPlayer
 _G.BringAllLongReach = false
 _G.WhitelistFriends2 = false
-_G.PlayerToLongGrab = "" -- 初期化エラー防止
+_G.PlayerToLongGrab = ""
 
 -- [[ 1. プレイヤーリストを更新する関数 ]]
 local function getPlayerNames()
@@ -866,9 +866,10 @@ local function getPlayerNames()
     return names
 end
 
--- [[ 2. 掴み & 上昇 & キック (左右対応版に改造) ]]
-local function doBlobmanGrab(targetPlayer, side)
-    side = side or "Left" -- 指定がない場合は左手
+-- [[ 2. 掴み & 高度固定キック ロジック ]]
+-- 引数：対象プレイヤー、使用する手 ("Left" or "Right")
+local function doBlobmanFastGrab(targetPlayer, side)
+    side = side or "Left"
     pcall(function()
         local char = lp.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -880,28 +881,37 @@ local function doBlobmanGrab(targetPlayer, side)
             local remote = blobman:FindFirstChild("BlobmanSeatAndOwnerScript") and blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
             
             if remote and targetHRP then
-                -- 左右のDetectorを動的に切り替え
                 local detector = blobman:WaitForChild(side .. "Detector")
                 local weld = detector:WaitForChild(side .. "Weld")
 
-                -- 掴み実行 (Mode 3: Kick)
+                -- 【爆速サイクル】掴みと同時にMode 3(Kick)を送信
                 remote:FireServer(detector, targetHRP, weld, 3)
                 
-                -- 上昇エフェクト (パワー倍増：150)
-                local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                bv.Velocity = Vector3.new(0, 150, 0) 
-                bv.Parent = lp.Character.HumanoidRootPart
-                game:GetService("Debris"):AddItem(bv, 0.5)
+                -- 【高度固定ロジック】
+                -- すでに上昇中なら重ねて作成しない
+                if not lp.Character.HumanoidRootPart:FindFirstChild("TsunamiFloat") then
+                    local bv = Instance.new("BodyVelocity")
+                    bv.Name = "TsunamiFloat"
+                    bv.MaxForce = Vector3.new(0, 1e9, 0) -- Y軸（高さ）だけ制御
+                    bv.Velocity = Vector3.new(0, 25, 0) -- 少しだけ浮かせる
+                    bv.Parent = lp.Character.HumanoidRootPart
+                    
+                    task.delay(0.8, function()
+                        if bv.Parent then
+                            bv.Velocity = Vector3.new(0, 0, 0) -- 0.8秒後に上昇を止めて「固定」
+                        end
+                    end)
+                    game:GetService("Debris"):AddItem(bv, 1.5) -- 一定時間で削除してリセット可能に
+                end
             end
         end
     end)
 end
 
 -- [[ 3. UI構築 ]]
-local BlobmanTab = Window:MakeTab({ Name = "Blobman 両手破壊版", Icon = "rbxassetid://6031064398" })
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 究極改", Icon = "rbxassetid://6031064398" })
 
--- プレイヤー選択ドロップダウン
+-- プレイヤー選択
 local PlayerSelector = BlobmanTab:AddDropdown({
     Name = "Select Player",
     Default = "",
@@ -911,66 +921,67 @@ local PlayerSelector = BlobmanTab:AddDropdown({
     end
 })
 
--- リスト更新ボタン
+-- リスト更新
 BlobmanTab:AddButton({
-    Name = "Refresh Player List (リスト更新)",
+    Name = "Refresh Player List",
     Callback = function()
-        -- エラーで止まらないようにpcallで保護
         pcall(function()
             PlayerSelector:Refresh(getPlayerNames(), true)
         end)
     end
 })
 
--- 単体実行を「両手」に強化
+-- 単体実行（両手で一瞬で仕留める）
 BlobmanTab:AddButton({
-    Name = "Grab & Kick (両手ギガインパクト)",
+    Name = "Giga Grab & Kick",
     Callback = function()
         local target = players:FindFirstChild(_G.PlayerToLongGrab)
         if target then 
-            doBlobmanGrab(target, "Left")
+            doBlobmanFastGrab(target, "Left")
             task.wait(0.05)
-            doBlobmanGrab(target, "Right")
+            doBlobmanFastGrab(target, "Right")
         end
     end
 })
 
--- サーバーデストロイ (ここを「両手交互」に改造)
+-- デストロイサーバー（両手・高速掴み離し・高度固定）
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (両手 Auto Kick)",
+    Name = "Destroy Server (Fast Dual Grab)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
         if Value then
             task.spawn(function()
-                local useLeft = true -- 左右切り替え用
+                local useLeft = true
                 while _G.BringAllLongReach do
                     for _, p in pairs(players:GetPlayers()) do
                         if not _G.BringAllLongReach then break end
                         if p ~= lp and p.Character and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
                             
-                            -- 左手と右手を交互に使って爆速化
+                            -- 左手と右手を交互に超速で回す
                             local arm = useLeft and "Left" or "Right"
-                            doBlobmanGrab(p, arm)
+                            doBlobmanFastGrab(p, arm)
                             useLeft = not useLeft
                             
-                            task.wait(0.15) -- 待機時間を短縮して殲滅速度アップ
+                            -- Blitz Hub風の「即掴み・即離し」感を作るための短い待機
+                            task.wait(0.1) 
                         end
                     end
-                    task.wait(0.5)
+                    task.wait(0.3)
                 end
             end)
+        else
+            -- オフにしたら高度固定を消す
+            local float = lp.Character.HumanoidRootPart:FindFirstChild("TsunamiFloat")
+            if float then float:Destroy() end
         end
     end
 })
 
--- フレンド除外設定
 BlobmanTab:AddToggle({
     Name = "Whitelist Friends",
     Default = false,
-    Callback = function(v)
-        _G.WhitelistFriends2 = v
-    end
+    Callback = function(v) _G.WhitelistFriends2 = v end
 })
 
 --==============================
