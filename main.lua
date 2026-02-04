@@ -1537,195 +1537,62 @@ BlobTab:AddToggle({
     end
 })
 
-BlobTab:AddSection({ Name = "ループ掴み (セーフゾーン無視)" })
-
--- ドロップダウンを変数に入れておく（後で中身を書き換えるため）
-local PlayerDropdown = BlobTab:AddDropdown({
-    Name = "ターゲット選択",
-    Default = "",
-    Options = {"プレイヤーを更新してください"}, 
-    Callback = function(Value) 
-        SelectedPlayer = Value 
-    end    
-})
-
--- リスト更新ボタンの修正
-BlobTab:AddButton({
-    Name = "プレイヤーリスト更新",
-    Callback = function()
-        local pList = {}
-        for _, p in pairs(game.Players:GetPlayers()) do
-            if p ~= game.Players.LocalPlayer then 
-                table.insert(pList, p.Name) 
-            end
-        end
-        -- ドロップダウンの中身を最新のリストで上書きする
-        PlayerDropdown:Refresh(pList, true)
-    end
-})
-
--- 6. 超距離・瞬間移動ループ掴み (TP Grab)
-BlobTab:AddToggle({
-    Name = "超距離TPループ掴み",
-    Default = false,
-    Callback = function(Value)
-        _G.TPGrab = Value
-        if Value then
-            task.spawn(function()
-                while _G.TPGrab do
-                    local target = game.Players:FindFirstChild(SelectedPlayer)
-                    local char = lp.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    local seat = char and char.Humanoid.SeatPart
-                    
-                    if target and target.Character and hrp and seat and seat.Parent then
-                        local oldPos = hrp.CFrame -- 元の場所を記憶
-                        local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
-                        local blobman = seat.Parent
-                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        
-                        if targetHRP and remote then
-                            -- 相手の場所に一瞬TP
-                            hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 5, 0)
-                            task.wait(0.05) -- サーバーに位置を認識させる
-                            
-                            -- 掴んで離す
-                            for _, arm in ipairs({"Left", "Right"}) do
-                                local det = blobman:FindFirstChild(arm .. "Detector")
-                                local weld = det and det:FindFirstChild(arm .. "Weld")
-                                if det and weld then
-                                    remote:FireServer(det, targetHRP, weld, 2)
-                                    remote:FireServer(det, targetHRP, weld, 1)
-                                end
-                            end
-                            
-                            task.wait(0.05)
-                            hrp.CFrame = oldPos -- 元の場所（家の中など）に戻る
-                        end
-                    end
-                    task.wait(0.3) -- TP戻り待機
-                end
-            end)
-        end
-    end
-})
-
-
--- ターゲットキック & バリア貫通排除
-BlobmanTab:AddButton({
-    Name = "真・バリア破壊キック (引きずり出し)",
-    Callback = function()
-        pcall(function()
-            local target = game.Players:FindFirstChild(SelectedPlayer)
-            local char = lp.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local seat = hum and hum.SeatPart
-            
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
-                local blobman = seat.Parent
-                local targetHRP = target.Character.HumanoidRootPart
-                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                
-                -- 1. バリア破壊通知（ハッタリではなく実行開始の合図）
-                OrionLib:MakeNotification({
-                    Name = "System",
-                    Content = target.Name .. "のセーフゾーンを貫通中...",
-                    Time = 3
-                })
-
-                -- 2. ブロブマン本体をターゲットの「真上」に超高速TP
-                -- これによりバリアの判定を飛び越えて中に入る
-                local oldPos = hrp.CFrame
-                local penetrationPos = targetHRP.CFrame * CFrame.new(0, 2, 0)
-                
-                if blobman.PrimaryPart then
-                    blobman:SetPrimaryPartCFrame(penetrationPos)
-                else
-                    seat.CFrame = penetrationPos
-                end
-                
-                task.wait(0.05) -- サーバー同期
-
-                -- 3. 強制掴み実行 (Mode 3: 強制排除モード)
-                -- 左右の手をターゲットの座標に直接「めり込ませる」
-                for _, side in ipairs({"Left", "Right"}) do
-                    local detector = blobman:FindFirstChild(side .. "Detector")
-                    local weld = detector and detector:FindFirstChild(side .. "Weld")
-                    if detector and weld then
-                        -- Detectorの座標をターゲットに直接固定してバリアを無視
-                        detector.CFrame = targetHRP.CFrame
-                        remote:FireServer(detector, targetHRP, weld, 3)
-                    end
-                end
-
-                -- 4. 引きずり出し (相手を場外へ飛ばす)
-                task.spawn(function()
-                    for i = 1, 10 do
-                        -- ターゲットを掴んだまま、物凄い速さで上下に揺さぶってバリアから引き抜く
-                        local shakeDown = targetHRP.CFrame * CFrame.new(0, -50, 0)
-                        local shakeUp = targetHRP.CFrame * CFrame.new(0, 50, 100) -- そのまま空へ
-                        
-                        if blobman:FindFirstChild("LeftDetector") then blobman.LeftDetector.CFrame = shakeDown end
-                        task.wait(0.02)
-                        if blobman:FindFirstChild("LeftDetector") then blobman.LeftDetector.CFrame = shakeUp end
-                        task.wait(0.02)
-                    end
-                end)
-
-                -- 5. 元の場所に戻る
-                task.wait(0.2)
-                hrp.CFrame = oldPos
-                
-                OrionLib:MakeNotification({
-                    Name = "Success",
-                    Content = "バリア内部からの排除に成功しました",
-                    Time = 3
-                })
-            end
-        end)
-    end
-})
-
--- 5. 全員ループ掴み
-BlobTab:AddToggle({
-    Name = "全員を高速ループ掴み",
+-- 5. 全員を高速ループ掴み (テレポート殲滅版)
+BlobmanTab:AddToggle({
+    Name = "全員を高速ループ掴み (TP型)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLoop = Value
         if Value then
             task.spawn(function()
                 while _G.BringAllLoop do
-                    local seat = lp.Character and lp.Character.Humanoid.SeatPart
-                    if seat and seat.Parent then
+                    local char = lp.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local seat = char and char:FindFirstChildOfClass("Humanoid") and char.Humanoid.SeatPart
+                    
+                    if hrp and seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        local oldPos = hrp.CFrame -- 開始時の場所を記憶
+
                         if remote then
-                            for _, p in pairs(players:GetPlayers()) do
+                            for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLoop then break end
+                                
+                                -- 自分とフレンドを除外
                                 if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                     if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
+                                    
                                     local targetHRP = p.Character.HumanoidRootPart
+                                    
+                                    -- ターゲットの場所へ瞬時にワープ (バリア貫通のため少し上に)
+                                    hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 3, 0)
+                                    task.wait(0.05) -- 同期待ち
+                                    
+                                    -- 高速掴み & 離し (左右同時)
                                     for _, arm in ipairs({"Left", "Right"}) do
                                         local det = blobman:FindFirstChild(arm .. "Detector")
                                         local weld = det and det:FindFirstChild(arm .. "Weld")
                                         if det and weld then
-                                            remote:FireServer(det, targetHRP, weld, 2)
-                                            remote:FireServer(det, targetHRP, weld, 1)
+                                            -- Detectorをターゲットに直接めり込ませる
+                                            det.CFrame = targetHRP.CFrame
+                                            remote:FireServer(det, targetHRP, weld, 2) -- 掴む
+                                            remote:FireServer(det, targetHRP, weld, 1) -- 離す
                                         end
                                     end
+                                    task.wait(0.05) -- 次のターゲットへ行く前の微調整
                                 end
                             end
+                            -- 全員一周したら元の場所（家の中など）に一度戻る
+                            hrp.CFrame = oldPos
                         end
                     end
-                    task.wait(0.1)
+                    task.wait(0.5) -- サーバー負荷軽減のためのインターバル
                 end
             end)
         end
     end
 })
-
-BlobTab:AddToggle({ Name = "フレンドを除外 (Whitelist)", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
 
 --==============================
