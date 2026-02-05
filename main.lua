@@ -1567,21 +1567,50 @@ BlobmanTab:AddToggle({
         if v then
             task.spawn(function()
                 while _G.AutoSit do
-                    task.wait(0.5) -- サーバー負荷軽減
+                    task.wait(0.5)
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
                     
-                    -- すでに座っていないかチェック
-                    if hum and not hum.SeatPart then
-                        -- 自分のブロブマンを探す (getBlobman関数を使用)
-                        local myBlob = getBlobman()
+                    -- すでに座っている場合はスキップ
+                    if hum and not hum.SeatPart and hrp then
+                        -- 自分のブロブマンを探す (デストロイサーバーと同じロジックを強化)
+                        local myBlob = nil
+                        for _, v in ipairs(workspace.PlotItems:GetChildren()) do
+                            if v.Name == "Blobman" and v:FindFirstChild("Owner") and v.Owner.Value == lp.Name then
+                                myBlob = v
+                                break
+                            end
+                        end
+
                         if myBlob then
-                            local seat = myBlob:FindFirstChildOfClass("Seat") or myBlob:FindFirstChildOfClass("VehicleSeat")
+                            -- ブロブマンの中にある座席(Seat)を探す
+                            local seat = myBlob:FindFirstChildWhichIsA("Seat", true) or myBlob:FindFirstChildWhichIsA("VehicleSeat", true)
+                            
                             if seat then
                                 -- 座席へ瞬間移動して座る
-                                char.HumanoidRootPart.CFrame = seat.CFrame
+                                hrp.CFrame = seat.CFrame
+                                task.wait(0.1)
                                 seat:Sit(hum)
+                            else
+                                -- 座席が見つからない場合
+                                OrionLib:MakeNotification({
+                                    Name = "Auto Sit Error",
+                                    Content = "座席が見つかりません。ブロブマンが壊れている可能性があります。",
+                                    Time = 3
+                                })
+                                _G.AutoSit = false
+                                break
                             end
+                        else
+                            -- ブロブマン自体が見つからない場合
+                            OrionLib:MakeNotification({
+                                Name = "Blobman Not Found",
+                                Content = "自分のブロブマンを出してください！",
+                                Time = 3
+                            })
+                            _G.AutoSit = false -- 見つからない場合はオフにする
+                            break
                         end
                     end
                 end
@@ -1589,7 +1618,6 @@ BlobmanTab:AddToggle({
         end
     end
 })
-
 --==============================
 -- 初期化
 --==============================
