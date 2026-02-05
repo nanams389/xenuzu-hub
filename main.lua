@@ -1558,6 +1558,37 @@ BlobmanTab:AddToggle({
     end
 })
 
+-- 3. 自動乗車 (Auto Sit)
+BlobmanTab:AddToggle({
+    Name = "自動乗車 (Auto Sit)",
+    Default = false,
+    Callback = function(v)
+        _G.AutoSit = v
+        if v then
+            task.spawn(function()
+                while _G.AutoSit do
+                    task.wait(0.5) -- サーバー負荷軽減
+                    local char = lp.Character
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    
+                    -- すでに座っていないかチェック
+                    if hum and not hum.SeatPart then
+                        -- 自分のブロブマンを探す (getBlobman関数を使用)
+                        local myBlob = getBlobman()
+                        if myBlob then
+                            local seat = myBlob:FindFirstChildOfClass("Seat") or myBlob:FindFirstChildOfClass("VehicleSeat")
+                            if seat then
+                                -- 座席へ瞬間移動して座る
+                                char.HumanoidRootPart.CFrame = seat.CFrame
+                                seat:Sit(hum)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+})
 
 --==============================
 -- 初期化
