@@ -1558,7 +1558,7 @@ BlobmanTab:AddToggle({
     end
 })
 
--- 3. 自動乗車 (Auto Sit)
+-- 3. 自動乗車 (Auto Sit - 強化版)
 BlobmanTab:AddToggle({
     Name = "自動乗車 (Auto Sit)",
     Default = false,
@@ -1572,45 +1572,54 @@ BlobmanTab:AddToggle({
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     local hrp = char and char:FindFirstChild("HumanoidRootPart")
                     
-                    -- すでに座っている場合はスキップ
                     if hum and not hum.SeatPart and hrp then
-                        -- 自分のブロブマンを探す (デストロイサーバーと同じロジックを強化)
                         local myBlob = nil
+                        
+                        -- 探し方1: PlotItemsから探す (オーナー値チェック)
                         for _, v in ipairs(workspace.PlotItems:GetChildren()) do
-                            if v.Name == "Blobman" and v:FindFirstChild("Owner") and v.Owner.Value == lp.Name then
-                                myBlob = v
-                                break
+                            if v.Name == "Blobman" then
+                                local ownerObj = v:FindFirstChild("Owner")
+                                -- Ownerがオブジェクト値か文字列値か両方対応
+                                if ownerObj and (ownerObj.Value == lp.Name or ownerObj.Value == tostring(lp.UserId)) then
+                                    myBlob = v
+                                    break
+                                end
+                            end
+                        end
+                        
+                        -- 探し方2: もし見つからなければ名前だけで探す (保険)
+                        if not myBlob then
+                            for _, v in ipairs(workspace.PlotItems:GetChildren()) do
+                                if v.Name == "Blobman" and v:FindFirstChild("Owner") == nil then
+                                    -- オーナー属性がなくても、自分のプロット内にあるか距離で判定
+                                    local dist = (hrp.Position - v.PrimaryPart.Position).Magnitude
+                                    if dist < 50 then myBlob = v break end
+                                end
                             end
                         end
 
                         if myBlob then
-                            -- ブロブマンの中にある座席(Seat)を探す
+                            -- 座席の検出
                             local seat = myBlob:FindFirstChildWhichIsA("Seat", true) or myBlob:FindFirstChildWhichIsA("VehicleSeat", true)
                             
                             if seat then
-                                -- 座席へ瞬間移動して座る
+                                -- 座る直前に通知（デバッグ用）
+                                print("自分のブロブマンを発見しました: " .. myBlob:GetFullName())
                                 hrp.CFrame = seat.CFrame
                                 task.wait(0.1)
                                 seat:Sit(hum)
                             else
-                                -- 座席が見つからない場合
-                                OrionLib:MakeNotification({
-                                    Name = "Auto Sit Error",
-                                    Content = "座席が見つかりません。ブロブマンが壊れている可能性があります。",
-                                    Time = 3
-                                })
-                                _G.AutoSit = false
-                                break
+                                warn("ブロブマンは見つかりましたが、座席(Seat)が見つかりません。")
                             end
                         else
-                            -- ブロブマン自体が見つからない場合
+                            -- 見つからない原因を特定するための通知
                             OrionLib:MakeNotification({
-                                Name = "Blobman Not Found",
-                                Content = "自分のブロブマンを出してください！",
-                                Time = 3
+                                Name = "検出エラー",
+                                Content = "ブロブマンが見つかりません。一度出し直すか、プロットの近くに立ってください。",
+                                Time = 2
                             })
-                            _G.AutoSit = false -- 見つからない場合はオフにする
-                            break
+                            -- 頻繁な通知を防ぐため少し待機
+                            task.wait(2)
                         end
                     end
                 end
