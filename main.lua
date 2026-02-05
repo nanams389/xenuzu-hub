@@ -2078,7 +2078,6 @@ LoopTab:AddToggle({
     end
 })
 
--- [[ Loop Kill タブの作成 ]]
 local LoopKillTab = Window:MakeTab({ Name = "Loop Kill", Icon = "rbxassetid://6031064398" })
 
 local SelectedKillTarget = nil
@@ -2095,7 +2094,7 @@ local function GetPlayerListForKill()
     local pMap = {}
     for _, p in pairs(game.Players:GetPlayers()) do
         if p ~= lp then
-            -- アイコン・ID・表示名を網羅したラベル
+            -- アイコン、ユーザーID、表示名をリストに表示
             local label = p.DisplayName .. " (@" .. p.Name .. ") [ID:" .. p.UserId .. "]"
             table.insert(pNames, label)
             pMap[label] = p
@@ -2111,12 +2110,11 @@ local KillDropdown = LoopKillTab:AddDropdown({
     Options = names,
     Callback = function(Value)
         SelectedKillTarget = map[Value]
-        OrionLib:MakeNotification({Name = "Target Set", Content = Value .. " をロックオン", Time = 2})
     end
 })
 
 LoopKillTab:AddButton({
-    Name = "リストを更新",
+    Name = "プレイヤーリストを更新",
     Callback = function()
         local newNames, newMap = GetPlayerListForKill()
         KillDropdown:Refresh(newNames, true)
@@ -2125,7 +2123,7 @@ LoopKillTab:AddButton({
 })
 
 -- ==============================
--- 2. 抹殺コアロジック (自分は死なない版)
+-- 2. 抹殺ロジック (自分は安全な高度から相手を奈落へ)
 -- ==============================
 local function AbyssKillExecute(targetPlayer)
     if not targetPlayer or not targetPlayer.Character then return end
@@ -2134,36 +2132,45 @@ local function AbyssKillExecute(targetPlayer)
     local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
     local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
     
-    if myHRP and targetHRP and targetPlayer.Character.Humanoid.Health > 0 then
+    if myHRP and targetHRP and targetPlayer.Character:FindFirstChild("Humanoid") and targetPlayer.Character.Humanoid.Health > 0 then
         pcall(function()
             local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
             local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
-            -- A. 自分を相手の真上15スタッドに固定 (落下防止)
-            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 15, 0)
-            myHRP.Velocity = Vector3.zero
+            -- A. 自分は相手の「少し上」にテレポート (自分が奈落に落ちるのを防ぐ)
+            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 12, 0)
+            myHRP.Velocity = Vector3.new(0, 0, 0)
 
-            -- B. 相手の所有権を奪い、Noclip化して奈落へ
-            if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
+            -- B. ネットワーク所有権を奪う (サーバー同期に必須)
+            if SetNetworkOwner then 
+                SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
+            end
             
+            -- C. 相手の当たり判定を消して地面を貫通させる
             for _, part in ipairs(targetPlayer.Character:GetChildren()) do
                 if part:IsA("BasePart") then part.CanCollide = false end
             end
 
-            -- 貫通・落下 (相手だけを飛ばす)
+            -- D. 相手を奈落へ瞬間移動 ＋ 強制落下加速
             targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -60, 0)
-            targetHRP.Velocity = Vector3.new(0, -5000, 0)
+            
+            -- BodyVelocityを一時的に付与してサーバーに「落下」を強制同期
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+            bv.Velocity = Vector3.new(0, -1000, 0)
+            bv.Parent = targetHRP
+            game:GetService("Debris"):AddItem(bv, 0.1)
 
-            -- ダメージイベント
+            -- E. ダメージイベント送信
             if combatEvent then combatEvent:FireServer(targetPlayer.Character, "Punch") end
         end)
     end
 end
 
 -- ==============================
--- 3. Loop Kill 機能群 (自動帰還付)
+-- 3. 実行トグル (自動帰還機能付)
 -- ==============================
-local LoopKillSection = LoopKillTab:AddSection({ Name = "実行" })
+local LoopKillExecSection = LoopKillTab:AddSection({ Name = "実行スイッチ" })
 
 -- 特定プレイヤー Loop Kill
 LoopKillTab:AddToggle({
@@ -2173,10 +2180,10 @@ LoopKillTab:AddToggle({
         _G.LoopKillActive = Value
         if Value then
             if not SelectedKillTarget then 
-                OrionLib:MakeNotification({Name = "Error", Content = "ターゲットを選んでください", Time = 2})
+                OrionLib:MakeNotification({Name = "エラー", Content = "ターゲットを選択してください", Time = 2})
                 return 
             end
-            -- 開始時の場所を保存
+            -- 現在の位置を保存
             if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 OriginalLocation = lp.Character.HumanoidRootPart.CFrame
             end
@@ -2188,7 +2195,7 @@ LoopKillTab:AddToggle({
                 end
             end)
         else
-            -- 帰還
+            -- オフにしたら元の位置へ帰還
             if OriginalLocation and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 lp.Character.HumanoidRootPart.CFrame = OriginalLocation
                 OriginalLocation = nil
@@ -2204,7 +2211,6 @@ LoopKillTab:AddToggle({
     Callback = function(Value)
         _G.KillAllActive = Value
         if Value then
-            -- 開始時の場所を保存
             if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 OriginalLocation = lp.Character.HumanoidRootPart.CFrame
             end
