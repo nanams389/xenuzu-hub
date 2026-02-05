@@ -2078,6 +2078,7 @@ LoopTab:AddToggle({
     end
 })
 
+-- [[ Loop Kill タブの作成 ]]
 local LoopKillTab = Window:MakeTab({ Name = "Loop Kill", Icon = "rbxassetid://6031064398" })
 
 local SelectedKillTarget = nil
@@ -2087,7 +2088,7 @@ local lp = game.Players.LocalPlayer
 -- ==============================
 -- プレイヤーリスト（維持）
 -- ==============================
-local function GetPlayerList()
+local function GetKillList()
     local pNames = {}
     local pMap = {}
     for _, p in pairs(game.Players:GetPlayers()) do
@@ -2100,7 +2101,7 @@ local function GetPlayerList()
     return pNames, pMap
 end
 
-local names, map = GetPlayerList()
+local names, map = GetKillList()
 local KillDropdown = LoopKillTab:AddDropdown({
     Name = "ターゲットを選択",
     Default = "未選択",
@@ -2113,71 +2114,57 @@ local KillDropdown = LoopKillTab:AddDropdown({
 LoopKillTab:AddButton({
     Name = "リストを更新",
     Callback = function()
-        local n, m = GetPlayerList()
+        local n, m = GetKillList()
         KillDropdown:Refresh(n, true)
         map = m
     end
 })
 
 -- ==============================
--- 抹殺コア（提示されたコードのロジックを完全再現）
+-- 実行ロジック：究極オーラを運ぶ
 -- ==============================
-local function AbyssKillAction(player)
+-- 提示された `_G.UltimateAuraEnabled` を利用します。
+-- オーラのダメージ判定は元のコードが自動で行うため、こちらは「密着」に専念します。
+
+local function TeleportToTarget(player)
     if not player or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     if player.Character.Humanoid.Health <= 0 then return end
-
-    local rs = game:GetService("ReplicatedStorage")
-    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+    
     local targetHRP = player.Character.HumanoidRootPart
     
-    -- 1. 相手の場所にテレポート（ビジュアル反映用）
-    -- 自分が死なないよう、わずかに上に配置
-    lp.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 5, 0)
-
-    pcall(function()
-        -- 提示されたロジックそのまま
-        if SetNetworkOwner then 
-            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
-        end
-
-        for _, part in ipairs(player.Character:GetChildren()) do
-            if part:IsA("BasePart") then part.CanCollide = false end
-        end
-
-        -- abyssDepth(-50) と fallSpeed(-5000) をそのまま適用
-        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -50, 0)
-        targetHRP.Velocity = Vector3.new(0, -5000, 0)
-
-        if combatEvent then
-            combatEvent:FireServer(player.Character, "Punch")
-        end
-    end)
+    -- 究極オーラの射程 (ultRange = 25) 内に確実に入れるため、真横にテレポート
+    lp.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 2)
 end
 
 -- ==============================
--- 実行スイッチ（ONで開始、OFFで帰還）
+-- 実行スイッチ
 -- ==============================
 
 -- 特定プレイヤー Loop Kill
 LoopKillTab:AddToggle({
-    Name = "特定プレイヤーを抹殺 (OFFで帰還)",
+    Name = "特定プレイヤーを Loop Kill (オーラ連動)",
     Default = false,
     Callback = function(Value)
         _G.LoopKillSpecific = Value
         if Value then
             if not SelectedKillTarget then return end
-            -- 位置保存
-            OriginalLocation = lp.Character.HumanoidRootPart.CFrame
+            -- 開始前に位置を保存
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                OriginalLocation = lp.Character.HumanoidRootPart.CFrame
+            end
+            
             task.spawn(function()
                 while _G.LoopKillSpecific do
-                    AbyssKillAction(SelectedKillTarget)
+                    -- 究極オーラがONであることを確認
+                    if _G.UltimateAuraEnabled then
+                        TeleportToTarget(SelectedKillTarget)
+                    end
                     task.wait(0.1)
                 end
             end)
         else
-            -- 帰還
-            if OriginalLocation then
+            -- オフで帰還
+            if OriginalLocation and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 lp.Character.HumanoidRootPart.CFrame = OriginalLocation
                 OriginalLocation = nil
             end
@@ -2187,27 +2174,30 @@ LoopKillTab:AddToggle({
 
 -- 全員抹殺 Kill All
 LoopKillTab:AddToggle({
-    Name = "Kill All 全員抹殺ループ (OFFで帰還)",
+    Name = "Kill All 全員抹殺 (オーラ連動)",
     Default = false,
     Callback = function(Value)
         _G.KillAllAbyss = Value
         if Value then
-            OriginalLocation = lp.Character.HumanoidRootPart.CFrame
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                OriginalLocation = lp.Character.HumanoidRootPart.CFrame
+            end
+
             task.spawn(function()
                 while _G.KillAllAbyss do
                     for _, p in pairs(game.Players:GetPlayers()) do
                         if not _G.KillAllAbyss then break end
-                        if p ~= lp and p.Character then
-                            AbyssKillAction(p)
-                            task.wait(0.2)
+                        if p ~= lp and p.Character and _G.UltimateAuraEnabled then
+                            TeleportToTarget(p)
+                            task.wait(0.3) -- オーラがヒットするまでの待機時間
                         end
                     end
                     task.wait(0.1)
                 end
             end)
         else
-            -- 帰還
-            if OriginalLocation then
+            -- オフで帰還
+            if OriginalLocation and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 lp.Character.HumanoidRootPart.CFrame = OriginalLocation
                 OriginalLocation = nil
             end
