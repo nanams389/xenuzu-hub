@@ -1786,6 +1786,159 @@ BlobmanTab:AddToggle({
     end
 })
 
+local LoopTab = Window:MakeTab({ Name = "Loop Blobman", Icon = "rbxassetid://6031064398" })
+
+local SelectedTarget = nil
+local PlayerButtons = {} -- リスト更新用にボタンを保持
+
+-- ターゲット情報を表示するセクション
+local TargetInfo = LoopTab:AddSection({ Name = "ターゲット: 未選択" })
+
+-- ==============================
+-- プレイヤーリスト更新機能
+-- ==============================
+local ListSection = LoopTab:AddSection({ Name = "プレイヤーリスト" })
+
+local function UpdatePlayerList()
+    -- 既存のリスト表示（ボタン）をクリアしたいところですが、Orionの仕様上
+    -- セクションの再生成が難しいため、新しいボタンを追加し続ける形式か、
+    -- ログに通知して選択する形式が安定します。
+    -- ここでは「最新のプレイヤー」をドロップダウン形式で更新できるようにします。
+    
+    local playerNames = {}
+    local playerMap = {}
+    
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            local displayName = p.DisplayName
+            local userName = p.Name
+            local userId = p.UserId
+            -- リストに表示するテキスト
+            local label = displayName .. " (@" .. userName .. ") [" .. userId .. "]"
+            table.insert(playerNames, label)
+            playerMap[label] = p
+        end
+    end
+
+    LoopTab:AddDropdown({
+        Name = "ターゲットを選択 (更新時、再度選択)",
+        Default = "未選択",
+        Options = playerNames,
+        Callback = function(Value)
+            SelectedTarget = playerMap[Value]
+            if SelectedTarget then
+                TargetInfo:SetTitle("ターゲット: " .. SelectedTarget.DisplayName)
+                OrionLib:MakeNotification({
+                    Name = "ターゲットロック",
+                    Content = SelectedTarget.Name .. " を捕捉しました",
+                    Time = 2
+                })
+            end
+        end
+    })
+end
+
+-- 初期リスト作成
+UpdatePlayerList()
+
+LoopTab:AddButton({
+    Name = "プレイヤーリストを更新 (下に新しいリストが追加されます)",
+    Callback = function()
+        UpdatePlayerList()
+    end
+})
+
+-- ==============================
+-- 実行メインロジック
+-- ==============================
+LoopTab:AddToggle({
+    Name = "選択したプレイヤーを無限掴み (Fling Aura同梱)",
+    Default = false,
+    Callback = function(Value)
+        _G.SpecificLoopKill = Value
+        if Value then
+            if not SelectedTarget then 
+                OrionLib:MakeNotification({Name = "Error", Content = "プレイヤーを選択してください", Time = 2})
+                _G.SpecificLoopKill = false
+                return 
+            end
+
+            task.spawn(function()
+                while _G.SpecificLoopKill do
+                    local lp = game.Players.LocalPlayer
+                    local char = lp.Character
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    
+                    if SelectedTarget and SelectedTarget.Character and SelectedTarget.Character:FindFirstChild("HumanoidRootPart") then
+                        local targetHRP = SelectedTarget.Character.HumanoidRootPart
+                        
+                        -- 1. 自動搭乗
+                        local seat = hum and hum.SeatPart
+                        if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
+                            for _, v in pairs(workspace:GetChildren()) do
+                                if v.Name == "Blobman" and v:FindFirstChild("DriveSeat") then
+                                    v.DriveSeat:Sit(hum)
+                                    task.wait(0.2)
+                                    break
+                                end
+                            end
+                        end
+
+                        seat = hum and hum.SeatPart
+                        if seat and seat.Parent then
+                            local blobman = seat.Parent
+                            local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                            local leftDet = blobman:FindFirstChild("LeftDetector")
+                            local rightDet = blobman:FindFirstChild("RightDetector")
+                            local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
+                            local rightWeld = rightDet and rightDet:FindFirstChild("RightWeld")
+
+                            -- 2. 密着ワープ
+                            if blobman.PrimaryPart then
+                                blobman:SetPrimaryPartCFrame(targetHRP.CFrame)
+                            else
+                                seat.CFrame = targetHRP.CFrame
+                            end
+
+                            -- 3. Fling Aura (所有権剥奪 & 叩きつけ)
+                            pcall(function()
+                                local rs = game:GetService("ReplicatedStorage")
+                                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                if SetNetworkOwner then
+                                    SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+                                end
+                                
+                                -- 物理妨害
+                                local bv = Instance.new("BodyVelocity", targetHRP)
+                                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                bv.Velocity = Vector3.new(0, -30, 0)
+                                game:GetService("Debris"):AddItem(bv, 0.05)
+                            end)
+
+                            -- 4. 両手交互・高速掴み
+                            if remote then
+                                if leftDet and leftWeld then
+                                    remote:FireServer(leftDet, targetHRP, leftWeld, 2)
+                                    task.wait(0.01)
+                                    remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                                end
+                                if rightDet and rightWeld then
+                                    remote:FireServer(rightDet, targetHRP, rightWeld, 2)
+                                    task.wait(0.01)
+                                    remote:FireServer(rightDet, targetHRP, rightWeld, 1)
+                                end
+                            end
+                        end
+                    else
+                        -- ターゲットがいない、または死んでいる場合
+                        task.wait(0.5)
+                    end
+                    task.wait(0.01)
+                end
+            end)
+        end
+    end
+})
 --==============================
 -- 初期化
 --==============================
