@@ -1713,24 +1713,20 @@ BlobmanTab:AddToggle({
 })
 
 --==============================
--- 超高速・家保護維持型デストロイ
+-- 判定ワープ型：家から一歩も出ないデストロイ
 --==============================
 
 BlobmanTab:AddToggle({
-    Name = "家から一歩も出ずに全滅 (バリア対策版)",
+    Name = "不動デストロイ (判定のみワープ)",
     Default = false,
     Callback = function(Value)
-        _G.HomeSafeDestroy = Value
+        _G.NoMoveGrab = Value
         if Value then
             task.spawn(function()
-                -- 開始時の家の中の安全な座標をガチガチに固定
-                local char = lp.Character
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-                local safeCF = hrp.CFrame 
-
-                while _G.HomeSafeDestroy do
-                    local seat = char.Humanoid.SeatPart
+                while _G.NoMoveGrab do
+                    local char = lp.Character
+                    local seat = char and char.Humanoid.SeatPart
+                    
                     if seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
@@ -1739,52 +1735,44 @@ BlobmanTab:AddToggle({
                         local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
                         local rightWeld = rightDet and rightDet:FindFirstChild("RightWeld")
 
-                        for _, p in pairs(game.Players:GetPlayers()) do
-                            if not _G.HomeSafeDestroy then break end
-                            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                                    
-                                    local targetHRP = p.Character.HumanoidRootPart
-                                    
-                                    -- 【1】 判定を確定させるための「超高速往復」
-                                    -- 家の外にいる時間を最小限にしてデスポーンを回避
-                                    local targetPos = targetHRP.CFrame * CFrame.new(0, 2, 0)
-                                    
-                                    if blobman.PrimaryPart then
-                                        blobman:SetPrimaryPartCFrame(targetPos)
-                                    else
-                                        seat.CFrame = targetPos
-                                    end
-
-                                    -- 【2】 確定で掴むためのバースト連打 (判定を押し付ける)
-                                    for i = 1, 3 do
-                                        if leftDet and leftWeld then
+                        if remote and leftDet and rightDet then
+                            for _, p in pairs(game.Players:GetPlayers()) do
+                                if not _G.NoMoveGrab then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                        
+                                        local targetHRP = p.Character.HumanoidRootPart
+                                        
+                                        -- 【重要】本体（Seat）は動かさず、Detectorの座標だけを相手に飛ばす
+                                        -- これなら家バリアに触れず、ブロブマンは消えません
+                                        local originalLeftCF = leftDet.CFrame
+                                        local originalRightCF = rightDet.CFrame
+                                        
+                                        leftDet.CFrame = targetHRP.CFrame
+                                        rightDet.CFrame = targetHRP.CFrame
+                                        
+                                        -- 判定が届くように一瞬待ってRemote連打
+                                        task.wait(0.05)
+                                        for i = 1, 5 do
                                             remote:FireServer(leftDet, targetHRP, leftWeld, 2)
-                                        end
-                                        if rightDet and rightWeld then
                                             remote:FireServer(rightDet, targetHRP, rightWeld, 2)
                                         end
+                                        
+                                        -- 掴んだら判定を元に戻す（これで相手が自分の家まで引き寄せられる）
+                                        leftDet.CFrame = originalLeftCF
+                                        rightDet.CFrame = originalRightCF
+                                        
+                                        -- 少し待ってからリリース（家の中で仕留める）
+                                        task.wait(0.1)
+                                        remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                                        remote:FireServer(rightDet, targetHRP, rightWeld, 1)
                                     end
-
-                                    -- 【3】 0.03秒だけ待って即座に家（安全圏）へ帰還
-                                    task.wait(0.01) 
-                                    
-                                    if blobman.PrimaryPart then
-                                        blobman:SetPrimaryPartCFrame(safeCF)
-                                    else
-                                        seat.CFrame = safeCF
-                                    end
-
-                                    -- 【4】 帰還してからリリース（相手を家の中に引き込むか、奈落へ飛ばす）
-                                    task.wait(0.01)
-                                    remote:FireServer(leftDet, targetHRP, leftWeld, 1)
-                                    remote:FireServer(rightDet, targetHRP, rightWeld, 1)
                                 end
+                                task.wait(0.05)
                             end
-                            task.wait(0.1) -- サーバーへの負荷調整
                         end
                     end
-                    task.wait(0.2)
+                    task.wait(0.5)
                 end
             end)
         end
