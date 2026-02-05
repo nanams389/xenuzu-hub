@@ -599,6 +599,63 @@ antikicktoggle = invulnerabilitySection:AddToggle({
     Flag = "antikick_toggle"
 })
 
+--============================================================
+-- Anti-Ragdoll & Anti-Fling (鉄壁モード)
+--============================================================
+invulnerabilitySection:AddToggle({
+    Name = "Anti-Ragdoll & Anti-Fling",
+    Default = false,
+    Callback = function(v)
+        _G.AntiRagdoll = v
+        local char = lp.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if v then
+            task.spawn(function()
+                -- Fling対策用のジャイロ作成
+                local bg = Instance.new("BodyGyro")
+                bg.Name = "AntiFlingGyro"
+                bg.P = 30000
+                bg.maxTorque = Vector3.new(4e5, 4e5, 4e5) -- 回転を強力に固定
+                bg.cframe = hrp.CFrame
+                bg.Parent = hrp
+
+                while _G.AntiRagdoll do
+                    task.wait()
+                    if char and hum and hrp then
+                        -- 1. ラグドール状態を強制解除 (雪玉やミサイル対策)
+                        if hum:GetState() == Enum.HumanoidStateType.Ragdoll or hum:GetState() == Enum.HumanoidStateType.FallingDown then
+                            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                        end
+                        
+                        -- 2. 速度の異常値をリセット (Fling/吹き飛ばし対策)
+                        if hrp.Velocity.Magnitude > 100 then
+                            hrp.Velocity = Vector3.new(0, 0, 0)
+                            hrp.RotVelocity = Vector3.new(0, 0, 0)
+                        end
+                        
+                        -- 3. ジャイロを常に水平に保つ
+                        bg.cframe = CFrame.new(hrp.Position, hrp.Position + Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z))
+                    end
+                end
+                
+                -- OFF時に削除
+                if hrp:FindFirstChild("AntiFlingGyro") then
+                    hrp.AntiFlingGyro:Destroy()
+                end
+            end)
+            
+            OrionLib:MakeNotification({
+                Name = "System",
+                Content = "鉄壁モード有効：ラグドールと吹飛無効",
+                Time = 3
+            })
+        end
+    end,
+    Save = true,
+    Flag = "antiragdoll_toggle"
+})
 --==============================
 -- タブ：究極オーラ (Ultimate)
 --==============================
@@ -842,64 +899,6 @@ UltimateTab:AddToggle({
     Flag = "deathaura_toggle"
 })
 
---==============================
--- 究極抹殺オーラ (Death Aura)
---==============================
-local playersService = game:GetService("Players")
-local rs = game:GetService("ReplicatedStorage")
-local destroyGrabLineEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("DestroyGrabLine")
-
--- 距離設定（必要ならスライダーと連動させてくれ）
-local auraRange = 50 
-
-UltimateTab:AddToggle({
-    Name = "究極抹殺オーラ (Death Aura)",
-    Default = false,
-    Callback = function(v)
-        _G.DeathAura = v
-        if v then
-            task.spawn(function()
-                while _G.DeathAura do
-                    local myChar = lp.Character
-                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    
-                    if myHRP then
-                        for _, targetPlayer in pairs(playersService:GetPlayers()) do
-                            -- 自分以外 ＆ キャラが存在する ＆ 生きている
-                            if targetPlayer ~= lp and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-                                local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-                                local targetHum = targetPlayer.Character.Humanoid
-                                
-                                if targetHRP and targetHum.Health > 0 then
-                                    -- 距離判定
-                                    local dist = (myHRP.Position - targetHRP.Position).Magnitude
-                                    if dist <= auraRange then
-                                        pcall(function()
-                                            -- 1. サーバー側のラグドール/掴み判定を破壊
-                                            if destroyGrabLineEvent then
-                                                destroyGrabLineEvent:FireServer(targetHRP)
-                                            end
-                                            
-                                            -- 2. 直接ステータスを「死亡」に変更 (掴み動作なし)
-                                            targetHum.BreakJointsOnDeath = false
-                                            targetHum:ChangeState(Enum.HumanoidStateType.Dead)
-                                            targetHum.Health = 0 -- 念押しで体力を0に
-                                            
-                                            -- 3. 物理的な嫌がらせ (吹き飛ばし)
-                                            targetHRP.Velocity = Vector3.new(0, 100, 0)
-                                        end)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    -- 速度重視。0.05秒ごとに周囲をスキャン
-                    task.wait(0.05)
-                end
-            end)
-        end
-    end
-})
 
 --==============================
 -- 全員自動巡回テレポート (Auto-Warp)
