@@ -1711,73 +1711,81 @@ BlobmanTab:AddToggle({
         end
     end
 })
-
 --==============================
--- 判定ワープ型：家から一歩も出ないデストロイ
+-- 4. フルオート・ブロブマン・デストロイ
 --==============================
 
 BlobmanTab:AddToggle({
-    Name = "不動デストロイ (判定のみワープ)",
+    Name = "フルオート・全滅ループ (自動召喚/搭乗/TP)",
     Default = false,
     Callback = function(Value)
-        _G.NoMoveGrab = Value
+        _G.FullAutoDestroy = Value
         if Value then
             task.spawn(function()
-                while _G.NoMoveGrab do
+                while _G.FullAutoDestroy do
                     local char = lp.Character
-                    local seat = char and char.Humanoid.SeatPart
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    if seat and seat.Parent then
-                        local blobman = seat.Parent
-                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        local leftDet = blobman:FindFirstChild("LeftDetector")
-                        local rightDet = blobman:FindFirstChild("RightDetector")
-                        local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
-                        local rightWeld = rightDet and rightDet:FindFirstChild("RightWeld")
-
-                        if remote and leftDet and rightDet then
-                            for _, p in pairs(game.Players:GetPlayers()) do
-                                if not _G.NoMoveGrab then break end
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                    if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                                        
-                                        local targetHRP = p.Character.HumanoidRootPart
-                                        
-                                        -- 【重要】本体（Seat）は動かさず、Detectorの座標だけを相手に飛ばす
-                                        -- これなら家バリアに触れず、ブロブマンは消えません
-                                        local originalLeftCF = leftDet.CFrame
-                                        local originalRightCF = rightDet.CFrame
-                                        
-                                        leftDet.CFrame = targetHRP.CFrame
-                                        rightDet.CFrame = targetHRP.CFrame
-                                        
-                                        -- 判定が届くように一瞬待ってRemote連打
-                                        task.wait(0.05)
-                                        for i = 1, 5 do
-                                            remote:FireServer(leftDet, targetHRP, leftWeld, 2)
-                                            remote:FireServer(rightDet, targetHRP, rightWeld, 2)
-                                        end
-                                        
-                                        -- 掴んだら判定を元に戻す（これで相手が自分の家まで引き寄せられる）
-                                        leftDet.CFrame = originalLeftCF
-                                        rightDet.CFrame = originalRightCF
-                                        
-                                        -- 少し待ってからリリース（家の中で仕留める）
-                                        task.wait(0.1)
-                                        remote:FireServer(leftDet, targetHRP, leftWeld, 1)
-                                        remote:FireServer(rightDet, targetHRP, rightWeld, 1)
-                                    end
+                    -- 1. ブロブマンに乗っているか確認、乗ってなければ召喚/搭乗
+                    local seat = hum and hum.SeatPart
+                    if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
+                        -- ここにゲーム固有の「ブロブマン召喚」のリモートがあれば入れる
+                        -- 無い場合は、近くにあるブロブマンを探して座る
+                        for _, v in pairs(workspace:GetChildren()) do
+                            if v.Name == "Blobman" and v:FindFirstChild("DriveSeat") then
+                                if (v.DriveSeat.Position - char.HumanoidRootPart.Position).Magnitude < 20 then
+                                    v.DriveSeat:Sit(hum)
+                                    task.wait(0.3)
+                                    break
                                 end
-                                task.wait(0.05)
                             end
                         end
                     end
-                    task.wait(0.5)
+
+                    -- 2. 搭乗成功していたら攻撃開始
+                    seat = hum.SeatPart
+                    if seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        
+                        for _, p in pairs(game.Players:GetPlayers()) do
+                            if not _G.FullAutoDestroy then break end
+                            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                    
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    local leftDet = blobman:FindFirstChild("LeftDetector")
+                                    local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
+
+                                    -- A. 相手の場所にテレポート（消される覚悟で飛ぶ）
+                                    local tpCF = targetHRP.CFrame * CFrame.new(0, 5, 0)
+                                    if blobman.PrimaryPart then
+                                        blobman:SetPrimaryPartCFrame(tpCF)
+                                    else
+                                        seat.CFrame = tpCF
+                                    end
+
+                                    -- B. 掴む（ラグ対策で複数回送信）
+                                    task.wait(0.05)
+                                    if remote and leftDet and leftWeld then
+                                        remote:FireServer(leftDet, targetHRP, leftWeld, 2) -- 掴む
+                                        task.wait(0.05)
+                                        remote:FireServer(leftDet, targetHRP, leftWeld, 1) -- 即離す
+                                    end
+                                    
+                                    -- C. プロット外で消された場合はループを抜けて再召喚へ
+                                    if not blobman.Parent then break end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.1)
                 end
             end)
         end
     end
 })
+
 --==============================
 -- 初期化
 --==============================
