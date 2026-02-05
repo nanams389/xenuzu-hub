@@ -1712,6 +1712,80 @@ BlobmanTab:AddToggle({
     end
 })
 
+--==============================
+-- 3. Plot指定デストロイ（家の中から全滅）
+--==============================
+BlobmanTab:AddDropdown({
+    Name = "家を指定してサーバーデストロイ",
+    Default = "1",
+    Options = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"},
+    Callback = function(Option)
+        _G.TargetPlotIndex = tonumber(Option)
+    end
+})
+
+BlobmanTab:AddToggle({
+    Name = "Plot内から全滅ループ開始",
+    Default = false,
+    Callback = function(Value)
+        _G.PlotDestroyLoop = Value
+        if Value then
+            task.spawn(function()
+                while _G.PlotDestroyLoop do
+                    -- 1. まず指定したPlot（家）へテレポート
+                    local i = _G.TargetPlotIndex or 1
+                    local plotPath = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild("Plot" .. i)
+                    local char = lp.Character
+                    
+                    if plotPath and char and char:FindFirstChild("HumanoidRootPart") then
+                        local house = plotPath:FindFirstChild("House")
+                        local targetCFrame = nil
+                        
+                        -- テレポート先選定
+                        if house and house:IsA("Model") then
+                            local primary = house.PrimaryPart or house:FindFirstChildWhichIsA("BasePart", true)
+                            if primary then targetCFrame = primary.CFrame end
+                        else
+                            local base = plotPath:FindFirstChildWhichIsA("BasePart", true)
+                            if base then targetCFrame = base.CFrame end
+                        end
+
+                        if targetCFrame then
+                            -- 家の中へ移動
+                            char.HumanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+                            
+                            -- 2. ブロブマンに乗っているか確認して全プレイヤーを攻撃
+                            local seat = char.Humanoid.SeatPart
+                            if seat and seat.Parent then
+                                local blobman = seat.Parent
+                                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                                local detector = blobman:FindFirstChild("LeftDetector")
+                                local weld = detector and detector:FindFirstChild("LeftWeld")
+
+                                if remote and detector and weld then
+                                    for _, p in pairs(players:GetPlayers()) do
+                                        if not _G.PlotDestroyLoop then break end
+                                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                            -- フレンド除外チェック
+                                            if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                                local targetHRP = p.Character.HumanoidRootPart
+                                                -- 遠くにいる人もRemoteEventで強制的に掴む
+                                                remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
+                                                task.wait(0.03) -- 速度重視
+                                                remote:FireServer(detector, targetHRP, weld, 1) -- 即離す（落下/バグ死）
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.5) -- サーバー負荷を考慮したループ間隔
+                end
+            end)
+        end
+    end
+})
 
 --==============================
 -- 初期化
