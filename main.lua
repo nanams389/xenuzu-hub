@@ -686,170 +686,123 @@ antikicktoggle = invulnerabilitySection:AddToggle({
 })
 
 -- ============================================================
--- アンチグッチ起動ボタン (新規追加)
+-- アンチグッチ機能 (Orion UI トグル版)
 -- ============================================================
-invulnerabilitySection:AddButton({
-    Name = "アンチグッチ・システム起動",
-    Callback = function()
-        -- [[ アンチグッチ機能の完全再現ロジック開始 ]]
+
+local AntiGucciEnabled = false
+local AntiGucciBlob = nil
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = game.Players.LocalPlayer
+
+-- オリジナルの便利関数をそのまま維持
+local function getLocalChar() return LocalPlayer.Character end
+local function getLocalRoot()
+    local char = getLocalChar()
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+end
+local function getLocalHum()
+    local char = getLocalChar()
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+end
+local function getInv() return Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys") end
+
+local function spawntoy(name, cframe)
+    local toy = ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(name, cframe, Vector3.zero)
+    if toy and getInv() then
+        return getInv():FindFirstChild(name)
+    end
+    return nil
+end
+
+local function destroyToy(model)
+    ReplicatedStorage.MenuToys.DestroyToy:FireServer(model)
+end
+
+local function ragdoll()
+    local root = getLocalRoot()
+    if root then
+        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(root, 0)
+    end
+end
+
+-- トグルの追加
+invulnerabilitySection:AddToggle({
+    Name = "アンチグッチ (Anti-Gucci)",
+    Default = false,
+    Callback = function(Value)
+        AntiGucciEnabled = Value
         
-        -- サービスを取得
-        local Players = game:GetService("Players")
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local Workspace = game:GetService("Workspace")
-        local RunService = game:GetService("RunService")
-        local LocalPlayer = Players.LocalPlayer
-
-        -- 便利関数
-        local function getLocalChar() return LocalPlayer.Character end
-        local function getLocalRoot()
-            local char = getLocalChar()
-            if not char then return nil end
-            return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-        end
-        local function getLocalHum()
-            local char = getLocalChar()
-            if not char then return nil end
-            return char:FindFirstChildOfClass("Humanoid")
-        end
-        local function getInv() return Workspace:FindFirstChild(LocalPlayer.Name .. "SpawnedInToys") end
-
-        -- 正確なspawntoy関数
-        local function spawntoy(name, cframe)
-            local toy = ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(name, cframe, Vector3.zero)
-            if toy and getInv() then
-                return getInv():FindFirstChild(name)
-            end
-            return nil
-        end
-
-        local function destroyToy(model)
-            ReplicatedStorage.MenuToys.DestroyToy:FireServer(model)
-        end
-
-        local function ragdoll()
-            local root = getLocalRoot()
-            if root then
-                ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(root, 0)
-            end
-        end
-
-        -- アンチグッチ変数
-        local AntiGucciEnabled = false
-        local AntiGucciBlob = nil
-
-        -- メイン切替関数
-        local function AntiGucciToggle()
-            if AntiGucciEnabled then
-                AntiGucciEnabled = false
-                if AntiGucciBlob then
-                    destroyToy(AntiGucciBlob)
-                    AntiGucciBlob = nil
-                end
-            else
-                AntiGucciEnabled = true
-                task.spawn(function()
-                    repeat task.wait() until getLocalChar() and getLocalRoot() and getLocalHum()
-                    local pos = getLocalRoot().CFrame
-                    local blob = spawntoy("CreatureBlobman", getLocalRoot().CFrame)
-                    AntiGucciBlob = blob
-                    if blob then
-                        local head = blob:FindFirstChild("Head")
-                        if head then
-                            head.CFrame = CFrame.new(1e5, 1e5, 1e5)
-                            head.Anchored = true
-                        end
-                        task.wait(0.25)
-                        if blob:FindFirstChild("VehicleSeat") then
-                            local seat = blob.VehicleSeat
-                            getLocalRoot().CFrame = seat.CFrame + Vector3.new(0, 2, 0)
-                            seat:Sit(getLocalHum())
-                        end
-                        task.wait(0.25)
-                        getLocalHum():ChangeState(Enum.HumanoidStateType.Jumping)
-                        task.wait(0.25)
-                        getLocalRoot().CFrame = pos
+        if AntiGucciEnabled then
+            -- 【ONにした時の処理】元のスクリプトを正確に再現
+            task.spawn(function()
+                repeat task.wait() until getLocalChar() and getLocalRoot() and getLocalHum()
+                
+                local pos = getLocalRoot().CFrame
+                local blob = spawntoy("CreatureBlobman", getLocalRoot().CFrame)
+                AntiGucciBlob = blob
+                
+                if blob then
+                    local head = blob:FindFirstChild("Head")
+                    if head then
+                        head.CFrame = CFrame.new(1e5, 1e5, 1e5)
+                        head.Anchored = true
                     end
-                end)
-            end
-        end
-
-        -- GUI作成（元のデザインを完全再現）
-        local ScreenGui = Instance.new("ScreenGui")
-        ScreenGui.Name = "AntiGucciGUI"
-        ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        ScreenGui.ResetOnSpawn = false
-        ScreenGui.Parent = game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
-        
-        local MainButton = Instance.new("TextButton")
-        MainButton.Size = UDim2.new(0, 120, 0, 40)
-        MainButton.Position = UDim2.new(1, -130, 0, 20)
-        MainButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-        MainButton.BorderColor3 = Color3.fromRGB(255, 50, 50)
-        MainButton.BorderSizePixel = 2
-        MainButton.Text = "アンチグッチ"
-        MainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        MainButton.TextSize = 14
-        MainButton.Font = Enum.Font.GothamBold
-        MainButton.Parent = ScreenGui
-        
-        local StatusLabel = Instance.new("TextLabel")
-        StatusLabel.Size = UDim2.new(1, 0, 0, 20)
-        StatusLabel.Position = UDim2.new(0, 0, 1, 5)
-        StatusLabel.BackgroundTransparency = 1
-        StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        StatusLabel.TextSize = 12
-        StatusLabel.Font = Enum.Font.Gotham
-        StatusLabel.Text = "状態: オフ"
-        StatusLabel.Parent = MainButton
-
-        local function updateStatus()
-            if AntiGucciEnabled then
-                StatusLabel.Text = "状態: オン"; StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-                MainButton.BorderColor3 = Color3.fromRGB(0, 255, 0)
-            else
-                StatusLabel.Text = "状態: オフ"; StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-                MainButton.BorderColor3 = Color3.fromRGB(255, 50, 50)
-            end
-        end
-
-        MainButton.MouseButton1Click:Connect(function()
-            AntiGucciToggle()
-            updateStatus()
-        end)
-
-        -- Heartbeatループ
-        local connection = RunService.Heartbeat:Connect(function(deltaTime)
-            if AntiGucciEnabled then
-                if getLocalHum() then ragdoll() end
-                if AntiGucciBlob and not AntiGucciBlob.Parent then
-                    AntiGucciBlob = nil
-                    task.wait(0.5)
-                    if AntiGucciEnabled then AntiGucciToggle(); task.wait(0.5); AntiGucciToggle(); updateStatus() end
+                    
+                    task.wait(0.25)
+                    
+                    if blob:FindFirstChild("VehicleSeat") then
+                        local seat = blob.VehicleSeat
+                        getLocalRoot().CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+                        seat:Sit(getLocalHum())
+                    end
+                    
+                    task.wait(0.25)
+                    
+                    getLocalHum():ChangeState(Enum.HumanoidStateType.Jumping)
+                    task.wait(0.25)
+                    getLocalRoot().CFrame = pos
                 end
+            end)
+        else
+            -- 【OFFにした時の処理】
+            if AntiGucciBlob then
+                destroyToy(AntiGucciBlob)
+                AntiGucciBlob = nil
             end
-        end)
-
-        -- ドラッグ機能
-        local dragging, dragStart, startPos
-        MainButton.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = true; dragStart = input.Position; startPos = MainButton.Position
-            end
-        end)
-        game:GetService("UserInputService").InputChanged:Connect(function(input)
-            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                local delta = input.Position - dragStart
-                MainButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            end
-        end)
-        game:GetService("UserInputService").InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-        end)
-
-        OrionLib:MakeNotification({Name = "System", Content = "アンチグッチボタンを生成しました", Time = 2})
+        end
     end
 })
+
+-- バックグラウンドループ (Heartbeat) の維持
+RunService.Heartbeat:Connect(function(deltaTime)
+    if AntiGucciEnabled then
+        -- ラグドール維持
+        local hum = getLocalHum()
+        if hum then
+            ragdoll()
+        end
+        
+        -- ブロブの状態チェックと再生成ロジック
+        if AntiGucciBlob then
+            if not AntiGucciBlob.Parent then
+                AntiGucciBlob = nil
+                if AntiGucciEnabled then
+                    task.wait(0.5)
+                    -- 再起動（一度内部的にリセットして再生成）
+                    local pos = getLocalRoot() and getLocalRoot().CFrame
+                    if pos then
+                        local blob = spawntoy("CreatureBlobman", pos)
+                        AntiGucciBlob = blob
+                    end
+                end
+            end
+        end
+    end
+end)
 
 --==============================
 -- タブ：究極オーラ (Ultimate)
