@@ -1713,74 +1713,78 @@ BlobmanTab:AddToggle({
 })
 
 --==============================
--- 全自動・神隠しデストロイ (遠距離対応版)
+-- 超高速・家保護維持型デストロイ
 --==============================
 
 BlobmanTab:AddToggle({
-    Name = "全自動・神隠しループ (遠距離&家貫通)",
+    Name = "家から一歩も出ずに全滅 (バリア対策版)",
     Default = false,
     Callback = function(Value)
-        _G.MegaHideLoop = Value
+        _G.HomeSafeDestroy = Value
         if Value then
             task.spawn(function()
-                -- 現在の家の位置を記憶（戻り先）
-                local startPos = lp.Character and lp.Character.HumanoidRootPart.CFrame
-                
-                while _G.MegaHideLoop do
-                    local char = lp.Character
-                    local seat = char and char.Humanoid.SeatPart
-                    
+                -- 開始時の家の中の安全な座標をガチガチに固定
+                local char = lp.Character
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                local safeCF = hrp.CFrame 
+
+                while _G.HomeSafeDestroy do
+                    local seat = char.Humanoid.SeatPart
                     if seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        
+                        local leftDet = blobman:FindFirstChild("LeftDetector")
+                        local rightDet = blobman:FindFirstChild("RightDetector")
+                        local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
+                        local rightWeld = rightDet and rightDet:FindFirstChild("RightWeld")
+
                         for _, p in pairs(game.Players:GetPlayers()) do
-                            if not _G.MegaHideLoop then break end
-                            
-                            -- 自分とホワイトリストを除外
+                            if not _G.HomeSafeDestroy then break end
                             if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                 if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
                                     
                                     local targetHRP = p.Character.HumanoidRootPart
-                                    local detector = blobman:FindFirstChild("LeftDetector")
-                                    local weld = detector and detector:FindFirstChild("LeftWeld")
                                     
-                                    if remote and detector and weld then
-                                        -- 1. 相手の座標へ一瞬で移動 (判定を騙す)
-                                        local hideCF = targetHRP.CFrame * CFrame.new(0, 5, 0)
-                                        if blobman.PrimaryPart then
-                                            blobman:SetPrimaryPartCFrame(hideCF)
-                                        else
-                                            seat.CFrame = hideCF
+                                    -- 【1】 判定を確定させるための「超高速往復」
+                                    -- 家の外にいる時間を最小限にしてデスポーンを回避
+                                    local targetPos = targetHRP.CFrame * CFrame.new(0, 2, 0)
+                                    
+                                    if blobman.PrimaryPart then
+                                        blobman:SetPrimaryPartCFrame(targetPos)
+                                    else
+                                        seat.CFrame = targetPos
+                                    end
+
+                                    -- 【2】 確定で掴むためのバースト連打 (判定を押し付ける)
+                                    for i = 1, 3 do
+                                        if leftDet and leftWeld then
+                                            remote:FireServer(leftDet, targetHRP, leftWeld, 2)
                                         end
-                                        
-                                        -- 2. 判定が同期するまで微小待機して掴む
-                                        task.wait(0.05) 
-                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
-                                        
-                                        -- 3. 相手を奈落か空中に飛ばすために少し揺さぶる(オプション)
-                                        task.wait(0.02)
-                                        remote:FireServer(detector, targetHRP, weld, 1) -- 離す
-                                        
-                                        -- 4. すぐに元の家（Plot）に戻る
-                                        if startPos then
-                                            if blobman.PrimaryPart then
-                                                blobman:SetPrimaryPartCFrame(startPos)
-                                            else
-                                                seat.CFrame = startPos
-                                            end
+                                        if rightDet and rightWeld then
+                                            remote:FireServer(rightDet, targetHRP, rightWeld, 2)
                                         end
                                     end
+
+                                    -- 【3】 0.03秒だけ待って即座に家（安全圏）へ帰還
+                                    task.wait(0.03) 
+                                    
+                                    if blobman.PrimaryPart then
+                                        blobman:SetPrimaryPartCFrame(safeCF)
+                                    else
+                                        seat.CFrame = safeCF
+                                    end
+
+                                    -- 【4】 帰還してからリリース（相手を家の中に引き込むか、奈落へ飛ばす）
+                                    task.wait(0.02)
+                                    remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                                    remote:FireServer(rightDet, targetHRP, rightWeld, 1)
                                 end
                             end
-                            task.wait(0.05) -- 次のターゲットへ行く前のインターバル
+                            task.wait(0.1) -- サーバーへの負荷調整
                         end
-                    else
-                        OrionLib:MakeNotification({Name = "Error", Content = "ブロブマンに乗ってください", Time = 2})
-                        _G.MegaHideLoop = false
-                        break
                     end
-                    task.wait(0.1)
+                    task.wait(0.5)
                 end
             end)
         end
