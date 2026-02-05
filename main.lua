@@ -1767,7 +1767,7 @@ BlobmanTab:AddToggle({
                                     end
 
                                     -- 【3】 0.03秒だけ待って即座に家（安全圏）へ帰還
-                                    task.wait(0.03) 
+                                    task.wait(0.01) 
                                     
                                     if blobman.PrimaryPart then
                                         blobman:SetPrimaryPartCFrame(safeCF)
@@ -1776,7 +1776,7 @@ BlobmanTab:AddToggle({
                                     end
 
                                     -- 【4】 帰還してからリリース（相手を家の中に引き込むか、奈落へ飛ばす）
-                                    task.wait(0.02)
+                                    task.wait(0.01)
                                     remote:FireServer(leftDet, targetHRP, leftWeld, 1)
                                     remote:FireServer(rightDet, targetHRP, rightWeld, 1)
                                 end
@@ -1784,7 +1784,7 @@ BlobmanTab:AddToggle({
                             task.wait(0.1) -- サーバーへの負荷調整
                         end
                     end
-                    task.wait(0.5)
+                    task.wait(0.2)
                 end
             end)
         end
