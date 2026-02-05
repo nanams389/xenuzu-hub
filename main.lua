@@ -1712,28 +1712,28 @@ BlobmanTab:AddToggle({
     end
 })
 --==============================
--- 4. フルオート・ブロブマン・デストロイ
+-- 強化版：フルオート・デストロイ ＆ Kill Aura 統合
 --==============================
 
 BlobmanTab:AddToggle({
-    Name = "フルオート・全滅ループ (自動召喚/搭乗/TP)",
+    Name = "フルオート・全滅ループ (Aura & TP & 自動搭乗)",
     Default = false,
     Callback = function(Value)
         _G.FullAutoDestroy = Value
         if Value then
             task.spawn(function()
                 while _G.FullAutoDestroy do
+                    local lp = game.Players.LocalPlayer
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 1. ブロブマンに乗っているか確認、乗ってなければ召喚/搭乗
+                    -- 1. ブロブマン自動搭乗チェック
                     local seat = hum and hum.SeatPart
                     if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
-                        -- ここにゲーム固有の「ブロブマン召喚」のリモートがあれば入れる
-                        -- 無い場合は、近くにあるブロブマンを探して座る
+                        -- 近くのブロブマンを探して座る
                         for _, v in pairs(workspace:GetChildren()) do
                             if v.Name == "Blobman" and v:FindFirstChild("DriveSeat") then
-                                if (v.DriveSeat.Position - char.HumanoidRootPart.Position).Magnitude < 20 then
+                                if (v.DriveSeat.Position - char.HumanoidRootPart.Position).Magnitude < 25 then
                                     v.DriveSeat:Sit(hum)
                                     task.wait(0.3)
                                     break
@@ -1742,8 +1742,8 @@ BlobmanTab:AddToggle({
                         end
                     end
 
-                    -- 2. 搭乗成功していたら攻撃開始
-                    seat = hum.SeatPart
+                    -- 2. 搭乗成功時のメインループ
+                    seat = hum and hum.SeatPart
                     if seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
@@ -1751,13 +1751,14 @@ BlobmanTab:AddToggle({
                         for _, p in pairs(game.Players:GetPlayers()) do
                             if not _G.FullAutoDestroy then break end
                             if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                -- フレンド除外
                                 if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
                                     
                                     local targetHRP = p.Character.HumanoidRootPart
                                     local leftDet = blobman:FindFirstChild("LeftDetector")
                                     local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
 
-                                    -- A. 相手の場所にテレポート（消される覚悟で飛ぶ）
+                                    -- 【TP】相手の場所に一瞬で移動
                                     local tpCF = targetHRP.CFrame * CFrame.new(0, 5, 0)
                                     if blobman.PrimaryPart then
                                         blobman:SetPrimaryPartCFrame(tpCF)
@@ -1765,7 +1766,25 @@ BlobmanTab:AddToggle({
                                         seat.CFrame = tpCF
                                     end
 
-                                    -- B. 掴む（ラグ対策で複数回送信）
+                                    -- 【ATTACK 1: Kill Aura】ダメージイベントと叩きつけ
+                                    pcall(function()
+                                        local rs = game:GetService("ReplicatedStorage")
+                                        local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") 
+                                                           or rs:FindFirstChild("HitEvent")
+                                        
+                                        -- ダメージイベント連打
+                                        if combatEvent then
+                                            combatEvent:FireServer(p.Character, "Punch")
+                                        end
+
+                                        -- 地面に叩きつける(BodyVelocity)
+                                        local bv = Instance.new("BodyVelocity", targetHRP)
+                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                        bv.Velocity = Vector3.new(0, -50, 0) -- 強力な叩きつけ
+                                        game:GetService("Debris"):AddItem(bv, 0.1)
+                                    end)
+
+                                    -- 【ATTACK 2: Grab】掴みと即放り投げ
                                     task.wait(0.05)
                                     if remote and leftDet and leftWeld then
                                         remote:FireServer(leftDet, targetHRP, leftWeld, 2) -- 掴む
@@ -1773,7 +1792,7 @@ BlobmanTab:AddToggle({
                                         remote:FireServer(leftDet, targetHRP, leftWeld, 1) -- 即離す
                                     end
                                     
-                                    -- C. プロット外で消された場合はループを抜けて再召喚へ
+                                    -- プロット外で消された場合は再召喚へ
                                     if not blobman.Parent then break end
                                 end
                             end
