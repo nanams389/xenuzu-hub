@@ -2078,7 +2078,6 @@ LoopTab:AddToggle({
     end
 })
 
--- [[ Loop Kill タブの作成 ]]
 local LoopKillTab = Window:MakeTab({ Name = "Loop Kill", Icon = "rbxassetid://6031064398" })
 
 local SelectedKillTarget = nil
@@ -2086,7 +2085,7 @@ local OriginalLocation = nil
 local lp = game.Players.LocalPlayer
 
 -- ==============================
--- プレイヤーリスト（維持）
+-- プレイヤーリスト（アイコン・更新機能付き）
 -- ==============================
 local function GetKillList()
     local pNames = {}
@@ -2121,34 +2120,22 @@ LoopKillTab:AddButton({
 })
 
 -- ==============================
--- 実行ロジック：究極オーラを運ぶ
--- ==============================
--- 提示された `_G.UltimateAuraEnabled` を利用します。
--- オーラのダメージ判定は元のコードが自動で行うため、こちらは「密着」に専念します。
-
-local function TeleportToTarget(player)
-    if not player or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
-    if player.Character.Humanoid.Health <= 0 then return end
-    
-    local targetHRP = player.Character.HumanoidRootPart
-    
-    -- 究極オーラの射程 (ultRange = 25) 内に確実に入れるため、真横にテレポート
-    lp.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 2)
-end
-
--- ==============================
--- 実行スイッチ
+-- 実行セクション（究極オーラ連動）
 -- ==============================
 
--- 特定プレイヤー Loop Kill
+-- 特定プレイヤー Loop Kill（張り付き仕様）
 LoopKillTab:AddToggle({
-    Name = "特定プレイヤーを Loop Kill (オーラ連動)",
+    Name = "ターゲットに張り付いて Loop Kill",
     Default = false,
     Callback = function(Value)
         _G.LoopKillSpecific = Value
         if Value then
-            if not SelectedKillTarget then return end
-            -- 開始前に位置を保存
+            if not SelectedKillTarget then 
+                OrionLib:MakeNotification({Name = "Error", Content = "ターゲットを選択してください", Time = 2})
+                return 
+            end
+            
+            -- 開始時の位置を保存
             if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 OriginalLocation = lp.Character.HumanoidRootPart.CFrame
             end
@@ -2156,14 +2143,15 @@ LoopKillTab:AddToggle({
             task.spawn(function()
                 while _G.LoopKillSpecific do
                     -- 究極オーラがONであることを確認
-                    if _G.UltimateAuraEnabled then
-                        TeleportToTarget(SelectedKillTarget)
+                    if _G.UltimateAuraEnabled and SelectedKillTarget.Character and SelectedKillTarget.Character:FindFirstChild("HumanoidRootPart") then
+                        -- 相手の座標に密着（ultRange=25以内へ強制移動）
+                        lp.Character.HumanoidRootPart.CFrame = SelectedKillTarget.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 1)
                     end
-                    task.wait(0.1)
+                    task.wait() -- 高速ループで逃がさない
                 end
             end)
         else
-            -- オフで帰還
+            -- オフにしたら確実に元の位置へ帰還
             if OriginalLocation and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 lp.Character.HumanoidRootPart.CFrame = OriginalLocation
                 OriginalLocation = nil
@@ -2172,31 +2160,37 @@ LoopKillTab:AddToggle({
     end
 })
 
--- 全員抹殺 Kill All
+-- Kill All（全員を順番に確殺）
 LoopKillTab:AddToggle({
-    Name = "Kill All 全員抹殺 (オーラ連動)",
+    Name = "Kill All (全員にテレポート攻撃)",
     Default = false,
     Callback = function(Value)
-        _G.KillAllAbyss = Value
+        _G.KillAllActive = Value
         if Value then
             if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 OriginalLocation = lp.Character.HumanoidRootPart.CFrame
             end
 
             task.spawn(function()
-                while _G.KillAllAbyss do
+                while _G.KillAllActive do
                     for _, p in pairs(game.Players:GetPlayers()) do
-                        if not _G.KillAllAbyss then break end
-                        if p ~= lp and p.Character and _G.UltimateAuraEnabled then
-                            TeleportToTarget(p)
-                            task.wait(0.3) -- オーラがヒットするまでの待機時間
+                        if not _G.KillAllActive then break end
+                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
+                            -- 相手が死ぬまで0.5秒間張り付く
+                            local startTime = tick()
+                            while tick() - startTime < 0.5 and _G.KillAllActive and p.Character.Humanoid.Health > 0 do
+                                if _G.UltimateAuraEnabled then
+                                    lp.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 1)
+                                end
+                                task.wait()
+                            end
                         end
                     end
                     task.wait(0.1)
                 end
             end)
         else
-            -- オフで帰還
+            -- 帰還
             if OriginalLocation and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 lp.Character.HumanoidRootPart.CFrame = OriginalLocation
                 OriginalLocation = nil
@@ -2204,6 +2198,7 @@ LoopKillTab:AddToggle({
         end
     end
 })
+
 --==============================
 -- 初期化
 --==============================
