@@ -198,34 +198,50 @@ game:GetService("RunService").Stepped:Connect(function()
 end)
 
 --==============================
--- 家（プロット）テレポート
+-- 家（プロット）テレポート：ボタン形式
 --==============================
-StealthTab:AddSection({ Name = "家・セーフゾーン テレポート" })
+StealthTab:AddSection({ Name = "各家へのダイレクトテレポート" })
 
-local selectedPlot = ""
+-- 1から最大数（例えば10前後）までのボタンを自動生成
+-- サーバーの最大人数に合わせて調整してくれ
+for i = 1, 12 do
+    StealthTab:AddButton({
+        Name = "Plot " .. i .. " (家) へテレポート",
+        Callback = function()
+            local plotPath = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild("Plot" .. i)
+            
+            if plotPath then
+                -- Houseモデル、またはPlot自体の位置を取得
+                local house = plotPath:FindFirstChild("House")
+                local targetCFrame = nil
+                
+                if house and house:IsA("Model") and house.PrimaryPart then
+                    targetCFrame = house.PrimaryPart.CFrame
+                elseif house then
+                    targetCFrame = house:FindFirstChildWhichIsA("BasePart", true).CFrame
+                else
+                    -- Houseがない場合はPlotの土台へ
+                    targetCFrame = plotPath:FindFirstChildWhichIsA("BasePart", true).CFrame
+                end
 
--- 1. テレポート先を選択するドロップダウン
-StealthTab:AddDropdown({
-    Name = "テレポート先の家を選択",
-    Default = "",
-    Options = {}, -- 最初は空
-    Callback = function(Value)
-        selectedPlot = Value
-    end    
-})
-
--- 2. プレイヤーリストを更新するボタン（Orionのリフレッシュ用）
-StealthTab:AddButton({
-    Name = "プレイヤーリストを更新",
-    Callback = function()
-        local playerNames = {}
-        for _, p in pairs(game.Players:GetPlayers()) do
-            table.insert(playerNames, p.Name)
+                if targetCFrame then
+                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+                    OrionLib:MakeNotification({
+                        Name = "Teleport Success",
+                        Content = "Plot " .. i .. " に移動しました",
+                        Time = 2
+                    })
+                end
+            else
+                OrionLib:MakeNotification({
+                    Name = "Error",
+                    Content = "Plot " .. i .. " が見つかりません",
+                    Time = 2
+                })
+            end
         end
-        -- ドロップダウンのリストを最新にする（※Orionの仕様により手動更新が必要な場合がある）
-        -- もし自動更新したい場合はこのボタンを押してリストを確認してくれ
-    end
-})
+    end)
+end
 
 -- 3. 実行ボタン
 StealthTab:AddButton({
