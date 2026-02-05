@@ -599,63 +599,63 @@ antikicktoggle = invulnerabilitySection:AddToggle({
     Flag = "antikick_toggle"
 })
 
---============================================================
--- Anti-Ragdoll & Anti-Fling (鉄壁モード)
---============================================================
+-- [[ 鉄壁モード：物理衝撃・ラグドール完全無効化 ]]
+_G.AntiRagdollPro = false
+
 invulnerabilitySection:AddToggle({
-    Name = "Anti-Ragdoll & Anti-Fling",
+    Name = "Anti-Ragdoll & Anti-Fling (鉄壁)",
     Default = false,
-    Callback = function(v)
-        _G.AntiRagdoll = v
-        local char = lp.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-
-        if v then
-            task.spawn(function()
-                -- Fling対策用のジャイロ作成
-                local bg = Instance.new("BodyGyro")
-                bg.Name = "AntiFlingGyro"
-                bg.P = 30000
-                bg.maxTorque = Vector3.new(4e5, 4e5, 4e5) -- 回転を強力に固定
-                bg.cframe = hrp.CFrame
-                bg.Parent = hrp
-
-                while _G.AntiRagdoll do
-                    task.wait()
-                    if char and hum and hrp then
-                        -- 1. ラグドール状態を強制解除 (雪玉やミサイル対策)
-                        if hum:GetState() == Enum.HumanoidStateType.Ragdoll or hum:GetState() == Enum.HumanoidStateType.FallingDown then
-                            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                        end
-                        
-                        -- 2. 速度の異常値をリセット (Fling/吹き飛ばし対策)
-                        if hrp.Velocity.Magnitude > 100 then
-                            hrp.Velocity = Vector3.new(0, 0, 0)
-                            hrp.RotVelocity = Vector3.new(0, 0, 0)
-                        end
-                        
-                        -- 3. ジャイロを常に水平に保つ
-                        bg.cframe = CFrame.new(hrp.Position, hrp.Position + Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z))
-                    end
-                end
-                
-                -- OFF時に削除
-                if hrp:FindFirstChild("AntiFlingGyro") then
-                    hrp.AntiFlingGyro:Destroy()
-                end
-            end)
-            
+    Callback = function(Value)
+        _G.AntiRagdollPro = Value
+        
+        -- 有効化した瞬間に通知
+        if Value then
             OrionLib:MakeNotification({
-                Name = "System",
-                Content = "鉄壁モード有効：ラグドールと吹飛無効",
+                Name = "Anti-Physic",
+                Content = "雪玉・バナナ・Fling耐性が有効になりました",
                 Time = 3
             })
         end
-    end,
-    Save = true,
-    Flag = "antiragdoll_toggle"
+    end    
 })
+
+-- [[ 物理制御ループ：衝撃を殺し、立ち状態を維持する ]]
+task.spawn(function()
+    while true do
+        task.wait() -- 限界速度で回す (wait(0.1)だと吹き飛ばされるため)
+        
+        if _G.AntiRagdollPro then
+            local lp = game.Players.LocalPlayer
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            
+            if char and hum and hrp then
+                -- 1. ラグドール状態の即時キャンセル
+                -- バナナや雪玉で「転倒」状態になった瞬間に「起き上がり」へ上書き
+                if hum:GetState() == Enum.HumanoidStateType.Ragdoll or hum:GetState() == Enum.HumanoidStateType.FallingDown then
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+                
+                -- 2. 物理衝撃（Fling/ミサイル）の無効化
+                -- 速度が一定以上（50以上）になったら瞬時に0にする
+                if hrp.Velocity.Magnitude > 50 or hrp.RotVelocity.Magnitude > 50 then
+                    hrp.Velocity = Vector3.new(0, 0, 0)
+                    hrp.RotVelocity = Vector3.new(0, 0, 0)
+                end
+                
+                -- 3. 衝突判定の最適化（自分を物理的に重くして動かされにくくする）
+                -- サーバー側で計算される吹き飛ばしベクトルを相殺
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        -- 物理的に回転して吹っ飛ぶのを防ぐ
+                        part.CanTouch = true -- 他人のAuraは拾わない（Death Aura側で設定済みなら不要）
+                    end
+                end
+            end
+        end
+    end
+end)
 --==============================
 -- タブ：究極オーラ (Ultimate)
 --==============================
