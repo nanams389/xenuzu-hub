@@ -1713,116 +1713,76 @@ BlobmanTab:AddToggle({
 })
 
 --==============================
--- デストロイサーバー（自動位置判定版）
+-- 全自動・神隠しデストロイ (遠距離対応版)
 --==============================
 
--- 現在自分がどのPlotにいるかを取得する関数
-local function getCurrentPlot()
-    local char = game.Players.LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
-    
-    local ray = Ray.new(char.HumanoidRootPart.Position, Vector3.new(0, -20, 0))
-    local hit, pos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
-    
-    if hit then
-        -- 親を遡って "Plot" という名前が含まれるモデルを探す
-        local current = hit
-        while current ~= workspace and current ~= nil do
-            if string.find(current.Name, "Plot") then
-                return current
-            end
-            current = current.Parent
-        end
-    end
-    return nil
-end
-
--- タブに機能を追加
-local DestroySection = BlobmanTab:AddSection({ Name = "自動家判定デストロイ" })
-
 BlobmanTab:AddToggle({
-    Name = "現在地の家から全滅ループ (全域)",
+    Name = "全自動・神隠しループ (遠距離&家貫通)",
     Default = false,
     Callback = function(Value)
-        _G.AutoPlotDestroy = Value
+        _G.MegaHideLoop = Value
         if Value then
             task.spawn(function()
-                while _G.AutoPlotDestroy do
-                    local char = game.Players.LocalPlayer.Character
-                    local lp = game.Players.LocalPlayer
-                    
-                    -- 1. ブロブマン搭乗チェック
+                -- 現在の家の位置を記憶（戻り先）
+                local startPos = lp.Character and lp.Character.HumanoidRootPart.CFrame
+                
+                while _G.MegaHideLoop do
+                    local char = lp.Character
                     local seat = char and char.Humanoid.SeatPart
+                    
                     if seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        local detector = blobman:FindFirstChild("LeftDetector")
-                        local weld = detector and detector:FindFirstChild("LeftWeld")
-
-                        if remote and detector and weld then
-                            -- 現在のPlot名を取得（通知用）
-                            local pLog = getCurrentPlot()
-                            local pName = pLog and pLog.Name or "不明なエリア"
-
-                            -- 2. 全プレイヤーをターゲットにする
-                            for _, p in pairs(game.Players:GetPlayers()) do
-                                if not _G.AutoPlotDestroy then break end
-                                
-                                -- 自分とフレンド（ホワイトリスト設定時）を除外
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                    if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                        
+                        for _, p in pairs(game.Players:GetPlayers()) do
+                            if not _G.MegaHideLoop then break end
+                            
+                            -- 自分とホワイトリストを除外
+                            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                    
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    local detector = blobman:FindFirstChild("LeftDetector")
+                                    local weld = detector and detector:FindFirstChild("LeftWeld")
+                                    
+                                    if remote and detector and weld then
+                                        -- 1. 相手の座標へ一瞬で移動 (判定を騙す)
+                                        local hideCF = targetHRP.CFrame * CFrame.new(0, 5, 0)
+                                        if blobman.PrimaryPart then
+                                            blobman:SetPrimaryPartCFrame(hideCF)
+                                        else
+                                            seat.CFrame = hideCF
+                                        end
                                         
-                                        local targetHRP = p.Character.HumanoidRootPart
+                                        -- 2. 判定が同期するまで微小待機して掴む
+                                        task.wait(0.05) 
+                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
                                         
-                                        -- 距離に関係なく全域にRemoteを飛ばす
-                                        -- これにより、あなたが家の中にいても、マップ端の人が掴まれる
-                                        remote:FireServer(detector, targetHRP, weld, 2) -- 強制掴み
-                                        task.wait(0.02) -- 超高速リリース
+                                        -- 3. 相手を奈落か空中に飛ばすために少し揺さぶる(オプション)
+                                        task.wait(0.02)
                                         remote:FireServer(detector, targetHRP, weld, 1) -- 離す
+                                        
+                                        -- 4. すぐに元の家（Plot）に戻る
+                                        if startPos then
+                                            if blobman.PrimaryPart then
+                                                blobman:SetPrimaryPartCFrame(startPos)
+                                            else
+                                                seat.CFrame = startPos
+                                            end
+                                        end
                                     end
                                 end
                             end
-                        else
-                            OrionLib:MakeNotification({
-                                Name = "Error",
-                                Content = "ブロブマンのGrab機能が見つかりません",
-                                Time = 2
-                            })
-                            _G.AutoPlotDestroy = false
-                            break
+                            task.wait(0.05) -- 次のターゲットへ行く前のインターバル
                         end
                     else
-                        OrionLib:MakeNotification({
-                            Name = "警告",
-                            Content = "ブロブマンに乗ってください！",
-                            Time = 2
-                        })
-                        _G.AutoPlotDestroy = false
+                        OrionLib:MakeNotification({Name = "Error", Content = "ブロブマンに乗ってください", Time = 2})
+                        _G.MegaHideLoop = false
                         break
                     end
-                    task.wait(0.3) -- サーバーキック対策の待機
+                    task.wait(0.1)
                 end
             end)
-        end
-    end
-})
-
-BlobmanTab:AddButton({
-    Name = "現在の位置情報を確認",
-    Callback = function()
-        local p = getCurrentPlot()
-        if p then
-            OrionLib:MakeNotification({
-                Name = "エリア確認",
-                Content = "現在は " .. p.Name .. " 内にいます",
-                Time = 2
-            })
-        else
-            OrionLib:MakeNotification({
-                Name = "エリア確認",
-                Content = "Plot外にいます",
-                Time = 2
-            })
         end
     end
 })
