@@ -165,6 +165,103 @@ VisualTab:AddToggle({
 })
 
 --==============================
+-- 無敵・グッチ機能セクション
+--==============================
+VisualTab:AddSection({ Name = "無敵・グッチ機能" })
+
+-- グッチ機能 (無敵 & 判定無効化)
+VisualTab:AddToggle({
+    Name = "グッチ機能 (無敵/Anti-Fling)",
+    Default = false,
+    Callback = function(v)
+        _G.GucciMode = v
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if v then
+            -- 自分のブロブマンを探す (一番上のgetBlobman関数を利用)
+            local blob = getBlobman()
+            if not blob then
+                OrionLib:MakeNotification({
+                    Name = "エラー",
+                    Content = "自分のブロブマンを出してから押してください",
+                    Time = 3
+                })
+                return
+            end
+
+            local seat = blob:FindFirstChildOfClass("Seat") or blob:FindFirstChildOfClass("VehicleSeat")
+            
+            -- グッチ発動：一瞬乗ってから浮かせる
+            if seat and hrp then
+                local oldPos = hrp.CFrame
+                hrp.CFrame = seat.CFrame
+                task.wait(0.3) -- 搭乗判定待ち
+                hrp.CFrame = oldPos * CFrame.new(0, 10, 0) -- 上空へ退避
+                
+                -- 発動成功通知
+                OrionLib:MakeNotification({
+                    Name = "Success",
+                    Content = "グッチ機能が正常に発動しました！(無敵状態)",
+                    Image = "rbxassetid://4483345998",
+                    Time = 5
+                })
+            end
+
+            -- 無敵維持ループ
+            task.spawn(function()
+                local bv = Instance.new("BodyVelocity")
+                bv.Name = "GucciFloat"
+                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                bv.Velocity = Vector3.new(0, 0, 0)
+                bv.Parent = hrp
+                
+                while _G.GucciMode do
+                    -- 物理ヒット判定を毎フレーム無効化 (Anti-Aura / Anti-Fling)
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanTouch = false
+                        end
+                    end
+                    -- サーバー側での落下死やラグドールを防ぐための微弱な上向きの力
+                    hrp.Velocity = Vector3.new(0, 0.1, 0)
+                    task.wait()
+                end
+                
+                -- OFF時に判定を戻す
+                bv:Destroy()
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanTouch = true
+                    end
+                end
+            end)
+        else
+            OrionLib:MakeNotification({
+                Name = "System",
+                Content = "グッチ機能を解除しました",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- キャラリセット (Kill) ボタン
+VisualTab:AddButton({
+    Name = "自分をキャラリセ (Reset)",
+    Callback = function()
+        if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+            lp.Character.Humanoid.Health = 0
+            OrionLib:MakeNotification({
+                Name = "System",
+                Content = "キャラクターをリセットしました",
+                Time = 2
+            })
+        end
+    end
+})
+
+--==============================
 -- タブ：移動ハック
 --==============================
 local StealthTab = Window:MakeTab({ Name = "移動ハック", Icon = "rbxassetid://4483345998" })
