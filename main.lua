@@ -1390,7 +1390,7 @@ local BlobmanTab = Window:MakeTab({ Name = "Blobman 2", Icon = "rbxassetid://603
 
 -- 公式エラー誘発キック (blobman 引き寄せ)
 BlobmanTab:AddButton({
-    Name = "blobman 引き寄せ (公式エラー誘発)",
+    Name = "blobmanで相手を掴む(グッチ貫通)",
     Callback = function()
         pcall(function()
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
