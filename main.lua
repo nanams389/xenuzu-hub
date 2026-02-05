@@ -1789,32 +1789,20 @@ BlobmanTab:AddToggle({
 local LoopTab = Window:MakeTab({ Name = "Loop Blobman", Icon = "rbxassetid://6031064398" })
 
 local SelectedTarget = nil
-local PlayerButtons = {} -- リスト更新用にボタンを保持
-
--- ターゲット情報を表示するセクション
 local TargetInfo = LoopTab:AddSection({ Name = "ターゲット: 未選択" })
 
 -- ==============================
--- プレイヤーリスト更新機能
+-- プレイヤーリスト更新機能（維持）
 -- ==============================
 local ListSection = LoopTab:AddSection({ Name = "プレイヤーリスト" })
 
 local function UpdatePlayerList()
-    -- 既存のリスト表示（ボタン）をクリアしたいところですが、Orionの仕様上
-    -- セクションの再生成が難しいため、新しいボタンを追加し続ける形式か、
-    -- ログに通知して選択する形式が安定します。
-    -- ここでは「最新のプレイヤー」をドロップダウン形式で更新できるようにします。
-    
     local playerNames = {}
     local playerMap = {}
     
     for _, p in pairs(game.Players:GetPlayers()) do
         if p ~= game.Players.LocalPlayer then
-            local displayName = p.DisplayName
-            local userName = p.Name
-            local userId = p.UserId
-            -- リストに表示するテキスト
-            local label = displayName .. " (@" .. userName .. ") [" .. userId .. "]"
+            local label = p.DisplayName .. " (@" .. p.Name .. ") [" .. p.UserId .. "]"
             table.insert(playerNames, label)
             playerMap[label] = p
         end
@@ -1830,7 +1818,7 @@ local function UpdatePlayerList()
                 TargetInfo:SetTitle("ターゲット: " .. SelectedTarget.DisplayName)
                 OrionLib:MakeNotification({
                     Name = "ターゲットロック",
-                    Content = SelectedTarget.Name .. " を捕捉しました",
+                    Content = SelectedTarget.Name .. " を捕捉完了",
                     Time = 2
                 })
             end
@@ -1838,21 +1826,18 @@ local function UpdatePlayerList()
     })
 end
 
--- 初期リスト作成
 UpdatePlayerList()
 
 LoopTab:AddButton({
-    Name = "プレイヤーリストを更新 (下に新しいリストが追加されます)",
-    Callback = function()
-        UpdatePlayerList()
-    end
+    Name = "プレイヤーリストを更新",
+    Callback = function() UpdatePlayerList() end
 })
 
 -- ==============================
--- 実行メインロジック
+-- 実行メインロジック（地上固定・改善版）
 -- ==============================
 LoopTab:AddToggle({
-    Name = "選択したプレイヤーを無限掴み (Fling Aura同梱)",
+    Name = "特定プレイヤーを無限掴み (地上固定ハメ)",
     Default = false,
     Callback = function(Value)
         _G.SpecificLoopKill = Value
@@ -1872,7 +1857,7 @@ LoopTab:AddToggle({
                     if SelectedTarget and SelectedTarget.Character and SelectedTarget.Character:FindFirstChild("HumanoidRootPart") then
                         local targetHRP = SelectedTarget.Character.HumanoidRootPart
                         
-                        -- 1. 自動搭乗
+                        -- 1. 自動搭乗（維持）
                         local seat = hum and hum.SeatPart
                         if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
                             for _, v in pairs(workspace:GetChildren()) do
@@ -1893,30 +1878,43 @@ LoopTab:AddToggle({
                             local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
                             local rightWeld = rightDet and rightDet:FindFirstChild("RightWeld")
 
-                            -- 2. 密着ワープ
+                            -- 2. 密着ワープ（地上に固定するため高さを調整）
+                            -- targetHRPと同じ高さ、または少しだけ上に配置して吹っ飛びを防止
+                            local targetPos = targetHRP.CFrame
                             if blobman.PrimaryPart then
-                                blobman:SetPrimaryPartCFrame(targetHRP.CFrame)
+                                blobman:SetPrimaryPartCFrame(targetPos)
                             else
-                                seat.CFrame = targetHRP.CFrame
+                                seat.CFrame = targetPos
                             end
 
-                            -- 3. Fling Aura (所有権剥奪 & 叩きつけ)
+                            -- 3. Fling Aura ＆ 地上吸着（改善ポイント）
                             pcall(function()
                                 local rs = game:GetService("ReplicatedStorage")
+                                
+                                -- ネットワーク所有権バグ（吸着しやすくする）
                                 local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
                                 if SetNetworkOwner then
                                     SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
                                 end
                                 
-                                -- 物理妨害
-                                local bv = Instance.new("BodyVelocity", targetHRP)
-                                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                bv.Velocity = Vector3.new(0, -30, 0)
-                                game:GetService("Debris"):AddItem(bv, 0.05)
+                                -- 【改善】吹き飛ばさないように、速度を0にして地面に押し付ける
+                                if not targetHRP:FindFirstChild("AnchorHold") then
+                                    local bv = Instance.new("BodyVelocity")
+                                    bv.Name = "AnchorHold"
+                                    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                    bv.Velocity = Vector3.new(0, -2, 0) -- 軽く地面に押し付けるだけにする
+                                    bv.Parent = targetHRP
+                                    game:GetService("Debris"):AddItem(bv, 0.1)
+                                end
+                                
+                                -- 攻撃イベント
+                                local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                                if combatEvent then combatEvent:FireServer(SelectedTarget.Character, "Punch") end
                             end)
 
-                            -- 4. 両手交互・高速掴み
+                            -- 4. 両手交互・高速掴み（維持・高速化）
                             if remote then
+                                -- 掴んでから離すまでの時間を極限まで短縮して「ガタガタ」させる
                                 if leftDet and leftWeld then
                                     remote:FireServer(leftDet, targetHRP, leftWeld, 2)
                                     task.wait(0.01)
@@ -1929,11 +1927,9 @@ LoopTab:AddToggle({
                                 end
                             end
                         end
-                    else
-                        -- ターゲットがいない、または死んでいる場合
-                        task.wait(0.5)
                     end
-                    task.wait(0.01)
+                    -- ウェイトをほぼゼロにして吸着力を最大化
+                    task.wait() 
                 end
             end)
         end
