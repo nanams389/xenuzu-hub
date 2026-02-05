@@ -198,12 +198,11 @@ game:GetService("RunService").Stepped:Connect(function()
 end)
 
 --==============================
--- 家（プロット）テレポート：ボタン形式
+-- 家（プロット）テレポート：ボタン形式 (エラー修正版)
 --==============================
-StealthTab:AddSection({ Name = "各家へのダイレクトテレポート" })
+local tpSection = StealthTab:AddSection({ Name = "各家へのダイレクトテレポート" })
 
--- 1から最大数（例えば10前後）までのボタンを自動生成
--- サーバーの最大人数に合わせて調整してくれ
+-- 1から12番までのボタンを生成
 for i = 1, 12 do
     StealthTab:AddButton({
         Name = "Plot " .. i .. " (家) へテレポート",
@@ -211,17 +210,18 @@ for i = 1, 12 do
             local plotPath = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild("Plot" .. i)
             
             if plotPath then
-                -- Houseモデル、またはPlot自体の位置を取得
+                -- 動画の構造 (PlotX -> House) に基づいてターゲットを探す
                 local house = plotPath:FindFirstChild("House")
                 local targetCFrame = nil
                 
-                if house and house:IsA("Model") and house.PrimaryPart then
-                    targetCFrame = house.PrimaryPart.CFrame
-                elseif house then
-                    targetCFrame = house:FindFirstChildWhichIsA("BasePart", true).CFrame
+                if house and house:IsA("Model") then
+                    -- PrimaryPartがあればそこへ、なければ最初に見つかったパーツへ
+                    local primary = house.PrimaryPart or house:FindFirstChildWhichIsA("BasePart", true)
+                    if primary then targetCFrame = primary.CFrame end
                 else
-                    -- Houseがない場合はPlotの土台へ
-                    targetCFrame = plotPath:FindFirstChildWhichIsA("BasePart", true).CFrame
+                    -- Houseが見つからない場合はPlot直下のパーツ（床など）を探す
+                    local base = plotPath:FindFirstChildWhichIsA("BasePart", true)
+                    if base then targetCFrame = base.CFrame end
                 end
 
                 if targetCFrame then
@@ -231,17 +231,23 @@ for i = 1, 12 do
                         Content = "Plot " .. i .. " に移動しました",
                         Time = 2
                     })
+                else
+                    OrionLib:MakeNotification({
+                        Name = "Error",
+                        Content = "テレポート先のパーツが見つかりません",
+                        Time = 2
+                    })
                 end
             else
                 OrionLib:MakeNotification({
                     Name = "Error",
-                    Content = "Plot " .. i .. " が見つかりません",
+                    Content = "Plot " .. i .. " が存在しません",
                     Time = 2
                 })
             end
-        end
-    end)
-end
+        end -- Callbackの終わり
+    }) -- AddButtonの終わり
+end -- forループの終わり
 
 -- 3. 実行ボタン
 StealthTab:AddButton({
