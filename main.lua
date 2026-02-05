@@ -2077,6 +2077,154 @@ LoopTab:AddToggle({
         end
     end
 })
+
+-- [[ Loop Kill タブの作成 ]]
+local LoopKillTab = Window:MakeTab({ Name = "Loop Kill", Icon = "rbxassetid://6031064398" })
+
+local SelectedKillTarget = nil
+local OriginalLocation = nil -- 元の位置保存用
+local KillRange = 50 -- 判定距離
+
+-- ターゲット情報表示
+local KillTargetInfo = LoopKillTab:AddSection({ Name = "ターゲット: 未選択" })
+
+-- ==============================
+-- プレイヤーリスト更新 (選択機能)
+-- ==============================
+local function UpdateKillList()
+    local pNames = {}
+    local pMap = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            local label = p.DisplayName .. " (@" .. p.Name .. ")"
+            table.insert(pNames, label)
+            pMap[label] = p
+        end
+    end
+
+    LoopKillTab:AddDropdown({
+        Name = "ターゲットを選択",
+        Default = "未選択",
+        Options = pNames,
+        Callback = function(Value)
+            SelectedKillTarget = pMap[Value]
+            KillTargetInfo:SetTitle("ターゲット: " .. (SelectedKillTarget and SelectedKillTarget.DisplayName or "未選択"))
+        end
+    })
+end
+
+UpdateKillList()
+LoopKillTab:AddButton({ Name = "リスト更新", Callback = function() UpdateKillList() end })
+
+-- ==============================
+-- 共通抹殺ロジック (Abyss Kill)
+-- ==============================
+local function AbyssKillAction(targetPlayer)
+    local lp = game.Players.LocalPlayer
+    local rs = game:GetService("ReplicatedStorage")
+    local targetHRP = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+    if targetHRP and targetPlayer.Character:FindFirstChild("Humanoid") and targetPlayer.Character.Humanoid.Health > 0 then
+        pcall(function()
+            local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+            local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+
+            -- 1. テレポート (相手の場所に密着)
+            lp.Character.HumanoidRootPart.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 0)
+
+            -- 2. 所有権奪取 ＆ 地底引きずり込み
+            if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
+            
+            -- Noclip設定
+            for _, part in ipairs(targetPlayer.Character:GetChildren()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+
+            -- 強制奈落移動 ＆ 高速落下
+            targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, -50, 0)
+            targetHRP.Velocity = Vector3.new(0, -5000, 0)
+
+            -- ダメージ
+            if combatEvent then combatEvent:FireServer(targetPlayer.Character, "Punch") end
+        end)
+    end
+end
+
+-- ==============================
+-- 特定プレイヤー Loop Kill
+-- ==============================
+LoopKillTab:AddToggle({
+    Name = "特定プレイヤーを Loop Kill (帰還機能付)",
+    Default = false,
+    Callback = function(Value)
+        _G.LoopKillSpecific = Value
+        local lp = game.Players.LocalPlayer
+        
+        if Value then
+            -- 実行前の位置を保存
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                OriginalLocation = lp.Character.HumanoidRootPart.CFrame
+            end
+
+            task.spawn(function()
+                while _G.LoopKillSpecific do
+                    if SelectedKillTarget then
+                        AbyssKillAction(SelectedKillTarget)
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        else
+            -- オフにした時、元の位置に戻る
+            if OriginalLocation and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                lp.Character.HumanoidRootPart.CFrame = OriginalLocation
+                OriginalLocation = nil
+            end
+        end
+    end
+})
+
+-- ==============================
+-- Kill All (全員抹殺)
+-- ==============================
+LoopKillTab:AddToggle({
+    Name = "Kill All (全員抹殺ループ & 帰還機能付)",
+    Default = false,
+    Callback = function(Value)
+        _G.KillAllAbyss = Value
+        local lp = game.Players.LocalPlayer
+
+        if Value then
+            -- 実行前の位置を保存
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                OriginalLocation = lp.Character.HumanoidRootPart.CFrame
+            end
+
+            task.spawn(function()
+                while _G.KillAllAbyss do
+                    for _, p in pairs(game.Players:GetPlayers()) do
+                        if not _G.KillAllAbyss then break end
+                        if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                            -- フレンド除外チェック (既存のホワイトリスト変数があれば参照)
+                            if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                AbyssKillAction(p)
+                                task.wait(0.1) -- 1人あたりの処理時間
+                            end
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        else
+            -- オフにした時、元の位置に戻る
+            if OriginalLocation and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                lp.Character.HumanoidRootPart.CFrame = OriginalLocation
+                OriginalLocation = nil
+            end
+        end
+    end
+})
+
 --==============================
 -- 初期化
 --==============================
