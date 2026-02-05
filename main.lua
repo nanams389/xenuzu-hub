@@ -786,7 +786,7 @@ local SNOWshipPlayer = SNOWshipPlayer or function() return true end
 local CreateSkyVelocity = CreateSkyVelocity or function(hrp) hrp.Velocity = Vector3.new(0, 100, 0) end
 
 UltimateTab:AddToggle({
-    Name = "Death Aura (抹殺オーラ)",
+    Name = "Death Aura (抹殺オーラ)掴んだらキル",
     Default = false,
     Callback = function(deathAuraEnabled)
         _G.DeathAura = deathAuraEnabled
@@ -840,6 +840,65 @@ UltimateTab:AddToggle({
     end,
     Save = true,
     Flag = "deathaura_toggle"
+})
+
+--==============================
+-- 究極抹殺オーラ (Death Aura)
+--==============================
+local playersService = game:GetService("Players")
+local rs = game:GetService("ReplicatedStorage")
+local destroyGrabLineEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("DestroyGrabLine")
+
+-- 距離設定（必要ならスライダーと連動させてくれ）
+local auraRange = 50 
+
+UltimateTab:AddToggle({
+    Name = "究極抹殺オーラ (Death Aura)",
+    Default = false,
+    Callback = function(v)
+        _G.DeathAura = v
+        if v then
+            task.spawn(function()
+                while _G.DeathAura do
+                    local myChar = lp.Character
+                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    
+                    if myHRP then
+                        for _, targetPlayer in pairs(playersService:GetPlayers()) do
+                            -- 自分以外 ＆ キャラが存在する ＆ 生きている
+                            if targetPlayer ~= lp and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+                                local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                local targetHum = targetPlayer.Character.Humanoid
+                                
+                                if targetHRP and targetHum.Health > 0 then
+                                    -- 距離判定
+                                    local dist = (myHRP.Position - targetHRP.Position).Magnitude
+                                    if dist <= auraRange then
+                                        pcall(function()
+                                            -- 1. サーバー側のラグドール/掴み判定を破壊
+                                            if destroyGrabLineEvent then
+                                                destroyGrabLineEvent:FireServer(targetHRP)
+                                            end
+                                            
+                                            -- 2. 直接ステータスを「死亡」に変更 (掴み動作なし)
+                                            targetHum.BreakJointsOnDeath = false
+                                            targetHum:ChangeState(Enum.HumanoidStateType.Dead)
+                                            targetHum.Health = 0 -- 念押しで体力を0に
+                                            
+                                            -- 3. 物理的な嫌がらせ (吹き飛ばし)
+                                            targetHRP.Velocity = Vector3.new(0, 100, 0)
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    -- 速度重視。0.05秒ごとに周囲をスキャン
+                    task.wait(0.05)
+                end
+            end)
+        end
+    end
 })
 
 --==============================
