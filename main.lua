@@ -775,67 +775,71 @@ UltimateTab:AddToggle({
 })
 
 --==============================
--- 地底貫通・抹殺オーラ (Noclip Abyss)
+-- 抹殺オーラ (Death Aura)
 --==============================
-_G.AbyssKillAuraEnabled = false
-local abyssDepth = -50 -- 1回で引きずり込む深さ
-local fallSpeed = -5000 -- 落下加速
+local playersService = game:GetService("Players")
+local destroyGrabLineEvent = game:GetService("ReplicatedStorage"):FindFirstChild("Events") and game:GetService("ReplicatedStorage").Events:FindFirstChild("DestroyGrabLine") -- 必要に応じてパス調整
+
+-- 外部関数のチェック（エラー防止用：未定義なら常に実行するように設定）
+local CheckPlayerAuras = CheckPlayerAuras or function() return true end
+local SNOWshipPlayer = SNOWshipPlayer or function() return true end
+local CreateSkyVelocity = CreateSkyVelocity or function(hrp) hrp.Velocity = Vector3.new(0, 100, 0) end
 
 UltimateTab:AddToggle({
-    Name = "地底貫通 Kill Aura (Noclip)",
+    Name = "Death Aura (抹殺オーラ)",
     Default = false,
-    Callback = function(Value)
-        _G.AbyssKillAuraEnabled = Value
-        if Value then
+    Callback = function(deathAuraEnabled)
+        _G.DeathAura = deathAuraEnabled
+        if deathAuraEnabled then
             task.spawn(function()
-                while _G.AbyssKillAuraEnabled do
-                    task.wait(0.05) -- 貫通を維持するため高速に回す
-                    local lp = game.Players.LocalPlayer
-                    local rs = game:GetService("ReplicatedStorage")
+                while _G.DeathAura do
+                    local gamePlayers2 = playersService
+                    local playerPairsIterator2, iteratorValue4, playerKey2 = pairs(gamePlayers2:GetPlayers())
                     
-                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-
-                    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                        for _, player in ipairs(game.Players:GetPlayers()) do
-                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                                local targetHRP = player.Character.HumanoidRootPart
-                                local dist = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
-
-                                if dist <= ultRange and player.Character.Humanoid.Health > 0 then
-                                    pcall(function()
-                                        -- 1. 所有権奪取（これをしないとCFrame操作が弾かれる）
-                                        if SetNetworkOwner then 
-                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
+                    while true do
+                        local player2
+                        playerKey2, player2 = playerPairsIterator2(iteratorValue4, playerKey2)
+                        
+                        if playerKey2 == nil then
+                            break
+                        end
+                        
+                        -- 自分のキャラ以外を対象にする
+                        if player2 ~= lp and CheckPlayerAuras(player2) then
+                            local playerCharacter = player2.Character
+                            local humanoidRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+                            local humanoid = playerCharacter and playerCharacter:FindFirstChildOfClass("Humanoid")
+                            
+                            if humanoidRootPart and humanoid and SNOWshipPlayer(player2) then
+                                pcall(function()
+                                    -- サーバーイベントへ送信
+                                    if destroyGrabLineEvent then
+                                        destroyGrabLineEvent:FireServer(humanoidRootPart)
+                                    end
+                                    
+                                    -- 状態操作
+                                    CreateSkyVelocity(humanoidRootPart)
+                                    humanoid.BreakJointsOnDeath = false
+                                    humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+                                    humanoid.Jump = true
+                                    humanoid.Sit = false
+                                    
+                                    if humanoid:GetStateEnabled(Enum.HumanoidStateType.Dead) then
+                                        if destroyGrabLineEvent then
+                                            destroyGrabLineEvent:FireServer(humanoidRootPart)
                                         end
-
-                                        -- 2. 相手のすべてのパーツの衝突判定を「一瞬だけ」オフにする (Noclip効果)
-                                        for _, part in ipairs(player.Character:GetChildren()) do
-                                            if part:IsA("BasePart") then
-                                                part.CanCollide = false
-                                            end
-                                        end
-
-                                        -- 3. 【重要】地面の下へ強制移動 (Noclip貫通)
-                                        -- 元の場所から垂直に abyssDepth 分だけ下に瞬間移動
-                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, abyssDepth, 0)
-
-                                        -- 4. 速度も下向きに固定して復帰を阻止
-                                        targetHRP.Velocity = Vector3.new(0, fallSpeed, 0)
-
-                                        -- 5. ダメージ (Kill Aura)
-                                        if combatEvent then
-                                            combatEvent:FireServer(player.Character, "Punch")
-                                        end
-                                    end)
-                                end
+                                    end
+                                end)
                             end
                         end
                     end
+                    task.wait(0.1) -- ループの負荷調整
                 end
             end)
         end
-    end    
+    end,
+    Save = true,
+    Flag = "deathaura_toggle"
 })
 
 --==============================
