@@ -1558,7 +1558,7 @@ BlobmanTab:AddToggle({
     end
 })
 
--- 3. 自動乗車 (Auto Sit - 究極修正版)
+-- 3. 自動乗車 (Auto Sit - 超・検知モード)
 BlobmanTab:AddToggle({
     Name = "自動乗車 (Auto Sit)",
     Default = false,
@@ -1573,51 +1573,52 @@ BlobmanTab:AddToggle({
                     local hrp = char and char:FindFirstChild("HumanoidRootPart")
                     
                     if hum and not hum.SeatPart and hrp then
-                        -- 検出開始
-                        local myBlob = nil
+                        local myTarget = nil
                         
-                        -- 自分のブロブマンを徹底捜索
-                        local plotItems = workspace:FindFirstChild("PlotItems")
-                        if plotItems then
-                            for _, item in ipairs(plotItems:GetChildren()) do
-                                if item.Name == "Blobman" then
-                                    local owner = item:FindFirstChild("Owner")
-                                    -- Ownerが自分かどうかを名前とUserIdの両方でチェック
-                                    if owner and (tostring(owner.Value) == lp.Name or tostring(owner.Value) == tostring(lp.UserId)) then
-                                        myBlob = item
-                                        break
-                                    end
+                        -- 方法1: 自分の名前がOwnerに設定されている物体を全スキャン
+                        for _, item in ipairs(workspace.PlotItems:GetDescendants()) do
+                            local owner = item:FindFirstChild("Owner")
+                            if owner and (tostring(owner.Value) == lp.Name or tostring(owner.Value) == tostring(lp.UserId)) then
+                                -- その物体自体か、その親が座席を持っているか確認
+                                local seat = item:FindFirstChildWhichIsA("Seat", true) or item:FindFirstChildWhichIsA("VehicleSeat", true)
+                                if seat then
+                                    myTarget = seat
+                                    break
+                                end
+                            end
+                        end
+                        
+                        -- 方法2: 方法1で見つからない場合、自分のプロット(Plot)の中にある座席を直接探す
+                        if not myTarget then
+                            for _, plot in ipairs(workspace.Plots:GetChildren()) do
+                                local pOwner = plot:FindFirstChild("Owner")
+                                if pOwner and tostring(pOwner.Value) == lp.Name then
+                                    myTarget = plot:FindFirstChildWhichIsA("Seat", true) or plot:FindFirstChildWhichIsA("VehicleSeat", true)
+                                    if myTarget then break end
                                 end
                             end
                         end
 
-                        if myBlob then
-                            -- 座席を探す
-                            local seat = myBlob:FindFirstChildWhichIsA("Seat", true) or myBlob:FindFirstChildWhichIsA("VehicleSeat", true)
+                        if myTarget then
+                            -- 強制搭乗
+                            hrp.CFrame = myTarget.CFrame
+                            task.wait(0.1)
+                            myTarget:Sit(hum)
                             
-                            if seat then
-                                -- 発見通知 (初回のみ)
-                                if not _G.SitFoundNotified then
-                                    OrionLib:MakeNotification({Name = "System", Content = "ブロブマンを検知、搭乗します。", Time = 2})
-                                    _G.SitFoundNotified = true
-                                end
-                                
-                                -- 強制搭乗
-                                hrp.CFrame = seat.CFrame
-                                task.wait(0.1)
-                                seat:Sit(hum)
-                            end
-                        else
-                            -- 見つからない場合の通知
+                            -- 成功通知
                             OrionLib:MakeNotification({
-                                Name = "検出失敗",
-                                Content = "ブロブマンが見つかりません。自分のプロットの近くにいますか？",
+                                Name = "Success",
+                                Content = "乗り物を検知しました。搭乗します。",
                                 Time = 2
                             })
-                            task.wait(2) -- 通知連投防止
+                        else
+                            -- それでも見つからない場合
+                            OrionLib:MakeNotification({
+                                Name = "Error",
+                                Content = "自分の乗り物が見つかりません。プロット内に召喚してください。",
+                                Time = 1
+                            })
                         end
-                    else
-                        _G.SitFoundNotified = false -- 降りたら通知フラグをリセット
                     end
                 end
             end)
