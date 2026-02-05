@@ -775,6 +775,70 @@ UltimateTab:AddToggle({
 })
 
 --==============================
+-- 地底貫通・抹殺オーラ (Noclip Abyss)
+--==============================
+_G.AbyssKillAuraEnabled = false
+local abyssDepth = -50 -- 1回で引きずり込む深さ
+local fallSpeed = -5000 -- 落下加速
+
+UltimateTab:AddToggle({
+    Name = "地底貫通 Kill Aura (Noclip)",
+    Default = false,
+    Callback = function(Value)
+        _G.AbyssKillAuraEnabled = Value
+        if Value then
+            task.spawn(function()
+                while _G.AbyssKillAuraEnabled do
+                    task.wait(0.05) -- 貫通を維持するため高速に回す
+                    local lp = game.Players.LocalPlayer
+                    local rs = game:GetService("ReplicatedStorage")
+                    
+                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+
+                    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                        for _, player in ipairs(game.Players:GetPlayers()) do
+                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = player.Character.HumanoidRootPart
+                                local dist = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+
+                                if dist <= ultRange and player.Character.Humanoid.Health > 0 then
+                                    pcall(function()
+                                        -- 1. 所有権奪取（これをしないとCFrame操作が弾かれる）
+                                        if SetNetworkOwner then 
+                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
+                                        end
+
+                                        -- 2. 相手のすべてのパーツの衝突判定を「一瞬だけ」オフにする (Noclip効果)
+                                        for _, part in ipairs(player.Character:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                part.CanCollide = false
+                                            end
+                                        end
+
+                                        -- 3. 【重要】地面の下へ強制移動 (Noclip貫通)
+                                        -- 元の場所から垂直に abyssDepth 分だけ下に瞬間移動
+                                        targetHRP.CFrame = targetHRP.CFrame * CFrame.new(0, abyssDepth, 0)
+
+                                        -- 4. 速度も下向きに固定して復帰を阻止
+                                        targetHRP.Velocity = Vector3.new(0, fallSpeed, 0)
+
+                                        -- 5. ダメージ (Kill Aura)
+                                        if combatEvent then
+                                            combatEvent:FireServer(player.Character, "Punch")
+                                        end
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end    
+})
+
+--==============================
 -- 全員自動巡回テレポート (Auto-Warp)
 --==============================
 _G.AutoWarpEnabled = false
@@ -1558,73 +1622,7 @@ BlobmanTab:AddToggle({
     end
 })
 
--- 3. 自動乗車 (Auto Sit - 超・検知モード)
-BlobmanTab:AddToggle({
-    Name = "自動乗車 (Auto Sit)",
-    Default = false,
-    Callback = function(v)
-        _G.AutoSit = v
-        if v then
-            task.spawn(function()
-                while _G.AutoSit do
-                    task.wait(0.5)
-                    local char = lp.Character
-                    local hum = char and char:FindFirstChildOfClass("Humanoid")
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    
-                    if hum and not hum.SeatPart and hrp then
-                        local myTarget = nil
-                        
-                        -- 方法1: 自分の名前がOwnerに設定されている物体を全スキャン
-                        for _, item in ipairs(workspace.PlotItems:GetDescendants()) do
-                            local owner = item:FindFirstChild("Owner")
-                            if owner and (tostring(owner.Value) == lp.Name or tostring(owner.Value) == tostring(lp.UserId)) then
-                                -- その物体自体か、その親が座席を持っているか確認
-                                local seat = item:FindFirstChildWhichIsA("Seat", true) or item:FindFirstChildWhichIsA("VehicleSeat", true)
-                                if seat then
-                                    myTarget = seat
-                                    break
-                                end
-                            end
-                        end
-                        
-                        -- 方法2: 方法1で見つからない場合、自分のプロット(Plot)の中にある座席を直接探す
-                        if not myTarget then
-                            for _, plot in ipairs(workspace.Plots:GetChildren()) do
-                                local pOwner = plot:FindFirstChild("Owner")
-                                if pOwner and tostring(pOwner.Value) == lp.Name then
-                                    myTarget = plot:FindFirstChildWhichIsA("Seat", true) or plot:FindFirstChildWhichIsA("VehicleSeat", true)
-                                    if myTarget then break end
-                                end
-                            end
-                        end
 
-                        if myTarget then
-                            -- 強制搭乗
-                            hrp.CFrame = myTarget.CFrame
-                            task.wait(0.1)
-                            myTarget:Sit(hum)
-                            
-                            -- 成功通知
-                            OrionLib:MakeNotification({
-                                Name = "Success",
-                                Content = "乗り物を検知しました。搭乗します。",
-                                Time = 2
-                            })
-                        else
-                            -- それでも見つからない場合
-                            OrionLib:MakeNotification({
-                                Name = "Error",
-                                Content = "自分の乗り物が見つかりません。プロット内に召喚してください。",
-                                Time = 1
-                            })
-                        end
-                    end
-                end
-            end)
-        end
-    end
-})
 --==============================
 -- 初期化
 --==============================
