@@ -1712,11 +1712,11 @@ BlobmanTab:AddToggle({
     end
 })
 --==============================
--- 4. フルオート・ブロブマン・デストロイ
+-- 強化版：フルオート・デストロイ (キック/エラー誘発仕様)
 --==============================
 
 BlobmanTab:AddToggle({
-    Name = "フルオート・全滅ループ (自動召喚/搭乗/TP)",
+    Name = "フルオート・全滅ループ (キック強化版)",
     Default = false,
     Callback = function(Value)
         _G.FullAutoDestroy = Value
@@ -1726,14 +1726,12 @@ BlobmanTab:AddToggle({
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 1. ブロブマンに乗っているか確認、乗ってなければ召喚/搭乗
+                    -- 1. ブロブマン搭乗チェック
                     local seat = hum and hum.SeatPart
                     if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
-                        -- ここにゲーム固有の「ブロブマン召喚」のリモートがあれば入れる
-                        -- 無い場合は、近くにあるブロブマンを探して座る
                         for _, v in pairs(workspace:GetChildren()) do
                             if v.Name == "Blobman" and v:FindFirstChild("DriveSeat") then
-                                if (v.DriveSeat.Position - char.HumanoidRootPart.Position).Magnitude < 20 then
+                                if (v.DriveSeat.Position - char.HumanoidRootPart.Position).Magnitude < 25 then
                                     v.DriveSeat:Sit(hum)
                                     task.wait(0.3)
                                     break
@@ -1742,41 +1740,65 @@ BlobmanTab:AddToggle({
                         end
                     end
 
-                    -- 2. 搭乗成功していたら攻撃開始
-                    seat = hum.SeatPart
+                    seat = hum and hum.SeatPart
                     if seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                         
+                        -- 両手判定の取得
+                        local leftDet = blobman:FindFirstChild("LeftDetector")
+                        local rightDet = blobman:FindFirstChild("RightDetector")
+                        local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
+                        local rightWeld = rightDet and rightDet:FindFirstChild("RightWeld")
+
                         for _, p in pairs(game.Players:GetPlayers()) do
                             if not _G.FullAutoDestroy then break end
                             if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                 if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
                                     
                                     local targetHRP = p.Character.HumanoidRootPart
-                                    local leftDet = blobman:FindFirstChild("LeftDetector")
-                                    local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
-
-                                    -- A. 相手の場所にテレポート（消される覚悟で飛ぶ）
-                                    local tpCF = targetHRP.CFrame * CFrame.new(0, 5, 0)
+                                    
+                                    -- A. 超密着テレポート
+                                    local tpCF = targetHRP.CFrame
                                     if blobman.PrimaryPart then
                                         blobman:SetPrimaryPartCFrame(tpCF)
                                     else
                                         seat.CFrame = tpCF
                                     end
 
-                                    -- B. 掴む（ラグ対策で複数回送信）
-                                    task.wait(0.05)
-                                    if remote and leftDet and leftWeld then
-                                        remote:FireServer(leftDet, targetHRP, leftWeld, 2) -- 掴む
-                                        task.wait(0.05)
-                                        remote:FireServer(leftDet, targetHRP, leftWeld, 1) -- 即離す
+                                    -- B. キック誘発バースト (両手で掴み＋微振動)
+                                    if remote and leftDet and rightDet then
+                                        -- 掴む判定を5回連続で叩き込む
+                                        for i = 1, 5 do
+                                            -- 物理エンジンをバグらせるための微振動（キック誘発用）
+                                            local shake = CFrame.new(0, (i % 2 == 0 and 0.5 or -0.5), 0)
+                                            leftDet.CFrame = targetHRP.CFrame * shake
+                                            rightDet.CFrame = targetHRP.CFrame * shake
+                                            
+                                            -- 両手同時にリモート送信
+                                            remote:FireServer(leftDet, targetHRP, leftWeld, 2)
+                                            remote:FireServer(rightDet, targetHRP, rightWeld, 2)
+                                            
+                                            -- ネットワーク所有権を奪う（Fling/Kick成功率UP）
+                                            pcall(function()
+                                                local rs = game:GetService("ReplicatedStorage")
+                                                local SetOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                                if SetOwner then SetOwner:FireServer(targetHRP, targetHRP.CFrame) end
+                                            end)
+                                            
+                                            task.wait(0.01) -- 極限の速さ
+                                            
+                                            -- 即リリースして次の衝撃を与える
+                                            remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                                            remote:FireServer(rightDet, targetHRP, rightWeld, 1)
+                                        end
                                     end
                                     
-                                    -- C. プロット外で消された場合はループを抜けて再召喚へ
+                                    -- プロット外消去チェック
                                     if not blobman.Parent then break end
                                 end
                             end
+                            task.wait(0.02)
                         end
                     end
                     task.wait(0.1)
