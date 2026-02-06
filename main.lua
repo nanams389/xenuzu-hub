@@ -804,46 +804,41 @@ RunService.Heartbeat:Connect(function(deltaTime)
     end
 end)
 
--- ============================================================
--- アンチ・ブロブマン (Anti-Blobman) 機能
--- ============================================================
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
 
-local AntiBlobmanEnabled = false -- トグル制御用変数
+local AntiBlobmanEnabled = true
 
--- Orion UI へのトグル追加（invulnerabilitySection は既存の変数名に合わせています）
-invulnerabilitySection:AddToggle({
-    Name = "アンチ・ブロブマン (掴み拒否)",
-    Default = false,
-    Callback = function(Value)
-        AntiBlobmanEnabled = Value
-    end
-})
-
--- 高速ループ処理 (既存の Heartbeat 接続とは別に、より反応速度の速い Stepped を使用)
-RunService.Stepped:Connect(function()
+RunService.Heartbeat:Connect(function()
     if not AntiBlobmanEnabled then return end
     
-    local char = getLocalChar()
-    if char then
-        -- 1. 物理的な「繋ぎ目 (Weld)」をすべて破壊
-        -- Blobmanの腕と自分を繋ぐパーツを消去して脱出する
-        for _, v in pairs(char:GetDescendants()) do
+    local char = lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    
+    if hrp and hum then
+        -- 1. 全ワークスペースをスキャンして、自分を繋いでいるWeldを特定・破壊
+        -- 相手のBlobmanの中に生成されたWeldもこれで消せます
+        for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("Weld") or v:IsA("ManualWeld") or v:IsA("Snap") then
-                -- Blobmanに限らず、強制的に自分を固定しようとするすべてのWeldを対象
-                v:Destroy()
+                if v.Part0 == hrp or v.Part1 == hrp or v.Parent == char then
+                    v:Destroy()
+                end
             end
         end
+
+        -- 2. 掴み状態の強制解除
+        if hum.Sit then 
+            hum.Sit = false 
+        end
+        hum.PlatformStand = false
         
-        -- 2. ステータス異常の強制リセット
-        local hum = getLocalHum()
-        if hum then
-            -- 掴まれた時に強制的に「座り状態」や「転倒状態」にされるのを防ぐ
-            if hum.Sit then 
-                hum.Sit = false 
-            end
-            if hum.PlatformStand then
-                hum.PlatformStand = false
-            end
+        -- 3. 【重要】ネットワーク所有権の強制奪還
+        -- 掴まれると操作権を奪われるため、速度をゼロにして物理演算をリセット
+        if hrp.Anchored == false then
+            hrp.Velocity = Vector3.zero
+            hrp.RotVelocity = Vector3.zero
         end
     end
 end)
