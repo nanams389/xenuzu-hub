@@ -1903,143 +1903,67 @@ BlobTab:AddToggle({
     end
 })
 
--- GRAB AURA TAB
-local GrabAuraTab = Window:MakeTab({
-    Name = "Grab Aura",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
+-- [[ 事前準備：スクリプトの上のほうに1回だけ貼ってください ]]
+local antiBlob1T = false
+local antiExplodeT = false
+local Player = game.Players.LocalPlayer
 
-local GrabAuraSection = GrabAuraTab:AddSection({
-    Name = "Target Selection"
-})
-
-local selectedKickPlayer = nil
-local kickLoopEnabled = false
-
-local function getPlayerList()
-    local list = {}
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= Player then
-            table.insert(list, plr.DisplayName .. " (" .. plr.Name .. ")")
-        end
-    end
-    return list
-end
-
-local function getPlayerFromSelection(selection)
-    if not selection then return nil end
-    local username = selection:match("%((.-)%)")
-    if username then
-        return Players:FindFirstChild(username)
-    end
-    return nil
-end
-
-GrabAuraTab:AddDropdown({
-    Name = "Select Player",
-    Default = "",
-    Options = getPlayerList(),
-    Callback = function(Value)
-        selectedKickPlayer = getPlayerFromSelection(Value)
-    end
-})
-
-GrabAuraTab:AddButton({
-    Name = "Refresh Player List",
-    Callback = function()
-        notify("Info", "Please reopen the menu to refresh", 3)
-    end
-})
-
-local GrabAuraSection2 = GrabAuraTab:AddSection({
-    Name = "Grab Methods"
-})
-
-GrabAuraTab:AddToggle({
-    Name = "Loop Kick (grab + blob)",
-    Default = false,
-    Callback = function(on)
-        kickLoopEnabled = on
-        local target = selectedKickPlayer
-        if on and not target then
-            kickLoopEnabled = false
-            notify("Error", "No target selected", 3)
-            return
-        end
-        local char = Player.Character
-        local hum = char and char:FindFirstChild("Humanoid")
-        local seat = hum and hum.SeatPart
-        if on and (not seat or seat.Parent.Name ~= "CreatureBlobman") then
-            kickLoopEnabled = false
-            notify("Error", "You must be sitting in Blobman", 3)
-            return
-        end
-        if not on then
-            kickLoopEnabled = false
-            return
-        end
-        task.spawn(function()
-            local RS = game:GetService("ReplicatedStorage")
-            local GE = RS:WaitForChild("GrabEvents")
-            local RunService = game:GetService("RunService")
-            local blob = seat.Parent
-            local blobRoot = blob:FindFirstChild("HumanoidRootPart") or blob.PrimaryPart
-            local scriptObj = blob:FindFirstChild("BlobmanSeatAndOwnerScript")
-            local CG = scriptObj and scriptObj:FindFirstChild("CreatureGrab")
-            local CD = scriptObj and scriptObj:FindFirstChild("CreatureDrop")
-            local R_Det = blob:FindFirstChild("RightDetector")
-            local R_Weld = R_Det and (R_Det:FindFirstChild("RightWeld") or R_Det:FindFirstChildWhichIsA("Weld"))
-            local SavedPos = blobRoot.CFrame
-            local tChar = target.Character
-            local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
-            if tRoot and blobRoot then
-                local bringStart = tick()
-                while tick() - bringStart < 0.35 do
-                    if not kickLoopEnabled then
-                        break
-                    end
-                    blobRoot.CFrame = tRoot.CFrame
-                    blobRoot.Velocity = Vector3.zero
-                    pcall(function()
-                        if CG and R_Det then
-                            CG:FireServer(R_Det, tRoot, R_Weld)
-                        end
-                        GE.CreateGrabLine:FireServer(tRoot, Vector3.zero, tRoot.Position, false)
-                        GE.SetNetworkOwner:FireServer(tRoot, blobRoot.CFrame)
-                    end)
-                    RunService.Heartbeat:Wait()
-                end
-                blobRoot.CFrame = SavedPos
-                blobRoot.Velocity = Vector3.zero
-                task.wait(0.05)
-            end
-            local packetTimer = 0
-            while kickLoopEnabled do
-                if not target or not target.Parent or not target.Character then
-                    break
-                end
-                local tChar = target.Character
-                local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
-                if not tRoot then
-                    break
-                end
-                pcall(function()
-                    if CG and R_Det then
-                        CG:FireServer(R_Det, tRoot, R_Weld)
-                    end
-                    GE.CreateGrabLine:FireServer(tRoot, Vector3.zero, tRoot.Position, false)
-                    GE.SetNetworkOwner:FireServer(tRoot, blobRoot.CFrame)
-                end)
-                packetTimer = packetTimer + 1
-                if packetTimer >= 30 then
-                    packetTimer = 0
-                    task.wait(0.05)
-                end
-                RunService.Heartbeat:Wait()
-            end
-            kickLoopEnabled = false
+-- AntiBlobmanの監視を一度だけ開始（ボタンのON/OFF状態を監視する形に変更）
+workspace.DescendantAdded:Connect(function(toy)
+    if antiBlob1T and toy.Name == "CreatureBlobman" then
+        pcall(function()
+            toy:WaitForChild("LeftDetector", 3):Destroy()
+            toy:WaitForChild("RightDetector", 3):Destroy()
         end)
+    end
+end)
+
+-- [[ Orion UI ボタン部分 ]]
+
+-- Anti Blobman トグル
+DefenseTab:AddToggle({
+    Name = "Anti Blobman",
+    Default = false,
+    Callback = function(Value)
+        antiBlob1T = Value
+        print("Anti-Blobman: " .. tostring(Value))
+    end
+})
+
+-- Anti Explode トグル
+DefenseTab:AddToggle({
+    Name = "Anti Explode",
+    Default = false,
+    Callback = function(Value)
+        antiExplodeT = Value
+        if Value then
+            -- Anti Explodeのロジック本体
+            task.spawn(function()
+                local char = Player.Character or Player.CharacterAdded:Wait()
+                local hrp = char:WaitForChild("HumanoidRootPart")
+                
+                local connection
+                connection = workspace.ChildAdded:Connect(function(model)
+                    if not antiExplodeT then connection:Disconnect() return end
+                    if model.Name == "Part" then
+                        pcall(function()
+                            local mag = (model.Position - hrp.Position).Magnitude
+                            if mag <= 20 then
+                                hrp.Anchored = true
+                                task.wait(0.01)
+                                -- 腕の衝突判定が戻るまで待機
+                                while char:FindFirstChild("Right Arm") and 
+                                      char["Right Arm"]:FindFirstChild("RagdollLimbPart") and 
+                                      char["Right Arm"].RagdollLimbPart.CanCollide do
+                                    task.wait(0.01)
+                                end
+                                hrp.Anchored = false
+                            end
+                        end)
+                    end
+                end)
+            end)
+        end
     end
 })
 --==============================
