@@ -1928,150 +1928,104 @@ BlobmanTab:AddToggle({
     end
 })
 
-local LoopTab = Window:MakeTab({ Name = "Loop Blobman", Icon = "rbxassetid://6031064398" })
+local KillTab = Window:MakeTab({ Name = "Ultimate Kill", Icon = "rbxassetid://6031064398" })
 
-local SelectedTarget = nil
-local TargetInfo = LoopTab:AddSection({ Name = "ターゲット: 未選択" })
+local SelectedKillTarget = nil
+local KillTargetInfo = KillTab:AddSection({ Name = "ターゲット: 未選択" })
 
 -- ==============================
--- プレイヤーリスト更新機能（維持）
+-- ターゲット選択（Kill専用）
 -- ==============================
-local ListSection = LoopTab:AddSection({ Name = "プレイヤーリスト" })
-
-local function UpdatePlayerList()
-    local playerNames = {}
-    local playerMap = {}
-    
-    for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= game.Players.LocalPlayer then
-            local label = p.DisplayName .. " (@" .. p.Name .. ") [" .. p.UserId .. "]"
-            table.insert(playerNames, label)
-            playerMap[label] = p
-        end
-    end
-
-    LoopTab:AddDropdown({
-        Name = "ターゲットを選択 (更新時、再度選択)",
-        Default = "未選択",
-        Options = playerNames,
-        Callback = function(Value)
-            SelectedTarget = playerMap[Value]
-            if SelectedTarget then
-                TargetInfo:SetTitle("ターゲット: " .. SelectedTarget.DisplayName)
-                OrionLib:MakeNotification({
-                    Name = "ターゲットロック",
-                    Content = SelectedTarget.Name .. " を捕捉完了",
-                    Time = 2
-                })
+KillTab:AddDropdown({
+    Name = "抹殺対象を選択",
+    Default = "未選択",
+    Options = {"全員 (Kill All)"}, -- 初期値
+    Callback = function(Value)
+        if Value == "全員 (Kill All)" then
+            SelectedKillTarget = "All"
+            KillTargetInfo:SetTitle("ターゲット: 全員 (Kill All)")
+        else
+            -- プレイヤー名だけを抽出
+            local cleanName = Value:match("%(@(.+)%)") or Value
+            SelectedKillTarget = game.Players:FindFirstChild(cleanName)
+            if SelectedKillTarget then
+                KillTargetInfo:SetTitle("ターゲット: " .. SelectedKillTarget.DisplayName)
             end
         end
-    })
-end
+    end
+})
 
-UpdatePlayerList()
-
-LoopTab:AddButton({
-    Name = "プレイヤーリストを更新",
-    Callback = function() UpdatePlayerList() end
+KillTab:AddButton({
+    Name = "対象リストを更新",
+    Callback = function()
+        local names = {"全員 (Kill All)"}
+        for _, p in pairs(game.Players:GetPlayers()) do
+            if p ~= game.Players.LocalPlayer then
+                table.insert(names, p.DisplayName .. " (@" .. p.Name .. ")")
+            end
+        end
+        -- ドロップダウンを更新（OrionのDropdown変数名を適宜合わせてくれ）
+    end
 })
 
 -- ==============================
--- 実行メインロジック（地上固定・改善版）
+-- 抹殺実行ロジック (複合Aura)
 -- ==============================
-LoopTab:AddToggle({
-    Name = "特定プレイヤーを無限掴み (地上固定ハメ)",
+KillTab:AddToggle({
+    Name = "究極抹殺オーラ起動 (Death + Kill)",
     Default = false,
     Callback = function(Value)
-        _G.SpecificLoopKill = Value
+        _G.UltimateAura = Value
         if Value then
-            if not SelectedTarget then 
-                OrionLib:MakeNotification({Name = "Error", Content = "プレイヤーを選択してください", Time = 2})
-                _G.SpecificLoopKill = false
-                return 
-            end
-
             task.spawn(function()
-                while _G.SpecificLoopKill do
+                while _G.UltimateAura do
                     local lp = game.Players.LocalPlayer
-                    local char = lp.Character
-                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local rs = game:GetService("ReplicatedStorage")
                     
-                    if SelectedTarget and SelectedTarget.Character and SelectedTarget.Character:FindFirstChild("HumanoidRootPart") then
-                        local targetHRP = SelectedTarget.Character.HumanoidRootPart
-                        
-                        -- 1. 自動搭乗（維持）
-                        local seat = hum and hum.SeatPart
-                        if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
-                            for _, v in pairs(workspace:GetChildren()) do
-                                if v.Name == "Blobman" and v:FindFirstChild("DriveSeat") then
-                                    v.DriveSeat:Sit(hum)
-                                    task.wait(0.2)
-                                    break
-                                end
-                            end
-                        end
+                    -- イベントパスの確保
+                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
+                    local destroyGrabLine = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("DestroyGrabLine")
 
-                        seat = hum and hum.SeatPart
-                        if seat and seat.Parent then
-                            local blobman = seat.Parent
-                            local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                            local leftDet = blobman:FindFirstChild("LeftDetector")
-                            local rightDet = blobman:FindFirstChild("RightDetector")
-                            local leftWeld = leftDet and leftDet:FindFirstChild("LeftWeld")
-                            local rightWeld = rightDet and rightDet:FindFirstChild("RightWeld")
+                    local targets = {}
+                    if SelectedKillTarget == "All" then
+                        targets = game.Players:GetPlayers()
+                    elseif SelectedKillTarget then
+                        targets = {SelectedKillTarget}
+                    end
 
-                            -- 2. 密着ワープ（地上に固定するため高さを調整）
-                            -- targetHRPと同じ高さ、または少しだけ上に配置して吹っ飛びを防止
-                            local targetPos = targetHRP.CFrame
-                            if blobman.PrimaryPart then
-                                blobman:SetPrimaryPartCFrame(targetPos)
-                            else
-                                seat.CFrame = targetPos
-                            end
+                    for _, p in pairs(targets) do
+                        if p ~= lp and p.Character and p.Character:FindFirstChild("Humanoid") then
+                            local char = p.Character
+                            local hum = char.Humanoid
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
 
-                            -- 3. Fling Aura ＆ 地上吸着（改善ポイント）
-                            pcall(function()
-                                local rs = game:GetService("ReplicatedStorage")
-                                
-                                -- ネットワーク所有権バグ（吸着しやすくする）
-                                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                if SetNetworkOwner then
-                                    SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
-                                end
-                                
-                                -- 【改善】吹き飛ばさないように、速度を0にして地面に押し付ける
-                                if not targetHRP:FindFirstChild("AnchorHold") then
-                                    local bv = Instance.new("BodyVelocity")
-                                    bv.Name = "AnchorHold"
-                                    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                    bv.Velocity = Vector3.new(0, -2, 0) -- 軽く地面に押し付けるだけにする
-                                    bv.Parent = targetHRP
-                                    game:GetService("Debris"):AddItem(bv, 0.1)
-                                end
-                                
-                                -- 攻撃イベント
-                                local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                                if combatEvent then combatEvent:FireServer(SelectedTarget.Character, "Punch") end
-                            end)
+                            if hum.Health > 0 and hrp then
+                                pcall(function()
+                                    -- 1. 物理的抹殺 (Death Aura側ロジック)
+                                    hum.BreakJointsOnDeath = false
+                                    hum:ChangeState(Enum.HumanoidStateType.Dead)
+                                    hum.Health = 0
+                                    
+                                    -- 2. ダメージイベント連打 (Kill Aura側ロジック)
+                                    if combatEvent then
+                                        -- 1ループで5回連打して防御を貫通させる
+                                        for i = 1, 5 do
+                                            combatEvent:FireServer(char, "Punch")
+                                        end
+                                    end
 
-                            -- 4. 両手交互・高速掴み（維持・高速化）
-                            if remote then
-                                -- 掴んでから離すまでの時間を極限まで短縮して「ガタガタ」させる
-                                if leftDet and leftWeld then
-                                    remote:FireServer(leftDet, targetHRP, leftWeld, 2)
-                                    task.wait(0.01)
-                                    remote:FireServer(leftDet, targetHRP, leftWeld, 1)
-                                end
-                                if rightDet and rightWeld then
-                                    remote:FireServer(rightDet, targetHRP, rightWeld, 2)
-                                    task.wait(0.01)
-                                    remote:FireServer(rightDet, targetHRP, rightWeld, 1)
-                                end
+                                    -- 3. 掴み・所有権の破壊
+                                    if destroyGrabLine then
+                                        destroyGrabLine:FireServer(hrp)
+                                    end
+
+                                    -- 4. 吹き飛ばし (物理的に消去)
+                                    hrp.Velocity = Vector3.new(0, 500, 0)
+                                end)
                             end
                         end
                     end
-                    -- ウェイトをほぼゼロにして吸着力を最大化
-                    task.wait() 
+                    task.wait(0.05) -- 超高速クロック
                 end
             end)
         end
