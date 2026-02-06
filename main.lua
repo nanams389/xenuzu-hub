@@ -1928,110 +1928,138 @@ BlobmanTab:AddToggle({
     end
 })
 
-local KillTab = Window:MakeTab({ Name = "Ultimate Kill", Icon = "rbxassetid://6031064398" })
+local KillTab = Window:MakeTab({ Name = "Ultimate Execution", Icon = "rbxassetid://6031064398" })
 
-local SelectedKillTarget = nil
-local KillTargetInfo = KillTab:AddSection({ Name = "ターゲット: 未選択" })
+local SelectedExecTarget = nil
+local ExecTargetInfo = KillTab:AddSection({ Name = "ターゲット: 未選択" })
 
 -- ==============================
--- ターゲット選択（Kill専用）
+-- プレイヤーリスト更新機能
 -- ==============================
-KillTab:AddDropdown({
-    Name = "抹殺対象を選択",
-    Default = "未選択",
-    Options = {"全員 (Kill All)"}, -- 初期値
-    Callback = function(Value)
-        if Value == "全員 (Kill All)" then
-            SelectedKillTarget = "All"
-            KillTargetInfo:SetTitle("ターゲット: 全員 (Kill All)")
-        else
-            -- プレイヤー名だけを抽出
-            local cleanName = Value:match("%(@(.+)%)") or Value
-            SelectedKillTarget = game.Players:FindFirstChild(cleanName)
-            if SelectedKillTarget then
-                KillTargetInfo:SetTitle("ターゲット: " .. SelectedKillTarget.DisplayName)
-            end
+local function UpdateExecList()
+    local playerNames = {"全員 (Kill All)"}
+    local playerMap = {}
+    playerMap["全員 (Kill All)"] = "All"
+    
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            local label = p.DisplayName .. " (@" .. p.Name .. ")"
+            table.insert(playerNames, label)
+            playerMap[label] = p
         end
     end
-})
 
-KillTab:AddButton({
-    Name = "対象リストを更新",
-    Callback = function()
-        local names = {"全員 (Kill All)"}
-        for _, p in pairs(game.Players:GetPlayers()) do
-            if p ~= game.Players.LocalPlayer then
-                table.insert(names, p.DisplayName .. " (@" .. p.Name .. ")")
+    KillTab:AddDropdown({
+        Name = "抹殺ターゲットを選択",
+        Default = "未選択",
+        Options = playerNames,
+        Callback = function(Value)
+            SelectedExecTarget = playerMap[Value]
+            if SelectedExecTarget == "All" then
+                ExecTargetInfo:SetTitle("ターゲット: 全サーバー抹殺")
+            elseif SelectedExecTarget then
+                ExecTargetInfo:SetTitle("ターゲット: " .. SelectedExecTarget.DisplayName)
             end
         end
-        -- ドロップダウンを更新（OrionのDropdown変数名を適宜合わせてくれ）
-    end
-})
+    })
+end
+
+UpdateExecList()
 
 -- ==============================
--- 抹殺実行ロジック (複合Aura)
+-- 執行メインロジック (TP & Kill & Return)
 -- ==============================
 KillTab:AddToggle({
-    Name = "究極抹殺オーラ起動 (Death + Kill)",
+    Name = "TP抹殺ループ (自動帰還付)",
     Default = false,
     Callback = function(Value)
-        _G.UltimateAura = Value
+        _G.ExecutionLoop = Value
         if Value then
-            task.spawn(function()
-                while _G.UltimateAura do
-                    local lp = game.Players.LocalPlayer
-                    local rs = game:GetService("ReplicatedStorage")
-                    
-                    -- イベントパスの確保
-                    local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") or rs:FindFirstChild("HitEvent")
-                    local destroyGrabLine = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("DestroyGrabLine")
+            if not SelectedExecTarget then 
+                OrionLib:MakeNotification({Name = "Error", Content = "ターゲットを選んでくれ", Time = 2})
+                _G.ExecutionLoop = false
+                return 
+            end
 
+            task.spawn(function()
+                local lp = game.Players.LocalPlayer
+                local originalPos = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and lp.Character.HumanoidRootPart.CFrame
+
+                while _G.ExecutionLoop do
                     local targets = {}
-                    if SelectedKillTarget == "All" then
+                    if SelectedExecTarget == "All" then
                         targets = game.Players:GetPlayers()
-                    elseif SelectedKillTarget then
-                        targets = {SelectedKillTarget}
+                    else
+                        targets = {SelectedExecTarget}
                     end
 
-                    for _, p in pairs(targets) do
-                        if p ~= lp and p.Character and p.Character:FindFirstChild("Humanoid") then
-                            local char = p.Character
-                            local hum = char.Humanoid
-                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                    for _, target in pairs(targets) do
+                        if not _G.ExecutionLoop then break end
+                        if target ~= lp and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                            local tHRP = target.Character.HumanoidRootPart
+                            local tHum = target.Character:FindFirstChildOfClass("Humanoid")
+                            
+                            if tHum and tHum.Health > 0 then
+                                -- 1. 相手の元へ強制テレポート
+                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 0, 3)
+                                task.wait(0.1)
 
-                            if hum.Health > 0 and hrp then
-                                pcall(function()
-                                    -- 1. 物理的抹殺 (Death Aura側ロジック)
-                                    hum.BreakJointsOnDeath = false
-                                    hum:ChangeState(Enum.HumanoidStateType.Dead)
-                                    hum.Health = 0
-                                    
-                                    -- 2. ダメージイベント連打 (Kill Aura側ロジック)
-                                    if combatEvent then
-                                        -- 1ループで5回連打して防御を貫通させる
-                                        for i = 1, 5 do
-                                            combatEvent:FireServer(char, "Punch")
+                                -- 2. Blobmanロジック（君のコードを直結）
+                                local hum = lp.Character:FindFirstChildOfClass("Humanoid")
+                                local seat = hum and hum.SeatPart
+                                if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
+                                    for _, v in pairs(workspace:GetChildren()) do
+                                        if v.Name == "Blobman" and v:FindFirstChild("DriveSeat") then
+                                            v.DriveSeat:Sit(hum)
+                                            task.wait(0.1)
+                                            break
                                         end
                                     end
+                                end
 
-                                    -- 3. 掴み・所有権の破壊
-                                    if destroyGrabLine then
-                                        destroyGrabLine:FireServer(hrp)
-                                    end
+                                seat = hum and hum.SeatPart
+                                if seat and seat.Parent then
+                                    local blobman = seat.Parent
+                                    local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                                    
+                                    -- 抹殺実行（君の最強掴みロジックをそのまま高速回し）
+                                    pcall(function()
+                                        local rs = game:GetService("ReplicatedStorage")
+                                        -- ネットワーク所有権奪取
+                                        local SetNet = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                        if SetNet then SetNet:FireServer(tHRP, tHRP.CFrame) end
+                                        
+                                        -- 状態破壊 (Death Aura)
+                                        tHum.Health = 0
+                                        tHum:ChangeState(Enum.HumanoidStateType.Dead)
 
-                                    -- 4. 吹き飛ばし (物理的に消去)
-                                    hrp.Velocity = Vector3.new(0, 500, 0)
-                                end)
+                                        -- 連続掴み
+                                        if remote then
+                                            local lDet = blobman:FindFirstChild("LeftDetector")
+                                            local rDet = blobman:FindFirstChild("RightDetector")
+                                            local lW = lDet and lDet:FindFirstChild("LeftWeld")
+                                            local rW = rDet and rDet:FindFirstChild("RightWeld")
+                                            
+                                            remote:FireServer(lDet, tHRP, lW, 2)
+                                            remote:FireServer(rDet, tHRP, rW, 2)
+                                        end
+                                    end)
+                                    task.wait(0.3) -- 殺害までの猶予
+                                end
                             end
                         end
                     end
-                    task.wait(0.05) -- 超高速クロック
+                    
+                    -- 3. 自動帰還 (元の場所へ)
+                    if originalPos then
+                        lp.Character.HumanoidRootPart.CFrame = originalPos
+                    end
+                    task.wait(0.5) -- サーバー負荷軽減のためのインターバル
                 end
             end)
         end
     end
 })
-
 
 
 --==============================
