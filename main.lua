@@ -786,30 +786,30 @@ RunService.Heartbeat:Connect(function(deltaTime)
             ragdoll()
         end
         
-        -- ブロブの状態チェックと再生成ロジック
-        if AntiGucciBlob then
-            if not AntiGucciBlob.Parent then
-                AntiGucciBlob = nil
-                if AntiGucciEnabled then
-                    task.wait(0.5)
-                    -- 再起動（一度内部的にリセットして再生成）
-                    local pos = getLocalRoot() and getLocalRoot().CFrame
-                    if pos then
-                        local blob = spawntoy("CreatureBlobman", pos)
-                        AntiGucciBlob = blob
-                    end
-                end
-            end
-        end
-    end
-end)
-
+-- ============================================================
+-- 1. 設定用変数 (スクリプトの先頭の方に)
+-- ============================================================
+local AntiBlobmanEnabled = false
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 
-local AntiBlobmanEnabled = true
+-- ============================================================
+-- 2. Orion UI ボタン作成 (invulnerabilitySection の部分は自分の変数名に変えてください)
+-- ============================================================
+-- もしセクション変数名が違う場合は、ここを書き換えてください
+invulnerabilitySection:AddToggle({
+    Name = "アンチ・ブロブマン (掴み拒否)",
+    Default = false,
+    Callback = function(Value)
+        AntiBlobmanEnabled = Value
+        print("Anti-Blobman State: ", Value) -- 動作確認用
+    end    
+})
 
+-- ============================================================
+-- 3. 機能ロジック (一度だけ定義すればOK)
+-- ============================================================
 RunService.Heartbeat:Connect(function()
     if not AntiBlobmanEnabled then return end
     
@@ -818,27 +818,23 @@ RunService.Heartbeat:Connect(function()
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     
     if hrp and hum then
-        -- 1. 全ワークスペースをスキャンして、自分を繋いでいるWeldを特定・破壊
-        -- 相手のBlobmanの中に生成されたWeldもこれで消せます
+        -- 自分の周りや、相手のBlobman内にある自分を繋ぐWeldを全消去
         for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("Weld") or v:IsA("ManualWeld") or v:IsA("Snap") then
-                if v.Part0 == hrp or v.Part1 == hrp or v.Parent == char then
+                if v.Part0 == hrp or v.Part1 == hrp or v:IsDescendantOf(char) then
                     v:Destroy()
                 end
             end
         end
 
-        -- 2. 掴み状態の強制解除
-        if hum.Sit then 
-            hum.Sit = false 
-        end
+        -- 座り状態と転倒の強制解除
+        if hum.Sit then hum.Sit = false end
         hum.PlatformStand = false
         
-        -- 3. 【重要】ネットワーク所有権の強制奪還
-        -- 掴まれると操作権を奪われるため、速度をゼロにして物理演算をリセット
+        -- 振り回された勢いを殺す
         if hrp.Anchored == false then
-            hrp.Velocity = Vector3.zero
-            hrp.RotVelocity = Vector3.zero
+            hrp.Velocity = Vector3.new(0, 0, 0)
+            hrp.RotVelocity = Vector3.new(0, 0, 0)
         end
     end
 end)
