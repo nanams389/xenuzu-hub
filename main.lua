@@ -1965,7 +1965,7 @@ local BringDropdown = BringTab:AddDropdown({
 })
 
 BringTab:AddButton({
-    Name = "プレイヤーリストを更新",
+    Name = "リストを更新",
     Callback = function()
         local n, m = GetBringPlayerList()
         BringDropdown:Refresh(n, true)
@@ -1974,50 +1974,53 @@ BringTab:AddButton({
 })
 
 -- ==============================
--- 2. 特定プレイヤー Bring 実行ボタン
+-- 2. 特定プレイヤー Bring 実行ボタン (強制連行仕様)
 -- ==============================
 BringTab:AddButton({
     Name = "選択したプレイヤーを Bring",
     Callback = function()
         local target = SelectedBringTarget
         if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
-            return -- ターゲットがいない場合は何もしない
+            return 
         end
 
         local rs = game:GetService("ReplicatedStorage")
         local myChar = lp.Character
         local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
         local targetHRP = target.Character.HumanoidRootPart
+        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
         if myHRP then
-            -- 自分の現在位置（連れてくる場所）を記憶
-            local originalPos = myHRP.CFrame
+            -- 1. 帰還先の座標を保存
+            local returnPos = myHRP.CFrame
 
             pcall(function()
-                -- A. 相手の場所に一瞬テレポートして物理的な「接触」を発生させる
+                -- 2. 相手の場所にテレポート (所有権を奪うための接触)
                 myHRP.CFrame = targetHRP.CFrame
-                
-                -- B. Flingロジック：所有権をバグらせる
-                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                task.wait(0.05) -- サーバーに「重なった」と認識させる時間
+
+                -- 3. 【重要】Flingロジックと所有権の強制上書き
+                -- 相手を「自分の管理下」に置くようサーバーに要求
                 if SetNetworkOwner then
+                    -- 相手の座標を、今自分がいる場所としてサーバーに報告
                     SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
                 end
 
-                -- C. Flingロジック：BodyVelocityで物理拘束（下向きに叩きつける）
+                -- 4. 相手を物理的に動けなくする (Fling/Stun効果)
                 local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                bv.Velocity = Vector3.new(0, -50, 0)
+                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bv.Velocity = Vector3.new(0, -10, 0) -- 軽く地面に固定
                 bv.Parent = targetHRP
-                game:GetService("Debris"):AddItem(bv, 0.2)
+                game:GetService("Debris"):AddItem(bv, 0.1)
 
-                task.wait(0.1) -- 所有権がこちらに移るまでの極小の待機
+                -- 5. 【重要】自分と相手を同時に「元の場所」へテレポート
+                -- ここで一気に座標を書き換える
+                myHRP.CFrame = returnPos
+                targetHRP.CFrame = returnPos * CFrame.new(0, 0, -3) -- 自分の目の前に出現させる
 
-                -- D. 自分と一緒に元の場所へ一気に戻る
-                myHRP.CFrame = originalPos
-                targetHRP.CFrame = originalPos * CFrame.new(0, 0, -3) -- 自分の3スタッド前に配置
-                
-                -- 相手の速度をゼロにしてその場に固定
-                targetHRP.Velocity = Vector3.zero
+                -- 6. 相手の慣性を止めて逃げられないようにする
+                targetHRP.Velocity = Vector3.new(0, 0, 0)
+                targetHRP.RotVelocity = Vector3.new(0, 0, 0)
             end)
         end
     end
