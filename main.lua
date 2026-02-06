@@ -1938,7 +1938,6 @@ BlobmanTab:AddToggle({
         if Value then
             task.spawn(function()
                 while _G.BlobmanGrabLoopEnabled do
-                    task.wait(0.1)
                     pcall(function()
                         local target = players:FindFirstChild(_G.PlayerToLongGrab)
                         local char = lp.Character
@@ -1947,9 +1946,11 @@ BlobmanTab:AddToggle({
                         local seat = hum and hum.SeatPart
                         
                         if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
+                            task.wait(0.5)
                             return
                         end
                         if not seat or not seat.Parent then
+                            task.wait(0.5)
                             return
                         end
                         
@@ -1959,6 +1960,7 @@ BlobmanTab:AddToggle({
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                         
                         if not remote or not targetHum or targetHum.Health <= 0 then
+                            task.wait(0.5)
                             return
                         end
                         
@@ -1968,56 +1970,72 @@ BlobmanTab:AddToggle({
                         local rightWeld = rightDetector and rightDetector:FindFirstChild("RightWeld")
                         
                         if not leftDetector or not rightDetector or not leftWeld or not rightWeld then
+                            task.wait(0.5)
                             return
                         end
                         
-                        -- 相手の場所に自動テレポート
-                        local targetPos = targetHRP.CFrame * CFrame.new(0, 2, 0)
-                        if blobman.PrimaryPart then
-                            blobman:SetPrimaryPartCFrame(targetPos)
-                        else
-                            seat.CFrame = targetPos
-                        end
-                        
-                        task.wait(0.05)
-                        
-                        -- 掴む
-                        remote:FireServer(leftDetector, targetHRP, leftWeld, 3)
-                        remote:FireServer(rightDetector, targetHRP, rightWeld, 3)
-                        
-                        task.wait(0.15)
-                        
-                        -- Aura攻撃 (Fling + ダメージ)
-                        pcall(function()
-                            -- Fling効果
-                            local bv = Instance.new("BodyVelocity", targetHRP)
-                            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                            bv.Velocity = Vector3.new(math.random(-50, 50), -30, math.random(-50, 50))
-                            game:GetService("Debris"):AddItem(bv, 0.08)
-                            
-                            -- 所有権バグ
-                            local rs = game:GetService("ReplicatedStorage")
-                            local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                            if SetNetworkOwner then
-                                SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
-                            end
-                            
-                            -- ダメージイベント
-                            local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") 
-                                             or rs:FindFirstChild("HitEvent")
-                            if combatEvent then
-                                combatEvent:FireServer(target.Character, "Punch")
-                            end
-                        end)
+                        -- 1. 相手の場所に強制テレポート
+                        local targetPos = targetHRP.CFrame * CFrame.new(0, 3, 0)
+                        blobman:SetPrimaryPartCFrame(targetPos)
+                        seat.CFrame = targetPos
+                        hrp.CFrame = targetPos
                         
                         task.wait(0.1)
                         
-                        -- 離す
+                        -- 2. Aura攻撃開始
+                        for auraLoop = 1, 3 do
+                            pcall(function()
+                                local replicatedStorage = game:GetService("ReplicatedStorage")
+                                
+                                -- Fling効果
+                                local bv = Instance.new("BodyVelocity")
+                                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                bv.Velocity = Vector3.new(math.random(-40, 40), -25, math.random(-40, 40))
+                                bv.Parent = targetHRP
+                                game:GetService("Debris"):AddItem(bv, 0.1)
+                                
+                                -- 所有権バグ
+                                local SetNetworkOwner = replicatedStorage:FindFirstChild("GrabEvents") 
+                                    and replicatedStorage.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                if SetNetworkOwner then
+                                    SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+                                end
+                                
+                                -- ダメージイベント
+                                local combatEvent = replicatedStorage:FindFirstChild("Events") 
+                                    and replicatedStorage.Events:FindFirstChild("Combat") 
+                                    or replicatedStorage:FindFirstChild("HitEvent")
+                                if combatEvent then
+                                    combatEvent:FireServer(target.Character, "Punch")
+                                end
+                            end)
+                            task.wait(0.05)
+                        end
+                        
+                        -- 3. 掴む
+                        remote:FireServer(leftDetector, targetHRP, leftWeld, 3)
+                        remote:FireServer(rightDetector, targetHRP, rightWeld, 3)
+                        
+                        task.wait(0.25)
+                        
+                        -- 4. シェイク
+                        for shake = 1, 5 do
+                            leftDetector.CFrame = targetHRP.CFrame * CFrame.new(0, -20, 0)
+                            rightDetector.CFrame = targetHRP.CFrame * CFrame.new(0, -20, 0)
+                            task.wait(0.02)
+                            leftDetector.CFrame = targetHRP.CFrame * CFrame.new(0, 20, 0)
+                            rightDetector.CFrame = targetHRP.CFrame * CFrame.new(0, 20, 0)
+                            task.wait(0.02)
+                        end
+                        
+                        -- 5. 離す
                         remote:FireServer(leftDetector, nil, leftWeld, 3)
                         remote:FireServer(rightDetector, nil, rightWeld, 3)
                         
-                        task.wait(0.2)
+                        task.wait(0.3)
+                        
                     end)
+                    task.wait(0.1)
                 end
             end)
         end
