@@ -1930,105 +1930,94 @@ BlobTab:AddToggle({
     end
 })
 
-BlobTab:AddToggle({ Name = "フレンドを除外 (Whitelist)", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
-
--- [[ Bring タブの作成 ]]
-local BringTab = Window:MakeTab({
-    Name = "Bring",
-    Icon = "rbxassetid://6031064398"
-})
-
-local SelectedBringTarget = nil
-local lp = game.Players.LocalPlayer
-
--- ==============================
--- 1. プレイヤーリスト管理
--- ==============================
-local function GetBringPlayerList()
-    local pNames = {}
-    local pMap = {}
-    for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= lp then
-            local label = p.DisplayName .. " (@" .. p.Name .. ")"
-            table.insert(pNames, label)
-            pMap[label] = p
-        end
-    end
-    return pNames, pMap
-end
-
-local names, map = GetBringPlayerList()
-local BringDropdown = BringTab:AddDropdown({
-    Name = "ターゲットを選択",
-    Default = "未選択",
-    Options = names,
-    Callback = function(Value)
-        SelectedBringTarget = map[Value]
-    end
-})
-
-BringTab:AddButton({
-    Name = "リストを更新",
+BlobmanTab:AddButton({
+    Name = "blobmanで相手を掴む(自動キック)",
     Callback = function()
-        local n, m = GetBringPlayerList()
-        BringDropdown:Refresh(n, true)
-        map = m
-    end
-})
-
--- ==============================
--- 2. 特定プレイヤー Bring 実行ボタン (強制連行仕様)
--- ==============================
-BringTab:AddButton({
-    Name = "選択したプレイヤーを Bring",
-    Callback = function()
-        local target = SelectedBringTarget
-        if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
-            return 
-        end
-
-        local rs = game:GetService("ReplicatedStorage")
-        local myChar = lp.Character
-        local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local targetHRP = target.Character.HumanoidRootPart
-        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-
-        if myHRP then
-            -- 1. 帰還先の座標を保存
-            local returnPos = myHRP.CFrame
-
-            pcall(function()
-                -- 2. 相手の場所にテレポート (所有権を奪うための接触)
-                myHRP.CFrame = targetHRP.CFrame
-                task.wait(0.05) -- サーバーに「重なった」と認識させる時間
-
-                -- 3. 【重要】Flingロジックと所有権の強制上書き
-                -- 相手を「自分の管理下」に置くようサーバーに要求
-                if SetNetworkOwner then
-                    -- 相手の座標を、今自分がいる場所としてサーバーに報告
-                    SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
-                end
-
-                -- 4. 相手を物理的に動けなくする (Fling/Stun効果)
+        pcall(function()
+            local target = players:FindFirstChild(_G.PlayerToLongGrab)
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local seat = hum and hum.SeatPart
+            
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+                local blobman = seat.Parent
+                local targetHRP = target.Character.HumanoidRootPart
+                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                
+                -- 自動浮上開始
                 local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = Vector3.new(0, -10, 0) -- 軽く地面に固定
-                bv.Parent = targetHRP
-                game:GetService("Debris"):AddItem(bv, 0.1)
-
-                -- 5. 【重要】自分と相手を同時に「元の場所」へテレポート
-                -- ここで一気に座標を書き換える
-                myHRP.CFrame = returnPos
-                targetHRP.CFrame = returnPos * CFrame.new(0, 0, -3) -- 自分の目の前に出現させる
-
-                -- 6. 相手の慣性を止めて逃げられないようにする
-                targetHRP.Velocity = Vector3.new(0, 0, 0)
-                targetHRP.RotVelocity = Vector3.new(0, 0, 0)
-            end)
-        end
+                bv.Name = "AutoFloat"
+                bv.MaxForce = Vector3.new(0, 1e9, 0)
+                bv.Velocity = Vector3.new(0, 50, 0)
+                bv.Parent = hrp
+                
+                task.wait(0.3)
+                bv.Velocity = Vector3.new(0, 0, 0)
+                
+                -- 3回掴んで離す
+                for grabCount = 1, 3 do
+                    -- 相手の場所にテレポート
+                    local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
+                    if blobman.PrimaryPart then
+                        blobman:SetPrimaryPartCFrame(targetPos)
+                    else
+                        seat.CFrame = targetPos
+                    end
+                    
+                    task.wait(0.1)
+                    
+                    -- 両手で掴む
+                    local leftDetector = blobman:WaitForChild("LeftDetector")
+                    local rightDetector = blobman:WaitForChild("RightDetector")
+                    local leftWeld = leftDetector:WaitForChild("LeftWeld")
+                    local rightWeld = rightDetector:WaitForChild("RightWeld")
+                    
+                    remote:FireServer(leftDetector, targetHRP, leftWeld, 3)
+                    remote:FireServer(rightDetector, targetHRP, rightWeld, 3)
+                    
+                    task.wait(0.3)
+                    
+                    -- エラー誘発シェイク
+                    for i = 1, 10 do
+                        local shakeDown = targetHRP.CFrame * CFrame.new(0, -25, 0)
+                        leftDetector.CFrame = shakeDown
+                        rightDetector.CFrame = shakeDown
+                        task.wait(0.02)
+                        
+                        local shakeUp = targetHRP.CFrame * CFrame.new(0, 25, 0)
+                        leftDetector.CFrame = shakeUp
+                        rightDetector.CFrame = shakeUp
+                        task.wait(0.02)
+                    end
+                    
+                    task.wait(0.2)
+                    
+                    -- 離す (nilを送る)
+                    remote:FireServer(leftDetector, nil, leftWeld, 3)
+                    remote:FireServer(rightDetector, nil, rightWeld, 3)
+                    
+                    task.wait(0.3)
+                end
+                
+                -- 最後の強制キック
+                task.wait(0.5)
+                local finalShake = blobman:FindFirstChild("LeftDetector")
+                if finalShake then
+                    for i = 1, 20 do
+                        finalShake.CFrame = targetHRP.CFrame * CFrame.new(0, -50, 0)
+                        task.wait(0.01)
+                        finalShake.CFrame = targetHRP.CFrame * CFrame.new(0, 50, 0)
+                        task.wait(0.01)
+                    end
+                end
+                
+                -- 浮上維持削除
+                game:GetService("Debris"):AddItem(bv, 1.0)
+            end
+        end)
     end
 })
-
 
 --==============================
 -- 初期化
