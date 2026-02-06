@@ -1910,6 +1910,10 @@ local GrabAuraTab = Window:MakeTab({
     PremiumOnly = false
 })
 
+local GrabAuraSection = GrabAuraTab:AddSection({
+    Name = "Target Selection"
+})
+
 local selectedKickPlayer = nil
 local kickLoopEnabled = false
 
@@ -1944,9 +1948,12 @@ GrabAuraTab:AddDropdown({
 GrabAuraTab:AddButton({
     Name = "Refresh Player List",
     Callback = function()
-        -- Orion UIではドロップダウンの更新が異なる場合があります
         notify("Info", "Please reopen the menu to refresh", 3)
     end
+})
+
+local GrabAuraSection2 = GrabAuraTab:AddSection({
+    Name = "Grab Methods"
 })
 
 GrabAuraTab:AddToggle({
