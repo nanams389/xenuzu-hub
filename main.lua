@@ -2062,6 +2062,45 @@ KillTab:AddToggle({
     end
 })
 
+local BringAllEnabled = false
+
+-- Bring All トグルの追加
+LoopKillTab:AddToggle({
+    Name = "全員 Bring (自分のもとへ強制召喚)",
+    Default = false,
+    Callback = function(Value)
+        BringAllEnabled = Value
+        
+        if BringAllEnabled then
+            task.spawn(function()
+                while BringAllEnabled do
+                    local lp = game.Players.LocalPlayer
+                    local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+                    local rs = game:GetService("ReplicatedStorage")
+                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+
+                    if myHRP and SetNetworkOwner then
+                        for _, p in pairs(game.Players:GetPlayers()) do
+                            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetHRP = p.Character.HumanoidRootPart
+                                
+                                -- 1. ネットワーク所有権を奪う
+                                SetNetworkOwner:FireServer(targetHRP, myHRP.CFrame)
+                                
+                                -- 2. 自分の2スタッド前に強制配置
+                                targetHRP.CFrame = myHRP.CFrame * CFrame.new(0, 0, -2)
+                                
+                                -- 3. 相手の動きを止める（逃げられにくくする）
+                                targetHRP.Velocity = Vector3.zero
+                            end
+                        end
+                    end
+                    task.wait() -- 高速ループで逃がさない
+                end
+            end)
+        end
+    end
+})
 
 --==============================
 -- 初期化
