@@ -1930,91 +1930,99 @@ BlobTab:AddToggle({
     end
 })
 
-BlobmanTab:AddButton({
-    Name = "blobmanで相手を掴む(自動キック)",
-    Callback = function()
-        pcall(function()
-            local target = players:FindFirstChild(_G.PlayerToLongGrab)
-            local char = lp.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local seat = hum and hum.SeatPart
-            
-            if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
-                return
-            end
-            if not seat or not seat.Parent then
-                return
-            end
-            
-            local blobman = seat.Parent
-            local targetHRP = target.Character.HumanoidRootPart
-            local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-            
-            if not remote then return end
-            
-            -- 自動浮上 (空飛べる状態)
-            local bv = Instance.new("BodyVelocity")
-            bv.Name = "AutoFloat"
-            bv.MaxForce = Vector3.new(0, math.huge, 0)
-            bv.Velocity = Vector3.new(0, 60, 0)
-            bv.Parent = hrp
-            
-            task.wait(0.5)
-            bv.Velocity = Vector3.new(0, 0, 0)
-            bv.MaxForce = Vector3.new(0, 9e9, 0)
-            
-            -- 相手の場所に自動テレポート
-            local targetPos = targetHRP.CFrame * CFrame.new(0, 3, 0)
-            if blobman.PrimaryPart then
-                blobman:SetPrimaryPartCFrame(targetPos)
-            else
-                seat.CFrame = targetPos
-            end
-            
-            task.wait(0.15)
-            
-            local leftDetector = blobman:FindFirstChild("LeftDetector")
-            local rightDetector = blobman:FindFirstChild("RightDetector")
-            local leftWeld = leftDetector and leftDetector:FindFirstChild("LeftWeld")
-            local rightWeld = rightDetector and rightDetector:FindFirstChild("RightWeld")
-            
-            if not leftDetector or not rightDetector or not leftWeld or not rightWeld then
-                bv:Destroy()
-                return
-            end
-            
-            -- 3回だけ掴んで離す + キック
-            for i = 1, 3 do
-                -- 掴む
-                remote:FireServer(leftDetector, targetHRP, leftWeld, 3)
-                remote:FireServer(rightDetector, targetHRP, rightWeld, 3)
-                
-                task.wait(0.2)
-                
-                -- 強力シェイク (キック効果)
-                for shake = 1, 8 do
-                    leftDetector.CFrame = targetHRP.CFrame * CFrame.new(0, -30, 0)
-                    rightDetector.CFrame = targetHRP.CFrame * CFrame.new(0, -30, 0)
-                    task.wait(0.015)
-                    leftDetector.CFrame = targetHRP.CFrame * CFrame.new(0, 30, 0)
-                    rightDetector.CFrame = targetHRP.CFrame * CFrame.new(0, 30, 0)
-                    task.wait(0.015)
+BlobmanTab:AddToggle({
+    Name = "blobman掴み続ける + Aura",
+    Default = false,
+    Callback = function(Value)
+        _G.BlobmanGrabLoopEnabled = Value
+        if Value then
+            task.spawn(function()
+                while _G.BlobmanGrabLoopEnabled do
+                    task.wait(0.1)
+                    pcall(function()
+                        local target = players:FindFirstChild(_G.PlayerToLongGrab)
+                        local char = lp.Character
+                        local hum = char and char:FindFirstChildOfClass("Humanoid")
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        local seat = hum and hum.SeatPart
+                        
+                        if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
+                            return
+                        end
+                        if not seat or not seat.Parent then
+                            return
+                        end
+                        
+                        local blobman = seat.Parent
+                        local targetHRP = target.Character.HumanoidRootPart
+                        local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        
+                        if not remote or not targetHum or targetHum.Health <= 0 then
+                            return
+                        end
+                        
+                        local leftDetector = blobman:FindFirstChild("LeftDetector")
+                        local rightDetector = blobman:FindFirstChild("RightDetector")
+                        local leftWeld = leftDetector and leftDetector:FindFirstChild("LeftWeld")
+                        local rightWeld = rightDetector and rightDetector:FindFirstChild("RightWeld")
+                        
+                        if not leftDetector or not rightDetector or not leftWeld or not rightWeld then
+                            return
+                        end
+                        
+                        -- 相手の場所に自動テレポート
+                        local targetPos = targetHRP.CFrame * CFrame.new(0, 2, 0)
+                        if blobman.PrimaryPart then
+                            blobman:SetPrimaryPartCFrame(targetPos)
+                        else
+                            seat.CFrame = targetPos
+                        end
+                        
+                        task.wait(0.05)
+                        
+                        -- 掴む
+                        remote:FireServer(leftDetector, targetHRP, leftWeld, 3)
+                        remote:FireServer(rightDetector, targetHRP, rightWeld, 3)
+                        
+                        task.wait(0.15)
+                        
+                        -- Aura攻撃 (Fling + ダメージ)
+                        pcall(function()
+                            -- Fling効果
+                            local bv = Instance.new("BodyVelocity", targetHRP)
+                            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                            bv.Velocity = Vector3.new(math.random(-50, 50), -30, math.random(-50, 50))
+                            game:GetService("Debris"):AddItem(bv, 0.08)
+                            
+                            -- 所有権バグ
+                            local rs = game:GetService("ReplicatedStorage")
+                            local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                            if SetNetworkOwner then
+                                SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+                            end
+                            
+                            -- ダメージイベント
+                            local combatEvent = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat") 
+                                             or rs:FindFirstChild("HitEvent")
+                            if combatEvent then
+                                combatEvent:FireServer(target.Character, "Punch")
+                            end
+                        end)
+                        
+                        task.wait(0.1)
+                        
+                        -- 離す
+                        remote:FireServer(leftDetector, nil, leftWeld, 3)
+                        remote:FireServer(rightDetector, nil, rightWeld, 3)
+                        
+                        task.wait(0.2)
+                    end)
                 end
-                
-                -- 離す
-                remote:FireServer(leftDetector, nil, leftWeld, 3)
-                remote:FireServer(rightDetector, nil, rightWeld, 3)
-                
-                task.wait(0.25)
-            end
-            
-            -- 浮上維持 (5秒後に削除)
-            game:GetService("Debris"):AddItem(bv, 5.0)
-        end)
+            end)
+        end
     end
 })
-
 --==============================
 -- 初期化
 --==============================
