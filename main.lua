@@ -1929,73 +1929,95 @@ BlobmanTab:AddToggle({
     end
 })
 
--- [[ Bring All タブの作成 ]]
+-- [[ Bring タブの作成 ]]
 local BringTab = Window:MakeTab({
-    Name = "Bring All",
+    Name = "Bring",
     Icon = "rbxassetid://6031064398"
 })
 
-local BringAllActive = false
+local SelectedBringTarget = nil
+local lp = game.Players.LocalPlayer
 
-BringTab:AddToggle({
-    Name = "全員 Bring (Fling拉致・強制連行)",
-    Default = false,
+-- ==============================
+-- 1. プレイヤーリスト管理
+-- ==============================
+local function GetBringPlayerList()
+    local pNames = {}
+    local pMap = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= lp then
+            local label = p.DisplayName .. " (@" .. p.Name .. ")"
+            table.insert(pNames, label)
+            pMap[label] = p
+        end
+    end
+    return pNames, pMap
+end
+
+local names, map = GetBringPlayerList()
+local BringDropdown = BringTab:AddDropdown({
+    Name = "ターゲットを選択",
+    Default = "未選択",
+    Options = names,
     Callback = function(Value)
-        BringAllActive = Value
-        
-        if BringAllActive then
-            task.spawn(function()
-                local lp = game.Players.LocalPlayer
-                local rs = game:GetService("ReplicatedStorage")
+        SelectedBringTarget = map[Value]
+    end
+})
+
+BringTab:AddButton({
+    Name = "プレイヤーリストを更新",
+    Callback = function()
+        local n, m = GetBringPlayerList()
+        BringDropdown:Refresh(n, true)
+        map = m
+    end
+})
+
+-- ==============================
+-- 2. 特定プレイヤー Bring 実行ボタン
+-- ==============================
+BringTab:AddButton({
+    Name = "選択したプレイヤーを Bring",
+    Callback = function()
+        local target = SelectedBringTarget
+        if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
+            return -- ターゲットがいない場合は何もしない
+        end
+
+        local rs = game:GetService("ReplicatedStorage")
+        local myChar = lp.Character
+        local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        local targetHRP = target.Character.HumanoidRootPart
+
+        if myHRP then
+            -- 自分の現在位置（連れてくる場所）を記憶
+            local originalPos = myHRP.CFrame
+
+            pcall(function()
+                -- A. 相手の場所に一瞬テレポートして物理的な「接触」を発生させる
+                myHRP.CFrame = targetHRP.CFrame
                 
-                while BringAllActive do
-                    local myChar = lp.Character
-                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    
-                    if myHRP then
-                        -- 開始時の自分の場所（拉致先）を記憶
-                        local originalPos = myHRP.CFrame
-                        
-                        for _, p in pairs(game.Players:GetPlayers()) do
-                            if not BringAllActive then break end
-                            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                local targetHRP = p.Character.HumanoidRootPart
-                                local targetHum = p.Character:FindFirstChild("Humanoid")
-
-                                if targetHum and targetHum.Health > 0 then
-                                    pcall(function()
-                                        -- 1. 相手の場所に一瞬テレポートして物理所有権を奪う
-                                        myHRP.CFrame = targetHRP.CFrame
-                                        
-                                        -- Flingロジック：所有権奪取
-                                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                        if SetNetworkOwner then
-                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
-                                        end
-
-                                        -- Flingロジック：BodyVelocityで物理的に固める
-                                        local bv = Instance.new("BodyVelocity")
-                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                        bv.Velocity = Vector3.new(0, -50, 0) -- 強力な下向きの力
-                                        bv.Parent = targetHRP
-                                        game:GetService("Debris"):AddItem(bv, 0.2)
-
-                                        task.wait(0.05) -- 同期のための極小の待ち
-
-                                        -- 2. 自分と一緒に元の場所へ連れ去る
-                                        myHRP.CFrame = originalPos
-                                        targetHRP.CFrame = originalPos * CFrame.new(0, 0, -3)
-                                        
-                                        -- 速度をリセットしてその場に落とす
-                                        targetHRP.Velocity = Vector3.zero
-                                    end)
-                                    task.wait(0.15) -- 一人あたりの拉致スピード
-                                end
-                            end
-                        end
-                    end
-                    task.wait(0.5) -- 全員の拉致が一巡した後の待機
+                -- B. Flingロジック：所有権をバグらせる
+                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                if SetNetworkOwner then
+                    SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
                 end
+
+                -- C. Flingロジック：BodyVelocityで物理拘束（下向きに叩きつける）
+                local bv = Instance.new("BodyVelocity")
+                bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                bv.Velocity = Vector3.new(0, -50, 0)
+                bv.Parent = targetHRP
+                game:GetService("Debris"):AddItem(bv, 0.2)
+
+                task.wait(0.1) -- 所有権がこちらに移るまでの極小の待機
+
+                -- D. 自分と一緒に元の場所へ一気に戻る
+                myHRP.CFrame = originalPos
+                targetHRP.CFrame = originalPos * CFrame.new(0, 0, -3) -- 自分の3スタッド前に配置
+                
+                -- 相手の速度をゼロにしてその場に固定
+                targetHRP.Velocity = Vector3.zero
             end)
         end
     end
