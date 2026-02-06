@@ -1932,55 +1932,61 @@ BlobmanTab:AddToggle({
 -- [[ Bring All タブの作成 ]]
 local BringTab = Window:MakeTab({
     Name = "Bring All",
-    Icon = "rbxassetid://6031064398" -- アイコンは任意で変更してください
+    Icon = "rbxassetid://6031064398"
 })
 
-local BringAllEnabled = false
+local BringAllActive = false
 
--- Bring All トグルの追加
 BringTab:AddToggle({
-    Name = "全員 Bring (自分のもとへ強制召喚)",
+    Name = "全員 Bring (瞬間テレポート連行)",
     Default = false,
     Callback = function(Value)
-        BringAllEnabled = Value
+        BringAllActive = Value
         
-        if BringAllEnabled then
+        if BringAllActive then
             task.spawn(function()
-                while BringAllEnabled do
-                    local lp = game.Players.LocalPlayer
-                    local char = lp.Character
-                    local myHRP = char and char:FindFirstChild("HumanoidRootPart")
-                    local rs = game:GetService("ReplicatedStorage")
+                local lp = game.Players.LocalPlayer
+                local rs = game:GetService("ReplicatedStorage")
+                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                
+                while BringAllActive do
+                    local myChar = lp.Character
+                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
                     
-                    -- リモートイベントの取得
-                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-
-                    if myHRP and SetNetworkOwner then
+                    if myHRP then
+                        -- 元いた場所を記憶
+                        local originalPos = myHRP.CFrame
+                        
                         for _, p in pairs(game.Players:GetPlayers()) do
-                            -- 自分以外で、有効なキャラクターを持っているプレイヤーを対象にする
+                            if not BringAllActive then break end
                             if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
                                 pcall(function()
-                                    -- 1. ネットワーク所有権を奪う
-                                    SetNetworkOwner:FireServer(targetHRP, myHRP.CFrame)
+                                    -- 1. 相手の場所に一瞬テレポート（所有権奪取のため）
+                                    myHRP.CFrame = targetHRP.CFrame
+                                    task.wait(0.05) -- 同期のための極小の待ち
                                     
-                                    -- 2. 自分の2スタッド前に強制配置
-                                    targetHRP.CFrame = myHRP.CFrame * CFrame.new(0, 0, -2)
+                                    -- 2. 所有権を要求
+                                    if SetNetworkOwner then
+                                        SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+                                    end
                                     
-                                    -- 3. 相手の物理速度をリセット（逃げ防止）
+                                    -- 3. 相手を連れて元の場所に戻る
+                                    myHRP.CFrame = originalPos
+                                    targetHRP.CFrame = originalPos * CFrame.new(0, 0, -3)
                                     targetHRP.Velocity = Vector3.zero
                                 end)
+                                task.wait(0.1) -- 一人ずつの処理間隔
                             end
                         end
                     end
-                    task.wait(0.01) -- サーバーへの負荷と同期速度のバランス
+                    task.wait(0.5) -- 全員終わった後の待機
                 end
             end)
         end
     end
 })
-
 --==============================
 -- 初期化
 --==============================
