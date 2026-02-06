@@ -2028,6 +2028,106 @@ BringTab:AddButton({
         end
     end
 })
+
+--==============================
+-- タブ：Blobman Ultimate Kill
+--==============================
+local KillTab = Window:MakeTab({ Name = "Blobman Kill", Icon = "rbxassetid://4483345998" })
+
+local SelectedPlayer = ""
+local players = game:GetService("Players")
+local lp = players.LocalPlayer
+local replicatedStorage = game:GetService("ReplicatedStorage")
+
+-- ターゲット選択用ドロップダウン
+local KillDropdown = KillTab:AddDropdown({
+    Name = "ターゲット選択",
+    Default = "",
+    Options = {}, 
+    Callback = function(Value)
+        SelectedPlayer = Value
+    end    
+})
+
+-- リスト更新関数
+local function RefreshKillList()
+    local pList = {}
+    for _, p in pairs(players:GetPlayers()) do
+        if p ~= lp then table.insert(pList, p.Name) end
+    end
+    KillDropdown:Refresh(pList, true)
+end
+
+KillTab:AddButton({
+    Name = "プレイヤーリスト更新",
+    Callback = function()
+        RefreshKillList()
+    end
+})
+
+-- [[ 究極合体オーラ：ダメージ + 高速掴み ]]
+KillTab:AddToggle({
+    Name = "究極Blobmanオーラ (ダメージ&高速掴み)",
+    Default = false,
+    Callback = function(Value)
+        _G.UltimateBlobmanAura = Value
+        if Value then
+            task.spawn(function()
+                while _G.UltimateBlobmanAura do
+                    local target = players:FindFirstChild(SelectedPlayer)
+                    local char = lp.Character
+                    local seat = char and char.Humanoid.SeatPart
+                    
+                    -- ターゲットとBlobman（搭乗中）の存在確認
+                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local grabRemote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        local targetHRP = target.Character.HumanoidRootPart
+                        local combatEvent = replicatedStorage:FindFirstChild("Events") and replicatedStorage.Events:FindFirstChild("Combat") 
+                                         or replicatedStorage:FindFirstChild("HitEvent")
+
+                        pcall(function()
+                            -- 1. ダメージオーラセクション (Combatイベント)
+                            if combatEvent and (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude <= 30 then
+                                combatEvent:FireServer(target.Character, "Punch")
+                            end
+
+                            -- 2. ネットワーク所有権の剥奪 (Flingロジック)
+                            local SetNetworkOwner = replicatedStorage:FindFirstChild("GrabEvents") and replicatedStorage.GrabEvents:FindFirstChild("SetNetworkOwner")
+                            if SetNetworkOwner then
+                                SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+                            end
+
+                            -- 3. 超高速両手掴み・離しループ
+                            if grabRemote then
+                                for _, arm in ipairs({"Left", "Right"}) do
+                                    local det = blobman:FindFirstChild(arm .. "Detector")
+                                    local weld = det and det:FindFirstChild(arm .. "Weld")
+                                    if det and weld then
+                                        -- 掴む(2) -> 即座に離す(1) を両手で実行
+                                        grabRemote:FireServer(det, targetHRP, weld, 2)
+                                        grabRemote:FireServer(det, targetHRP, weld, 1)
+                                    end
+                                end
+                            end
+
+                            -- 4. 地面に叩きつける物理圧力を付与 (反撃封じ)
+                            local bv = Instance.new("BodyVelocity")
+                            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                            bv.Velocity = Vector3.new(0, -20, 0)
+                            bv.Parent = targetHRP
+                            game:GetService("Debris"):AddItem(bv, 0.05)
+                        end)
+                    end
+                    task.wait(0.01) -- 限界突破の超高速ループ
+                end
+            end)
+        end
+    end
+})
+
+-- 初期リスト読み込み
+RefreshKillList()
 --==============================
 -- 初期化
 --==============================
