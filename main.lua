@@ -777,53 +777,7 @@ invulnerabilitySection:AddToggle({
     end
 })
 
--- ============================================================
--- アンチ・ブロブマン機能 (Orion UI トグル修正版)
--- ============================================================
 
-local AntiBlobmanEnabled = false
-local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
-local lp = Players.LocalPlayer
-
--- ボタンを追加
-invulnerabilitySection:AddToggle({
-    Name = "アンチ・ブロブマン (Anti-Blobman)",
-    Default = false,
-    Callback = function(Value)
-        AntiBlobmanEnabled = Value
-        print("Anti-Blobman State: ", Value)
-    end -- Callbackの閉じ
-}) -- AddToggleの閉じ
-
--- 機能ロジック (ループ)
-RunService.Heartbeat:Connect(function()
-    if not AntiBlobmanEnabled then return end
-    
-    local char = lp.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    
-    if hrp and hum then
-        -- 拘束具 (Weldなど) を広域スキャンして削除
-        for _, v in pairs(workspace:GetDescendants()) do
-            if v:IsA("Weld") or v:IsA("ManualWeld") or v:IsA("Snap") then
-                if v.Part0 == hrp or v.Part1 == hrp or v:IsDescendantOf(char) then
-                    v:Destroy()
-                end
-            end
-        end
-
-        -- 座り状態と勢いのリセット
-        if hum.Sit then hum.Sit = false end
-        hum.PlatformStand = false
-        
-        if hrp.Anchored == false then
-            hrp.Velocity = Vector3.zero
-            hrp.RotVelocity = Vector3.zero
-        end
-    end
-end)
 --==============================
 -- タブ：究極オーラ (Ultimate)
 --==============================
@@ -1949,7 +1903,240 @@ BlobTab:AddToggle({
     end
 })
 
+-- ANTI GUCCI TAB
+local AntiGucciTab = Window:MakeTab({
+    Name = "Anti Gucci",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
 
+local antiGucciConnection
+local safePosition
+local restoreFrames = 0
+
+local function spawnBlobman()
+    local args = {
+        [1] = "CreatureBlobman",
+        [2] = CFrame.new(0, 5000000, 0),
+        [3] = Vector3.new(0, 60, 0)
+    }
+    pcall(function()
+        ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(unpack(args))
+    end)
+    local folder = Workspace:WaitForChild(Player.Name .. "SpawnedInToys", 5)
+    if folder and folder:FindFirstChild("CreatureBlobman") then
+        local blob = folder.CreatureBlobman
+        if blob:FindFirstChild("Head") then
+            blob.Head.CFrame = CFrame.new(0, 50000, 0)
+            blob.Head.Anchored = true
+        end
+        notify("Success", "Blobman Spawned!", 3)
+    end
+end
+
+local function startAntiGucci()
+    local character = Player.Character or Player.CharacterAdded:Wait()
+    local humanoid = character:WaitForChild("Humanoid")
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    safePosition = rootPart.Position
+    
+    local folder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
+    local blob = folder and folder:FindFirstChild("CreatureBlobman")
+    local seat = blob and blob:FindFirstChild("VehicleSeat")
+    
+    if not blob then
+        spawnBlobman()
+        task.wait(1)
+        folder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
+        blob = folder and folder:FindFirstChild("CreatureBlobman")
+        seat = blob and blob:FindFirstChild("VehicleSeat")
+    end
+    
+    if seat and seat:IsA("VehicleSeat") then
+        rootPart.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+        seat:Sit(humanoid)
+    end
+    
+    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
+        if humanoid.Jump and humanoid.Sit then
+            restoreFrames = 15
+            safePosition = rootPart.Position
+        end
+    end)
+    
+    if antiGucciConnection then
+        antiGucciConnection:Disconnect()
+    end
+    
+    antiGucciConnection = RunService.Heartbeat:Connect(function()
+        if not rootPart or not humanoid then return end
+        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(rootPart, 0)
+        if restoreFrames > 0 then
+            rootPart.CFrame = CFrame.new(safePosition)
+            restoreFrames = restoreFrames - 1
+        end
+    end)
+    
+    task.spawn(function()
+        while humanoid.Sit do
+            task.wait(1)
+        end
+        task.wait(0.5)
+        rootPart.CFrame = CFrame.new(safePosition)
+    end)
+end
+
+local function stopAntiGucci()
+    if antiGucciConnection then
+        antiGucciConnection:Disconnect()
+        antiGucciConnection = nil
+    end
+    local blobFolder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
+    if blobFolder and blobFolder:FindFirstChild("CreatureBlobman") then
+        blobFolder.CreatureBlobman:Destroy()
+    end
+end
+
+local antiGucciConnectionTrain
+local safePositionTrain
+local restoreFramesTrain = 0
+
+local function startAntiGucciTrain()
+    local character = Player.Character or Player.CharacterAdded:Wait()
+    local humanoid = character:WaitForChild("Humanoid")
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    safePositionTrain = rootPart.Position
+    
+    local folder = workspace.Map.AlwaysHereTweenedObjects
+    local train = folder and folder:FindFirstChild("Train")
+    local seat
+    
+    if train then
+        for _, d in ipairs(train:GetDescendants()) do
+            if d:IsA("Seat") then
+                seat = d
+                break
+            end
+        end
+    end
+    
+    if seat then
+        rootPart.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+        seat:Sit(humanoid)
+    end
+    
+    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
+        if humanoid.Jump and humanoid.Sit then
+            restoreFramesTrain = 15
+            safePositionTrain = rootPart.Position
+        end
+    end)
+    
+    if antiGucciConnectionTrain then
+        antiGucciConnectionTrain:Disconnect()
+    end
+    
+    antiGucciConnectionTrain = RunService.Heartbeat:Connect(function()
+        if not rootPart or not humanoid then return end
+        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(rootPart, 0)
+        if restoreFramesTrain > 0 then
+            rootPart.CFrame = CFrame.new(safePositionTrain)
+            restoreFramesTrain = restoreFramesTrain - 1
+        end
+    end)
+    
+    task.spawn(function()
+        while humanoid.Sit do
+            task.wait(1)
+        end
+        task.wait(0.5)
+        rootPart.CFrame = CFrame.new(safePositionTrain)
+    end)
+end
+
+local function stopAntiGucciTrain()
+    if antiGucciConnectionTrain then
+        antiGucciConnectionTrain:Disconnect()
+        antiGucciConnectionTrain = nil
+    end
+end
+
+local autoGucciActive = false
+AntiGucciTab:AddToggle({
+    Name = "Anti Gucci (Blobman)",
+    Default = false,
+    Callback = function(Value)
+        autoGucciActive = Value
+        if Value then
+            startAntiGucci()
+            notify("System", "Auto Gucci Active", 3)
+            task.spawn(function()
+                while autoGucciActive do
+                    local toysFolder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
+                    local blobExists = toysFolder and toysFolder:FindFirstChild("CreatureBlobman")
+                    if not blobExists then
+                        stopAntiGucci()
+                        spawnBlobman()
+                        notify("System", "Blobman Lost", 3)
+                        local retries = 0
+                        repeat
+                            task.wait(0.2)
+                            retries = retries + 1
+                            toysFolder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
+                        until (toysFolder and toysFolder:FindFirstChild("CreatureBlobman")) or retries > 25 or not autoGucciActive
+                        if autoGucciActive and toysFolder and toysFolder:FindFirstChild("CreatureBlobman") then
+                            startAntiGucci()
+                            notify("System", "Blobman Restored", 3)
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        else
+            autoGucciActive = false
+            stopAntiGucci()
+            notify("System", "Auto Gucci Disabled", 3)
+        end
+    end
+})
+
+local autoGucciActiveTrain = false
+AntiGucciTab:AddToggle({
+    Name = "Anti Gucci (Train)",
+    Default = false,
+    Callback = function(Value)
+        autoGucciActiveTrain = Value
+        if Value then
+            startAntiGucciTrain()
+            notify("System", "Gucci Active (Monitoring)", 3)
+            task.spawn(function()
+                while autoGucciActiveTrain do
+                    local trainFolder = workspace.Map.AlwaysHereTweenedObjects
+                    local trainExists = trainFolder and trainFolder:FindFirstChild("Train")
+                    if not trainExists then
+                        stopAntiGucciTrain()
+                        notify("System", "Train Lost", 3)
+                        local retries = 0
+                        repeat
+                            task.wait(0.2)
+                            retries = retries + 1
+                            trainFolder = workspace.Map.AlwaysHereTweenedObjects
+                        until (trainFolder and trainFolder:FindFirstChild("Train")) or retries > 25 or not autoGucciActiveTrain
+                        if autoGucciActiveTrain and trainFolder and trainFolder:FindFirstChild("Train") then
+                            startAntiGucciTrain()
+                            notify("System", "Train Restored", 3)
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        else
+            autoGucciActiveTrain = false
+            stopAntiGucciTrain()
+            notify("System", "Gucci Disabled", 3)
+        end
+    end
+})
 --==============================
 -- 初期化
 --==============================
