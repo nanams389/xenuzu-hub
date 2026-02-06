@@ -1903,238 +1903,136 @@ BlobTab:AddToggle({
     end
 })
 
--- ANTI GUCCI TAB
-local AntiGucciTab = Window:MakeTab({
-    Name = "Anti Gucci",
+-- GRAB AURA TAB
+local GrabAuraTab = Window:MakeTab({
+    Name = "Grab Aura",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-local antiGucciConnection
-local safePosition
-local restoreFrames = 0
+local selectedKickPlayer = nil
+local kickLoopEnabled = false
 
-local function spawnBlobman()
-    local args = {
-        [1] = "CreatureBlobman",
-        [2] = CFrame.new(0, 5000000, 0),
-        [3] = Vector3.new(0, 60, 0)
-    }
-    pcall(function()
-        ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(unpack(args))
-    end)
-    local folder = Workspace:WaitForChild(Player.Name .. "SpawnedInToys", 5)
-    if folder and folder:FindFirstChild("CreatureBlobman") then
-        local blob = folder.CreatureBlobman
-        if blob:FindFirstChild("Head") then
-            blob.Head.CFrame = CFrame.new(0, 50000, 0)
-            blob.Head.Anchored = true
+local function getPlayerList()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= Player then
+            table.insert(list, plr.DisplayName .. " (" .. plr.Name .. ")")
         end
-        notify("Success", "Blobman Spawned!", 3)
     end
+    return list
 end
 
-local function startAntiGucci()
-    local character = Player.Character or Player.CharacterAdded:Wait()
-    local humanoid = character:WaitForChild("Humanoid")
-    local rootPart = character:WaitForChild("HumanoidRootPart")
-    safePosition = rootPart.Position
-    
-    local folder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
-    local blob = folder and folder:FindFirstChild("CreatureBlobman")
-    local seat = blob and blob:FindFirstChild("VehicleSeat")
-    
-    if not blob then
-        spawnBlobman()
-        task.wait(1)
-        folder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
-        blob = folder and folder:FindFirstChild("CreatureBlobman")
-        seat = blob and blob:FindFirstChild("VehicleSeat")
+local function getPlayerFromSelection(selection)
+    if not selection then return nil end
+    local username = selection:match("%((.-)%)")
+    if username then
+        return Players:FindFirstChild(username)
     end
-    
-    if seat and seat:IsA("VehicleSeat") then
-        rootPart.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
-        seat:Sit(humanoid)
-    end
-    
-    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
-        if humanoid.Jump and humanoid.Sit then
-            restoreFrames = 15
-            safePosition = rootPart.Position
-        end
-    end)
-    
-    if antiGucciConnection then
-        antiGucciConnection:Disconnect()
-    end
-    
-    antiGucciConnection = RunService.Heartbeat:Connect(function()
-        if not rootPart or not humanoid then return end
-        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(rootPart, 0)
-        if restoreFrames > 0 then
-            rootPart.CFrame = CFrame.new(safePosition)
-            restoreFrames = restoreFrames - 1
-        end
-    end)
-    
-    task.spawn(function()
-        while humanoid.Sit do
-            task.wait(1)
-        end
-        task.wait(0.5)
-        rootPart.CFrame = CFrame.new(safePosition)
-    end)
+    return nil
 end
 
-local function stopAntiGucci()
-    if antiGucciConnection then
-        antiGucciConnection:Disconnect()
-        antiGucciConnection = nil
-    end
-    local blobFolder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
-    if blobFolder and blobFolder:FindFirstChild("CreatureBlobman") then
-        blobFolder.CreatureBlobman:Destroy()
-    end
-end
-
-local antiGucciConnectionTrain
-local safePositionTrain
-local restoreFramesTrain = 0
-
-local function startAntiGucciTrain()
-    local character = Player.Character or Player.CharacterAdded:Wait()
-    local humanoid = character:WaitForChild("Humanoid")
-    local rootPart = character:WaitForChild("HumanoidRootPart")
-    safePositionTrain = rootPart.Position
-    
-    local folder = workspace.Map.AlwaysHereTweenedObjects
-    local train = folder and folder:FindFirstChild("Train")
-    local seat
-    
-    if train then
-        for _, d in ipairs(train:GetDescendants()) do
-            if d:IsA("Seat") then
-                seat = d
-                break
-            end
-        end
-    end
-    
-    if seat then
-        rootPart.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
-        seat:Sit(humanoid)
-    end
-    
-    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
-        if humanoid.Jump and humanoid.Sit then
-            restoreFramesTrain = 15
-            safePositionTrain = rootPart.Position
-        end
-    end)
-    
-    if antiGucciConnectionTrain then
-        antiGucciConnectionTrain:Disconnect()
-    end
-    
-    antiGucciConnectionTrain = RunService.Heartbeat:Connect(function()
-        if not rootPart or not humanoid then return end
-        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(rootPart, 0)
-        if restoreFramesTrain > 0 then
-            rootPart.CFrame = CFrame.new(safePositionTrain)
-            restoreFramesTrain = restoreFramesTrain - 1
-        end
-    end)
-    
-    task.spawn(function()
-        while humanoid.Sit do
-            task.wait(1)
-        end
-        task.wait(0.5)
-        rootPart.CFrame = CFrame.new(safePositionTrain)
-    end)
-end
-
-local function stopAntiGucciTrain()
-    if antiGucciConnectionTrain then
-        antiGucciConnectionTrain:Disconnect()
-        antiGucciConnectionTrain = nil
-    end
-end
-
-local autoGucciActive = false
-AntiGucciTab:AddToggle({
-    Name = "Anti Gucci (Blobman)",
-    Default = false,
+GrabAuraTab:AddDropdown({
+    Name = "Select Player",
+    Default = "",
+    Options = getPlayerList(),
     Callback = function(Value)
-        autoGucciActive = Value
-        if Value then
-            startAntiGucci()
-            notify("System", "Auto Gucci Active", 3)
-            task.spawn(function()
-                while autoGucciActive do
-                    local toysFolder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
-                    local blobExists = toysFolder and toysFolder:FindFirstChild("CreatureBlobman")
-                    if not blobExists then
-                        stopAntiGucci()
-                        spawnBlobman()
-                        notify("System", "Blobman Lost", 3)
-                        local retries = 0
-                        repeat
-                            task.wait(0.2)
-                            retries = retries + 1
-                            toysFolder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
-                        until (toysFolder and toysFolder:FindFirstChild("CreatureBlobman")) or retries > 25 or not autoGucciActive
-                        if autoGucciActive and toysFolder and toysFolder:FindFirstChild("CreatureBlobman") then
-                            startAntiGucci()
-                            notify("System", "Blobman Restored", 3)
-                        end
-                    end
-                    task.wait(0.5)
-                end
-            end)
-        else
-            autoGucciActive = false
-            stopAntiGucci()
-            notify("System", "Auto Gucci Disabled", 3)
-        end
+        selectedKickPlayer = getPlayerFromSelection(Value)
     end
 })
 
-local autoGucciActiveTrain = false
-AntiGucciTab:AddToggle({
-    Name = "Anti Gucci (Train)",
+GrabAuraTab:AddButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        -- Orion UIではドロップダウンの更新が異なる場合があります
+        notify("Info", "Please reopen the menu to refresh", 3)
+    end
+})
+
+GrabAuraTab:AddToggle({
+    Name = "Loop Kick (grab + blob)",
     Default = false,
-    Callback = function(Value)
-        autoGucciActiveTrain = Value
-        if Value then
-            startAntiGucciTrain()
-            notify("System", "Gucci Active (Monitoring)", 3)
-            task.spawn(function()
-                while autoGucciActiveTrain do
-                    local trainFolder = workspace.Map.AlwaysHereTweenedObjects
-                    local trainExists = trainFolder and trainFolder:FindFirstChild("Train")
-                    if not trainExists then
-                        stopAntiGucciTrain()
-                        notify("System", "Train Lost", 3)
-                        local retries = 0
-                        repeat
-                            task.wait(0.2)
-                            retries = retries + 1
-                            trainFolder = workspace.Map.AlwaysHereTweenedObjects
-                        until (trainFolder and trainFolder:FindFirstChild("Train")) or retries > 25 or not autoGucciActiveTrain
-                        if autoGucciActiveTrain and trainFolder and trainFolder:FindFirstChild("Train") then
-                            startAntiGucciTrain()
-                            notify("System", "Train Restored", 3)
-                        end
-                    end
-                    task.wait(0.5)
-                end
-            end)
-        else
-            autoGucciActiveTrain = false
-            stopAntiGucciTrain()
-            notify("System", "Gucci Disabled", 3)
+    Callback = function(on)
+        kickLoopEnabled = on
+        local target = selectedKickPlayer
+        if on and not target then
+            kickLoopEnabled = false
+            notify("Error", "No target selected", 3)
+            return
         end
+        local char = Player.Character
+        local hum = char and char:FindFirstChild("Humanoid")
+        local seat = hum and hum.SeatPart
+        if on and (not seat or seat.Parent.Name ~= "CreatureBlobman") then
+            kickLoopEnabled = false
+            notify("Error", "You must be sitting in Blobman", 3)
+            return
+        end
+        if not on then
+            kickLoopEnabled = false
+            return
+        end
+        task.spawn(function()
+            local RS = game:GetService("ReplicatedStorage")
+            local GE = RS:WaitForChild("GrabEvents")
+            local RunService = game:GetService("RunService")
+            local blob = seat.Parent
+            local blobRoot = blob:FindFirstChild("HumanoidRootPart") or blob.PrimaryPart
+            local scriptObj = blob:FindFirstChild("BlobmanSeatAndOwnerScript")
+            local CG = scriptObj and scriptObj:FindFirstChild("CreatureGrab")
+            local CD = scriptObj and scriptObj:FindFirstChild("CreatureDrop")
+            local R_Det = blob:FindFirstChild("RightDetector")
+            local R_Weld = R_Det and (R_Det:FindFirstChild("RightWeld") or R_Det:FindFirstChildWhichIsA("Weld"))
+            local SavedPos = blobRoot.CFrame
+            local tChar = target.Character
+            local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+            if tRoot and blobRoot then
+                local bringStart = tick()
+                while tick() - bringStart < 0.35 do
+                    if not kickLoopEnabled then
+                        break
+                    end
+                    blobRoot.CFrame = tRoot.CFrame
+                    blobRoot.Velocity = Vector3.zero
+                    pcall(function()
+                        if CG and R_Det then
+                            CG:FireServer(R_Det, tRoot, R_Weld)
+                        end
+                        GE.CreateGrabLine:FireServer(tRoot, Vector3.zero, tRoot.Position, false)
+                        GE.SetNetworkOwner:FireServer(tRoot, blobRoot.CFrame)
+                    end)
+                    RunService.Heartbeat:Wait()
+                end
+                blobRoot.CFrame = SavedPos
+                blobRoot.Velocity = Vector3.zero
+                task.wait(0.05)
+            end
+            local packetTimer = 0
+            while kickLoopEnabled do
+                if not target or not target.Parent or not target.Character then
+                    break
+                end
+                local tChar = target.Character
+                local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+                if not tRoot then
+                    break
+                end
+                pcall(function()
+                    if CG and R_Det then
+                        CG:FireServer(R_Det, tRoot, R_Weld)
+                    end
+                    GE.CreateGrabLine:FireServer(tRoot, Vector3.zero, tRoot.Position, false)
+                    GE.SetNetworkOwner:FireServer(tRoot, blobRoot.CFrame)
+                end)
+                packetTimer = packetTimer + 1
+                if packetTimer >= 30 then
+                    packetTimer = 0
+                    task.wait(0.05)
+                end
+                RunService.Heartbeat:Wait()
+            end
+            kickLoopEnabled = false
+        end)
     end
 })
 --==============================
