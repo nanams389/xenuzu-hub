@@ -2049,7 +2049,7 @@ local KillDropdown = KillTab:AddDropdown({
     end    
 })
 
--- リスト更新関数
+-- リスト更新
 local function RefreshKillList()
     local pList = {}
     for _, p in pairs(players:GetPlayers()) do
@@ -2065,9 +2065,9 @@ KillTab:AddButton({
     end
 })
 
--- [[ 究極合体オーラ：ダメージ + 高速掴み ]]
+-- [[ 究極合体オーラ：自動テレポート + ダメージ + 高速掴み ]]
 KillTab:AddToggle({
-    Name = "究極Blobmanオーラ (ダメージ&高速掴み)",
+    Name = "自動追尾Blobmanオーラ",
     Default = false,
     Callback = function(Value)
         _G.UltimateBlobmanAura = Value
@@ -2076,6 +2076,7 @@ KillTab:AddToggle({
                 while _G.UltimateBlobmanAura do
                     local target = players:FindFirstChild(SelectedPlayer)
                     local char = lp.Character
+                    local myHRP = char and char:FindFirstChild("HumanoidRootPart")
                     local seat = char and char.Humanoid.SeatPart
                     
                     -- ターゲットとBlobman（搭乗中）の存在確認
@@ -2087,46 +2088,48 @@ KillTab:AddToggle({
                                          or replicatedStorage:FindFirstChild("HitEvent")
 
                         pcall(function()
-                            -- 1. ダメージオーラセクション (Combatイベント)
-                            if combatEvent and (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude <= 30 then
+                            -- 1. 【追加】自動テレポート (相手の正面 3スタッドに常に移動)
+                            -- 飛ばずに地上でやるため、Y軸（高さ）は相手に合わせる
+                            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 3)
+
+                            -- 2. ダメージオーラ
+                            if combatEvent then
                                 combatEvent:FireServer(target.Character, "Punch")
                             end
 
-                            -- 2. ネットワーク所有権の剥奪 (Flingロジック)
+                            -- 3. ネットワーク所有権剥奪
                             local SetNetworkOwner = replicatedStorage:FindFirstChild("GrabEvents") and replicatedStorage.GrabEvents:FindFirstChild("SetNetworkOwner")
                             if SetNetworkOwner then
                                 SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
                             end
 
-                            -- 3. 超高速両手掴み・離しループ
+                            -- 4. 超高速両手掴み・離し
                             if grabRemote then
                                 for _, arm in ipairs({"Left", "Right"}) do
                                     local det = blobman:FindFirstChild(arm .. "Detector")
                                     local weld = det and det:FindFirstChild(arm .. "Weld")
                                     if det and weld then
-                                        -- 掴む(2) -> 即座に離す(1) を両手で実行
-                                        grabRemote:FireServer(det, targetHRP, weld, 2)
-                                        grabRemote:FireServer(det, targetHRP, weld, 1)
+                                        grabRemote:FireServer(det, targetHRP, weld, 2) -- 掴む
+                                        grabRemote:FireServer(det, targetHRP, weld, 1) -- 離す
                                     end
                                 end
                             end
 
-                            -- 4. 地面に叩きつける物理圧力を付与 (反撃封じ)
+                            -- 5. 物理圧力を付与 (拘束)
                             local bv = Instance.new("BodyVelocity")
                             bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                            bv.Velocity = Vector3.new(0, -20, 0)
+                            bv.Velocity = Vector3.new(0, -30, 0)
                             bv.Parent = targetHRP
                             game:GetService("Debris"):AddItem(bv, 0.05)
                         end)
                     end
-                    task.wait(0.01) -- 限界突破の超高速ループ
+                    task.wait(0.01) -- 高速処理
                 end
             end)
         end
     end
 })
 
--- 初期リスト読み込み
 RefreshKillList()
 --==============================
 -- 初期化
