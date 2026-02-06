@@ -805,47 +805,37 @@ RunService.Heartbeat:Connect(function(deltaTime)
 end)
 
 -- ============================================================
--- Anti Fling / Anti Banana 機能 (Orion UI トグル版)
+-- Anti Fling / Anti Banana 機能 (Orion UI 移植版)
 -- ============================================================
-local AntiTabSection = invulnerabilitySection -- または任意のセクション変数名に変えてください
 
 -- 1. Anti kill (右: 1億飛ばし)
 local antiFlingCoroutine = nil
-AntiTabSection:AddToggle({
+invulnerabilitySection:AddToggle({
     Name = "Anti kill (右: 1億飛ばし)",
     Default = false,
-    Callback = function(Value)
-        if Value then
-            if antiFlingCoroutine then return end
-            antiFlingCoroutine = coroutine.create(function()
-                while task.wait(0.01) do
-                    -- 元のロジックをそのまま実行
-                    startAntiFling() 
-                end
-            end)
-            coroutine.resume(antiFlingCoroutine)
-            OrionLib:MakeNotification({Name = "Anti Fling ON", Content = "掴んだ相手を右に1億で吹き飛ばします", Time = 2})
-        else
-            if antiFlingCoroutine then
-                coroutine.close(antiFlingCoroutine)
-                antiFlingCoroutine = nil
+    Callback = function(v)
+        if v then
+            -- あなたのスクリプトにある既存の関数をそのまま叩く
+            if typeof(startAntiFling) == "function" then
+                startAntiFling()
             end
-            stopAntiFling()
-            OrionLib:MakeNotification({Name = "Anti Fling OFF", Content = "停止しました", Time = 2})
+        else
+            if typeof(stopAntiFling) == "function" then
+                stopAntiFling()
+            end
         end
     end
 })
 
 -- 2. Anti Fling (上: 1億飛ばし)
 local antiFlingUpCoroutine = nil
-AntiTabSection:AddToggle({
+invulnerabilitySection:AddToggle({
     Name = "Anti Fling (上: 1億飛ばし)",
     Default = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(v)
+        if v then
             if antiFlingUpCoroutine then return end
             antiFlingUpCoroutine = coroutine.create(function()
-                -- 提示されたループロジック
                 while task.wait(0.01) do
                     local char = LocalPlayer.Character
                     if char and char:FindFirstChild("Head") then
@@ -853,32 +843,35 @@ AntiTabSection:AddToggle({
                         if partOwner and partOwner.Value ~= "" then
                             local attacker = game.Players:FindFirstChild(partOwner.Value)
                             if attacker and attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart") then
-                                pcall(function() ReplicatedStorage.CharacterEvents.Struggle:FireServer() end) -- 環境に合わせてStruggleを指定
-                                doAirSuspend(attacker.Character.HumanoidRootPart, 100000000)
+                                -- Struggleのリモートパスは元の環境に合わせてください
+                                pcall(function() 
+                                    game:GetService("ReplicatedStorage").CharacterEvents.Struggle:FireServer() 
+                                end)
+                                if typeof(doAirSuspend) == "function" then
+                                    doAirSuspend(attacker.Character.HumanoidRootPart, 100000000)
+                                end
                             end
                         end
                     end
                 end
             end)
             coroutine.resume(antiFlingUpCoroutine)
-            OrionLib:MakeNotification({Name = "Anti Fling (Up) ON", Content = "掴んだ相手を上に吹き飛ばします", Time = 2})
         else
             if antiFlingUpCoroutine then
                 coroutine.close(antiFlingUpCoroutine)
                 antiFlingUpCoroutine = nil
             end
-            OrionLib:MakeNotification({Name = "Anti Fling (Up) OFF", Content = "停止しました", Time = 2})
         end
     end
 })
 
 -- 3. Anti Banana (威力50飛ばし)
 local antiBananaCoroutine = nil
-AntiTabSection:AddToggle({
+invulnerabilitySection:AddToggle({
     Name = "Anti Banana (威力50飛ばし)",
     Default = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(v)
+        if v then
             if antiBananaCoroutine then return end
             antiBananaCoroutine = coroutine.create(function()
                 while task.wait(0.01) do
@@ -888,21 +881,23 @@ AntiTabSection:AddToggle({
                         if partOwner and partOwner.Value ~= "" then
                             local attacker = game.Players:FindFirstChild(partOwner.Value)
                             if attacker and attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart") then
-                                pcall(function() ReplicatedStorage.CharacterEvents.Struggle:FireServer() end)
-                                doAirSuspend(attacker.Character.HumanoidRootPart, 50)
+                                pcall(function() 
+                                    game:GetService("ReplicatedStorage").CharacterEvents.Struggle:FireServer() 
+                                end)
+                                if typeof(doAirSuspend) == "function" then
+                                    doAirSuspend(attacker.Character.HumanoidRootPart, 50)
+                                end
                             end
                         end
                     end
                 end
             end)
             coroutine.resume(antiBananaCoroutine)
-            OrionLib:MakeNotification({Name = "Anti Banana ON", Content = "掴んだ相手を飛ばします（威力50）", Duration = 2})
         else
             if antiBananaCoroutine then
                 coroutine.close(antiBananaCoroutine)
                 antiBananaCoroutine = nil
             end
-            OrionLib:MakeNotification({Name = "Anti Banana OFF", Content = "停止しました", Duration = 2})
         end
     end
 })
