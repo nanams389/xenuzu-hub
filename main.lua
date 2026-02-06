@@ -1929,143 +1929,16 @@ BlobmanTab:AddToggle({
     end
 })
 
-local KillTab = Window:MakeTab({ Name = "Ultimate Execution", Icon = "rbxassetid://6031064398" })
-
-local SelectedExecTarget = nil
-local ExecTargetInfo = KillTab:AddSection({ Name = "ターゲット: 未選択" })
-
--- ==============================
--- プレイヤーリスト更新機能
--- ==============================
-local function UpdateExecList()
-    local playerNames = {"全員 (Kill All)"}
-    local playerMap = {}
-    playerMap["全員 (Kill All)"] = "All"
-    
-    for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= game.Players.LocalPlayer then
-            local label = p.DisplayName .. " (@" .. p.Name .. ")"
-            table.insert(playerNames, label)
-            playerMap[label] = p
-        end
-    end
-
-    KillTab:AddDropdown({
-        Name = "抹殺ターゲットを選択",
-        Default = "未選択",
-        Options = playerNames,
-        Callback = function(Value)
-            SelectedExecTarget = playerMap[Value]
-            if SelectedExecTarget == "All" then
-                ExecTargetInfo:SetTitle("ターゲット: 全サーバー抹殺")
-            elseif SelectedExecTarget then
-                ExecTargetInfo:SetTitle("ターゲット: " .. SelectedExecTarget.DisplayName)
-            end
-        end
-    })
-end
-
-UpdateExecList()
-
--- ==============================
--- 執行メインロジック (TP & Kill & Return)
--- ==============================
-KillTab:AddToggle({
-    Name = "TP抹殺ループ (自動帰還付)",
-    Default = false,
-    Callback = function(Value)
-        _G.ExecutionLoop = Value
-        if Value then
-            if not SelectedExecTarget then 
-                OrionLib:MakeNotification({Name = "Error", Content = "ターゲットを選んでくれ", Time = 2})
-                _G.ExecutionLoop = false
-                return 
-            end
-
-            task.spawn(function()
-                local lp = game.Players.LocalPlayer
-                local originalPos = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and lp.Character.HumanoidRootPart.CFrame
-
-                while _G.ExecutionLoop do
-                    local targets = {}
-                    if SelectedExecTarget == "All" then
-                        targets = game.Players:GetPlayers()
-                    else
-                        targets = {SelectedExecTarget}
-                    end
-
-                    for _, target in pairs(targets) do
-                        if not _G.ExecutionLoop then break end
-                        if target ~= lp and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                            local tHRP = target.Character.HumanoidRootPart
-                            local tHum = target.Character:FindFirstChildOfClass("Humanoid")
-                            
-                            if tHum and tHum.Health > 0 then
-                                -- 1. 相手の元へ強制テレポート
-                                lp.Character.HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 0, 3)
-                                task.wait(0.1)
-
-                                -- 2. Blobmanロジック（君のコードを直結）
-                                local hum = lp.Character:FindFirstChildOfClass("Humanoid")
-                                local seat = hum and hum.SeatPart
-                                if not (seat and seat.Parent and seat.Parent.Name == "Blobman") then
-                                    for _, v in pairs(workspace:GetChildren()) do
-                                        if v.Name == "Blobman" and v:FindFirstChild("DriveSeat") then
-                                            v.DriveSeat:Sit(hum)
-                                            task.wait(0.1)
-                                            break
-                                        end
-                                    end
-                                end
-
-                                seat = hum and hum.SeatPart
-                                if seat and seat.Parent then
-                                    local blobman = seat.Parent
-                                    local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                                    
-                                    -- 抹殺実行（君の最強掴みロジックをそのまま高速回し）
-                                    pcall(function()
-                                        local rs = game:GetService("ReplicatedStorage")
-                                        -- ネットワーク所有権奪取
-                                        local SetNet = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-                                        if SetNet then SetNet:FireServer(tHRP, tHRP.CFrame) end
-                                        
-                                        -- 状態破壊 (Death Aura)
-                                        tHum.Health = 0
-                                        tHum:ChangeState(Enum.HumanoidStateType.Dead)
-
-                                        -- 連続掴み
-                                        if remote then
-                                            local lDet = blobman:FindFirstChild("LeftDetector")
-                                            local rDet = blobman:FindFirstChild("RightDetector")
-                                            local lW = lDet and lDet:FindFirstChild("LeftWeld")
-                                            local rW = rDet and rDet:FindFirstChild("RightWeld")
-                                            
-                                            remote:FireServer(lDet, tHRP, lW, 2)
-                                            remote:FireServer(rDet, tHRP, rW, 2)
-                                        end
-                                    end)
-                                    task.wait(0.3) -- 殺害までの猶予
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- 3. 自動帰還 (元の場所へ)
-                    if originalPos then
-                        lp.Character.HumanoidRootPart.CFrame = originalPos
-                    end
-                    task.wait(0.5) -- サーバー負荷軽減のためのインターバル
-                end
-            end)
-        end
-    end
+-- [[ Bring All タブの作成 ]]
+local BringTab = Window:MakeTab({
+    Name = "Bring All",
+    Icon = "rbxassetid://6031064398" -- アイコンは任意で変更してください
 })
 
 local BringAllEnabled = false
 
 -- Bring All トグルの追加
-LoopKillTab:AddToggle({
+BringTab:AddToggle({
     Name = "全員 Bring (自分のもとへ強制召喚)",
     Default = false,
     Callback = function(Value)
@@ -2075,27 +1948,33 @@ LoopKillTab:AddToggle({
             task.spawn(function()
                 while BringAllEnabled do
                     local lp = game.Players.LocalPlayer
-                    local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+                    local char = lp.Character
+                    local myHRP = char and char:FindFirstChild("HumanoidRootPart")
                     local rs = game:GetService("ReplicatedStorage")
+                    
+                    -- リモートイベントの取得
                     local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
 
                     if myHRP and SetNetworkOwner then
                         for _, p in pairs(game.Players:GetPlayers()) do
+                            -- 自分以外で、有効なキャラクターを持っているプレイヤーを対象にする
                             if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 1. ネットワーク所有権を奪う
-                                SetNetworkOwner:FireServer(targetHRP, myHRP.CFrame)
-                                
-                                -- 2. 自分の2スタッド前に強制配置
-                                targetHRP.CFrame = myHRP.CFrame * CFrame.new(0, 0, -2)
-                                
-                                -- 3. 相手の動きを止める（逃げられにくくする）
-                                targetHRP.Velocity = Vector3.zero
+                                pcall(function()
+                                    -- 1. ネットワーク所有権を奪う
+                                    SetNetworkOwner:FireServer(targetHRP, myHRP.CFrame)
+                                    
+                                    -- 2. 自分の2スタッド前に強制配置
+                                    targetHRP.CFrame = myHRP.CFrame * CFrame.new(0, 0, -2)
+                                    
+                                    -- 3. 相手の物理速度をリセット（逃げ防止）
+                                    targetHRP.Velocity = Vector3.zero
+                                end)
                             end
                         end
                     end
-                    task.wait() -- 高速ループで逃がさない
+                    task.wait(0.01) -- サーバーへの負荷と同期速度のバランス
                 end
             end)
         end
