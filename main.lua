@@ -777,39 +777,26 @@ invulnerabilitySection:AddToggle({
     end
 })
 
--- バックグラウンドループ (Heartbeat) の維持
-RunService.Heartbeat:Connect(function(deltaTime)
-    if AntiGucciEnabled then
-        -- ラグドール維持
-        local hum = getLocalHum()
-        if hum then
-            ragdoll()
-        end
-        
 -- ============================================================
--- 1. 設定用変数 (スクリプトの先頭の方に)
+-- アンチ・ブロブマン機能 (Orion UI トグル修正版)
 -- ============================================================
+
 local AntiBlobmanEnabled = false
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 
--- ============================================================
--- 2. Orion UI ボタン作成 (invulnerabilitySection の部分は自分の変数名に変えてください)
--- ============================================================
--- もしセクション変数名が違う場合は、ここを書き換えてください
+-- ボタンを追加
 invulnerabilitySection:AddToggle({
-    Name = "アンチ・ブロブマン (掴み拒否)",
+    Name = "アンチ・ブロブマン (Anti-Blobman)",
     Default = false,
     Callback = function(Value)
         AntiBlobmanEnabled = Value
-        print("Anti-Blobman State: ", Value) -- 動作確認用
-    end    
-})
+        print("Anti-Blobman State: ", Value)
+    end -- Callbackの閉じ
+}) -- AddToggleの閉じ
 
--- ============================================================
--- 3. 機能ロジック (一度だけ定義すればOK)
--- ============================================================
+-- 機能ロジック (ループ)
 RunService.Heartbeat:Connect(function()
     if not AntiBlobmanEnabled then return end
     
@@ -818,7 +805,7 @@ RunService.Heartbeat:Connect(function()
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     
     if hrp and hum then
-        -- 自分の周りや、相手のBlobman内にある自分を繋ぐWeldを全消去
+        -- 拘束具 (Weldなど) を広域スキャンして削除
         for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("Weld") or v:IsA("ManualWeld") or v:IsA("Snap") then
                 if v.Part0 == hrp or v.Part1 == hrp or v:IsDescendantOf(char) then
@@ -827,14 +814,13 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        -- 座り状態と転倒の強制解除
+        -- 座り状態と勢いのリセット
         if hum.Sit then hum.Sit = false end
         hum.PlatformStand = false
         
-        -- 振り回された勢いを殺す
         if hrp.Anchored == false then
-            hrp.Velocity = Vector3.new(0, 0, 0)
-            hrp.RotVelocity = Vector3.new(0, 0, 0)
+            hrp.Velocity = Vector3.zero
+            hrp.RotVelocity = Vector3.zero
         end
     end
 end)
