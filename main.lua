@@ -1938,7 +1938,7 @@ local BringTab = Window:MakeTab({
 local BringAllActive = false
 
 BringTab:AddToggle({
-    Name = "全員 Bring (瞬間テレポート連行)",
+    Name = "全員 Bring (Fling拉致・強制連行)",
     Default = false,
     Callback = function(Value)
         BringAllActive = Value
@@ -1947,41 +1947,54 @@ BringTab:AddToggle({
             task.spawn(function()
                 local lp = game.Players.LocalPlayer
                 local rs = game:GetService("ReplicatedStorage")
-                local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
                 
                 while BringAllActive do
                     local myChar = lp.Character
                     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
                     
                     if myHRP then
-                        -- 元いた場所を記憶
+                        -- 開始時の自分の場所（拉致先）を記憶
                         local originalPos = myHRP.CFrame
                         
                         for _, p in pairs(game.Players:GetPlayers()) do
                             if not BringAllActive then break end
                             if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                 local targetHRP = p.Character.HumanoidRootPart
-                                
-                                pcall(function()
-                                    -- 1. 相手の場所に一瞬テレポート（所有権奪取のため）
-                                    myHRP.CFrame = targetHRP.CFrame
-                                    task.wait(0.05) -- 同期のための極小の待ち
-                                    
-                                    -- 2. 所有権を要求
-                                    if SetNetworkOwner then
-                                        SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
-                                    end
-                                    
-                                    -- 3. 相手を連れて元の場所に戻る
-                                    myHRP.CFrame = originalPos
-                                    targetHRP.CFrame = originalPos * CFrame.new(0, 0, -3)
-                                    targetHRP.Velocity = Vector3.zero
-                                end)
-                                task.wait(0.1) -- 一人ずつの処理間隔
+                                local targetHum = p.Character:FindFirstChild("Humanoid")
+
+                                if targetHum and targetHum.Health > 0 then
+                                    pcall(function()
+                                        -- 1. 相手の場所に一瞬テレポートして物理所有権を奪う
+                                        myHRP.CFrame = targetHRP.CFrame
+                                        
+                                        -- Flingロジック：所有権奪取
+                                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                        if SetNetworkOwner then
+                                            SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+                                        end
+
+                                        -- Flingロジック：BodyVelocityで物理的に固める
+                                        local bv = Instance.new("BodyVelocity")
+                                        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                        bv.Velocity = Vector3.new(0, -50, 0) -- 強力な下向きの力
+                                        bv.Parent = targetHRP
+                                        game:GetService("Debris"):AddItem(bv, 0.2)
+
+                                        task.wait(0.05) -- 同期のための極小の待ち
+
+                                        -- 2. 自分と一緒に元の場所へ連れ去る
+                                        myHRP.CFrame = originalPos
+                                        targetHRP.CFrame = originalPos * CFrame.new(0, 0, -3)
+                                        
+                                        -- 速度をリセットしてその場に落とす
+                                        targetHRP.Velocity = Vector3.zero
+                                    end)
+                                    task.wait(0.15) -- 一人あたりの拉致スピード
+                                end
                             end
                         end
                     end
-                    task.wait(0.5) -- 全員終わった後の待機
+                    task.wait(0.5) -- 全員の拉致が一巡した後の待機
                 end
             end)
         end
