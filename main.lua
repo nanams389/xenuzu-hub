@@ -804,7 +804,49 @@ RunService.Heartbeat:Connect(function(deltaTime)
     end
 end)
 
+-- ============================================================
+-- アンチ・ブロブマン (Anti-Blobman) 機能
+-- ============================================================
 
+local AntiBlobmanEnabled = false -- トグル制御用変数
+
+-- Orion UI へのトグル追加（invulnerabilitySection は既存の変数名に合わせています）
+invulnerabilitySection:AddToggle({
+    Name = "アンチ・ブロブマン (掴み拒否)",
+    Default = false,
+    Callback = function(Value)
+        AntiBlobmanEnabled = Value
+    end
+})
+
+-- 高速ループ処理 (既存の Heartbeat 接続とは別に、より反応速度の速い Stepped を使用)
+RunService.Stepped:Connect(function()
+    if not AntiBlobmanEnabled then return end
+    
+    local char = getLocalChar()
+    if char then
+        -- 1. 物理的な「繋ぎ目 (Weld)」をすべて破壊
+        -- Blobmanの腕と自分を繋ぐパーツを消去して脱出する
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("Weld") or v:IsA("ManualWeld") or v:IsA("Snap") then
+                -- Blobmanに限らず、強制的に自分を固定しようとするすべてのWeldを対象
+                v:Destroy()
+            end
+        end
+        
+        -- 2. ステータス異常の強制リセット
+        local hum = getLocalHum()
+        if hum then
+            -- 掴まれた時に強制的に「座り状態」や「転倒状態」にされるのを防ぐ
+            if hum.Sit then 
+                hum.Sit = false 
+            end
+            if hum.PlatformStand then
+                hum.PlatformStand = false
+            end
+        end
+    end
+end)
 --==============================
 -- タブ：究極オーラ (Ultimate)
 --==============================
