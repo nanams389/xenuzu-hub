@@ -1903,66 +1903,31 @@ BlobTab:AddToggle({
     end
 })
 
--- [[ 事前準備：スクリプトの上のほうに1回だけ貼ってください ]]
+-- ※ antiBlob1T と antiBlob1F はスクリプトの上のほう（関数の外）で定義しておいてくれ
+
 local antiBlob1T = false
-local antiExplodeT = false
-local Player = game.Players.LocalPlayer
+local function antiBlob1F()
+    antiBlob1T = true
+    workspace.DescendantAdded:Connect(function(toy)
+        if toy.Name == "CreatureBlobman" and antiBlob1T then
+            -- Detectorを破壊して掴めなくする
+            if toy:FindFirstChild("LeftDetector") then toy.LeftDetector:Destroy() end
+            if toy:FindFirstChild("RightDetector") then toy.RightDetector:Destroy() end
+        end
+    end)
+end
 
--- AntiBlobmanの監視を一度だけ開始（ボタンのON/OFF状態を監視する形に変更）
-workspace.DescendantAdded:Connect(function(toy)
-    if antiBlob1T and toy.Name == "CreatureBlobman" then
-        pcall(function()
-            toy:WaitForChild("LeftDetector", 3):Destroy()
-            toy:WaitForChild("RightDetector", 3):Destroy()
-        end)
-    end
-end)
-
--- [[ Orion UI ボタン部分 ]]
-
--- Anti Blobman トグル
+-- タブ変数名は自分の環境に合わせて書き換えてくれ（例: DefenseTab）
 DefenseTab:AddToggle({
-    Name = "Anti Blobman",
+    Name = "Anti Blobman (防御)",
     Default = false,
     Callback = function(Value)
-        antiBlob1T = Value
-        print("Anti-Blobman: " .. tostring(Value))
-    end
-})
-
--- Anti Explode トグル
-DefenseTab:AddToggle({
-    Name = "Anti Explode",
-    Default = false,
-    Callback = function(Value)
-        antiExplodeT = Value
         if Value then
-            -- Anti Explodeのロジック本体
-            task.spawn(function()
-                local char = Player.Character or Player.CharacterAdded:Wait()
-                local hrp = char:WaitForChild("HumanoidRootPart")
-                
-                local connection
-                connection = workspace.ChildAdded:Connect(function(model)
-                    if not antiExplodeT then connection:Disconnect() return end
-                    if model.Name == "Part" then
-                        pcall(function()
-                            local mag = (model.Position - hrp.Position).Magnitude
-                            if mag <= 20 then
-                                hrp.Anchored = true
-                                task.wait(0.01)
-                                -- 腕の衝突判定が戻るまで待機
-                                while char:FindFirstChild("Right Arm") and 
-                                      char["Right Arm"]:FindFirstChild("RagdollLimbPart") and 
-                                      char["Right Arm"].RagdollLimbPart.CanCollide do
-                                    task.wait(0.01)
-                                end
-                                hrp.Anchored = false
-                            end
-                        end)
-                    end
-                end)
-            end)
+            antiBlob1F()
+            OrionLib:MakeNotification({Name = "Defense", Content = "Anti-Blobman 有効", Time = 2})
+        else
+            antiBlob1T = false
+            OrionLib:MakeNotification({Name = "Defense", Content = "Anti-Blobman 無効", Time = 2})
         end
     end
 })
