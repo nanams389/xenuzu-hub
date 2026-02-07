@@ -1512,6 +1512,112 @@ UltimateTab:AddButton({
     end    
 })
 
+-- [[ Kick (spam grab) 用の変数定義 ]]
+local kickLoopEnabled = false
+-- ※selectedKickPlayer は、ドロップダウン等で選択されたプレイヤーが入る前提です。
+
+-- 6. Kick (spam grab) ボタンの追加
+UltimateTab:AddToggle({
+    Name = "Kick (spam grab)",
+    Default = false,
+    Callback = function(on)
+        kickLoopEnabled = on
+        if not on then
+            return
+        end
+        task.spawn(function()
+            local RS = game:GetService("ReplicatedStorage")
+            local RunService = game:GetService("RunService")
+            local GE = RS:WaitForChild("GrabEvents")
+            local Player = game.Players.LocalPlayer
+            local myChar = Player.Character
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            
+            -- オリジナルのエラー回避ロジック
+            if not myRoot then
+                -- Orionのトグルリセット処理（変数名が異なる場合を考慮して安全に処理）
+                pcall(function() 
+                    if Toggles and Toggles.LoopKickGrabToggle then
+                        Toggles.LoopKickGrabToggle:SetValue(false)
+                    end
+                end)
+                kickLoopEnabled = false
+                return
+            end
+
+            local savedPos = myRoot.CFrame
+            local dragging = false
+            local grabStartTime = 0
+
+            while kickLoopEnabled do
+                -- ターゲットのチェック (stalkerTargetPlayerなど、既存の変数名に合わせて適宜書き換えてください)
+                local target = selectedKickPlayer 
+                if not target or not target.Parent then
+                    break
+                end
+
+                myChar = Player.Character
+                myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                if not myRoot then break end
+
+                local tChar = target.Character
+                local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+                local tHum = tChar and tChar:FindFirstChild("Humanoid")
+
+                if tRoot and tHum and tHum.Health > 0 then
+                    tRoot.AssemblyLinearVelocity = Vector3.zero
+                    tRoot.AssemblyAngularVelocity = Vector3.zero
+                    tRoot.Velocity = Vector3.zero
+                    
+                    if not dragging then
+                        myRoot.CFrame = tRoot.CFrame
+                        myRoot.Velocity = Vector3.zero
+                        pcall(function()
+                            tHum.PlatformStand = true
+                            tHum.Sit = true
+                            GE.SetNetworkOwner:FireServer(tRoot, myRoot.CFrame)
+                            GE.CreateGrabLine:FireServer(tRoot, Vector3.zero, tRoot.Position, false)
+                        end)
+                        
+                        if grabStartTime == 0 then
+                            grabStartTime = tick()
+                        end
+                        
+                        if tick() - grabStartTime > 0.35 then
+                            dragging = true
+                            grabStartTime = 0
+                        end
+                    else
+                        myRoot.CFrame = savedPos
+                        myRoot.Velocity = Vector3.zero
+                        local lockPos = savedPos * CFrame.new(0, 17, 0)
+                        tRoot.CFrame = lockPos
+                        tRoot.Velocity = Vector3.zero
+                        tRoot.RotVelocity = Vector3.zero
+                        pcall(function()
+                            tHum.PlatformStand = true
+                            tHum.Sit = false
+                            GE.SetNetworkOwner:FireServer(tRoot, lockPos)
+                            GE.DestroyGrabLine:FireServer(tRoot)
+                            GE.CreateGrabLine:FireServer(tRoot, Vector3.zero, tRoot.Position, false)
+                        end)
+                    end
+                else
+                    dragging = false
+                    grabStartTime = 0
+                end
+                RunService.Heartbeat:Wait()
+            end
+
+            -- 終了後のリセット
+            if myRoot then
+                myRoot.CFrame = savedPos
+                myRoot.Velocity = Vector3.zero
+            end
+            kickLoopEnabled = false
+        end)
+    end
+})
 -- [[ サービスと変数の定義 (コードが動くために必要) ]]
 local playersService = game:GetService("Players")
 local localPlayer = playersService.LocalPlayer
