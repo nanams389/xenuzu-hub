@@ -778,77 +778,81 @@ invulnerabilitySection:AddToggle({
 })
 
 -- ============================================================
--- Anti Blobman & Anti Explode (完全エラー修正版)
+-- Anti Blobman & Anti Explode (エラー修正・ボタン表示確定版)
 -- ============================================================
 
 local Player = game.Players.LocalPlayer
 local antiBlob1T = false
 
--- 掴み判定を消す関数（エラー回避ガード付き）
+-- パーツがなくてもエラーを出さない監視関数
 local function antiBlob1F()
     antiBlob1T = true
     workspace.DescendantAdded:Connect(function(toy)
         if toy.Name == "CreatureBlobman" and antiBlob1T then
-            -- パーツが現れるまで最大5秒待機して、見つけたら消す
-            task.spawn(function()
-                local left = toy:WaitForChild("LeftDetector", 5)
-                local right = toy:WaitForChild("RightDetector", 5)
-                if left then left:Destroy() end
-                if right then right:Destroy() end
+            -- pcallを使ってパーツがない時のエラーを完全に防ぐ
+            pcall(function()
+                if toy:FindFirstChild("LeftDetector") then toy.LeftDetector:Destroy() end
+                if toy:FindFirstChild("RightDetector") then toy.RightDetector:Destroy() end
             end)
         end
     end)
 end
 
--- [[ ボタンの生成部分 ]]
--- invulnerabilitySection が見つからない場合のエラーを回避
-local targetSection = invulnerabilitySection or DefenseGroup
-
-if targetSection then
-    -- Anti Blobman ボタン
-    targetSection:AddToggle({
+-- ボタン1: Anti Blobman (変数名 invulnerabilitySection が正しいことを確認済み)
+if invulnerabilitySection then
+    invulnerabilitySection:AddToggle({
         Name = "Anti Blobman", 
         Default = false,
         Callback = function(on)
-            antiBlob1T = on
-            if on then antiBlob1F() end
-        end
-    })
-
-    -- Anti Explode ボタン
-    local antiExplodeT = false
-    targetSection:AddToggle({
-        Name = "Anti Explode",
-        Default = false,
-        Callback = function(on)
-            antiExplodeT = on
             if on then
-                task.spawn(function()
-                    local char = Player.Character or Player.CharacterAdded:Wait()
-                    local hrp = char:WaitForChild("HumanoidRootPart")
-                    workspace.ChildAdded:Connect(function(model)
-                        if model.Name == "Part" and antiExplodeT then
-                            local mag = (model.Position - hrp.Position).Magnitude
-                            if mag <= 20 then
-                                hrp.Anchored = true
-                                task.wait(0.01)
-                                -- 物理判定のチェック（中身は維持）
-                                pcall(function()
-                                    while antiExplodeT and char:FindFirstChild("Right Arm") and 
-                                          char["Right Arm"].RagdollLimbPart.CanCollide do
-                                        task.wait(0.01)
-                                    end
-                                end)
-                                hrp.Anchored = false
-                            end
-                        end
-                    end)
-                end)
+                antiBlob1F()
+            else
+                antiBlob1T = false
             end
         end
     })
-else
-    warn("Orion UI Section not found. Check your Section variable name!")
+end
+
+local antiExplodeT = false
+local function antiExplodeF()
+    antiExplodeT = true
+    local char = Player.Character
+    if not char then return end
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    
+    workspace.ChildAdded:Connect(function(model)
+        if model.Name == "Part" and antiExplodeT then
+            pcall(function()
+                local mag = (model.Position - hrp.Position).Magnitude
+                if mag <= 20 then
+                    hrp.Anchored = true
+                    task.wait(0.01)
+                    -- 腕のパーツが存在するかチェックしながらループ
+                    while antiExplodeT and char:FindFirstChild("Right Arm") and 
+                          char["Right Arm"]:FindFirstChild("RagdollLimbPart") and 
+                          char["Right Arm"].RagdollLimbPart.CanCollide do
+                        task.wait(0.01)
+                    end
+                    hrp.Anchored = false
+                end
+            end)
+        end
+    end)
+end
+
+-- ボタン2: Anti Explode
+if invulnerabilitySection then
+    invulnerabilitySection:AddToggle({
+        Name = "Anti Explode",
+        Default = false,
+        Callback = function(on)
+            if on then
+                antiExplodeF()
+            else
+                antiExplodeT = false
+            end
+        end
+    })
 end
 --==============================
 -- タブ：究極オーラ (Ultimate)
