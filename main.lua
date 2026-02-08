@@ -1774,68 +1774,76 @@ local DestTab = Window:MakeTab({
     PremiumOnly = false
 })
 
-local DestSec = DestTab:AddSection({
-    Name = "Massive Bring & Kick"
-})
-
-DestSec:AddToggle({
-    Name = "Massive Bring & Blackhole",
+-- デストロイサーバー (ブラックホール・エディション V7)
+BlobmanTab:AddToggle({
+    Name = "Destroy Server (Blackhole Kick)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
         if Value then
             task.spawn(function()
                 local RunService = game:GetService("RunService")
+                
                 while _G.BringAllLongReach do
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    if not hum or hum.Health <= 0 then 
-                        _G.BringAllLongReach = false 
-                        break 
+                    -- 生存チェック（バグ防止）
+                    if not hum or hum.Health <= 0 then
+                        repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
+                        char = lp.Character
+                        hum = char.Humanoid
                     end
 
                     local seat = hum.SeatPart
-                    if seat and seat.Parent and seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript") then
+                    if seat and seat.Parent and seat.Parent.Name == "CreatureBlobman" then
                         local blobman = seat.Parent
                         local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        local leftDet = blobman:FindFirstChild("LeftDetector")
-                        local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
                         
-                        if remote and blobRoot and leftDet then
-                            local originalPos = blobRoot.CFrame
-                            local grabbedPlayers = {}
-
+                        local leftDet = blobman:FindFirstChild("LeftDetector")
+                        local rightDet = blobman:FindFirstChild("RightDetector")
+                        local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
+                        local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
+                        
+                        if remote and blobRoot then
                             for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLongReach then break end
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
-                                    if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                                        local targetHRP = p.Character.HumanoidRootPart
-                                        blobRoot.CFrame = targetHRP.CFrame
-                                        remote:FireServer(leftDet, targetHRP, leftWeld, 2)
-                                        table.insert(grabbedPlayers, targetHRP)
-                                        RunService.Heartbeat:Wait()
-                                    end
-                                end
-                            end
-                            
-                            blobRoot.CFrame = originalPos
-                            task.wait(0.6) 
-
-                            for _, targetHRP in pairs(grabbedPlayers) do
-                                remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                                if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
+                                if p.Character.Humanoid.Health <= 0 then continue end
+                                if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
+                                
+                                local targetHRP = p.Character.HumanoidRootPart
+                                
+                                -- 【テレポート】維持
+                                blobRoot.CFrame = targetHRP.CFrame
+                                blobRoot.Velocity = Vector3.zero
+                                
+                                -- 【ブラックホール・キック発動】
+                                -- 1. まず掴む（両手）
+                                if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
+                                if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
+                                
+                                -- 2. 物理演算の1フレームだけ待つ（これが吹き飛ばしを最大化するコツ）
+                                RunService.Stepped:Wait()
+                                
+                                -- 3. 解放（この一瞬のラグが相手をブラックホールへ飛ばす）
+                                if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 1) end
+                                if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 1) end
+                                
+                                -- 4. 超高速巡回のための極小待機
+                                RunService.Heartbeat:Wait()
                             end
                         end
                     else
                         _G.BringAllLongReach = false
                         break
                     end
-                    task.wait(1.5)
+                    RunService.Heartbeat:Wait()
                 end
             end)
         end
-    end    
+    end
 })
 
 -- [[ 3. UI構築 ]]
