@@ -1775,7 +1775,7 @@ local DestTab = Window:MakeTab({
 })
 
 DestTab:AddToggle({
-    Name = "Ultimate Destroyer (Stable High-Speed)",
+    Name = "Final Annihilator (25-Player Max)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1787,7 +1787,6 @@ DestTab:AddToggle({
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 生存チェック
                     if not hum or hum.Health <= 0 then
                         repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
                         char = lp.Character
@@ -1806,7 +1805,9 @@ DestTab:AddToggle({
                         local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
                         
                         if remote and blobRoot then
-                            for _, p in pairs(game.Players:GetPlayers()) do
+                            local playersList = game.Players:GetPlayers()
+                            
+                            for _, p in pairs(playersList) do
                                 if not _G.BringAllLongReach then break end
                                 if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
                                 if p.Character.Humanoid.Health <= 0 then continue end
@@ -1814,33 +1815,35 @@ DestTab:AddToggle({
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【安定テレポート】
-                                -- 速度を一定にするため、一瞬の移動後にごくわずかな静止時間を作る
-                                blobRoot.CFrame = targetHRP.CFrame
-                                blobRoot.Velocity = Vector3.zero
-                                
-                                -- 【効率重視のキック】
-                                -- 左右交互ではなく「両手で同時に挟み込む」パケットを1フレームで送信
+                                -- 【安定テレポート】リクエスト通り少しゆっくり（0.15秒の移動ラグ）
+                                -- 相手の少し上(2スタッド)に出ることで、物理判定をより強く当てる
+                                blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 2, 0)
+                                blobRoot.Velocity = Vector3.new(0, 0, 0)
+                                task.wait(0.12) -- テレポート後の安定待ち
+
+                                -- 【限界突破：同時バーストGrab】
+                                -- サーバーに「拒否権」を与えないよう、物理更新の直前にパケットを叩き込む
+                                RunService.PreSimulation:Wait()
                                 remote:FireServer(leftDet, targetHRP, leftWeld, 2)
                                 remote:FireServer(rightDet, targetHRP, rightWeld, 2)
                                 
-                                -- ここがキック効率の鍵。0.03〜0.05が最も「詰まり」にくい高速域です
-                                task.wait(0.04) 
+                                -- 【確定キック判定】
+                                -- 0.03秒という「短すぎず長すぎない」時間が、Roblox物理エンジンを最もバグらせる
+                                task.wait(0.03)
                                 
-                                -- 解放して吹っ飛ばす
+                                -- 【ブラックホール射出】
                                 remote:FireServer(leftDet, targetHRP, leftWeld, 1)
                                 remote:FireServer(rightDet, targetHRP, rightWeld, 1)
                                 
-                                -- テレポート間隔を「少しゆっくり」にしてサーバーの拒否を防ぐ
-                                task.wait(0.06) 
+                                -- パケット詰まり防止用の微小待機（これで速度が落ちなくなる）
+                                task.wait(0.05)
                             end
                         end
                     else
                         _G.BringAllLongReach = false
                         break
                     end
-                    -- 一巡した後の安定化ウェイト
-                    RunService.Heartbeat:Wait()
+                    task.wait(0.3) -- 全員(25人)一周した後のリセット時間
                 end
             end)
         end
