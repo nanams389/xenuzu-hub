@@ -1850,6 +1850,48 @@ DestTab:AddToggle({
     end
 })
 
+--==============================
+-- サイレントAIM機能
+--==============================
+DestSec:AddToggle({
+    Name = "Silent Aim (Target Closest)",
+    Default = false,
+    Callback = function(Value)
+        _G.SilentAim = Value
+        
+        -- メタテーブルの書き換え（サイレントAIMの核心）
+        local mt = getrawmetatable(game)
+        local oldIndex = mt.__index
+        setreadonly(mt, false)
+
+        mt.__index = newcclosure(function(self, index)
+            if _G.SilentAim and index == "Hit" and self.Name == "Mouse" then
+                -- 最も近いプレイヤーを探す
+                local closestPlayer = nil
+                local shortestDistance = math.huge
+                local lp = game.Players.LocalPlayer
+
+                for _, p in pairs(game.Players:GetPlayers()) do
+                    if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (lp.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                        if dist < shortestDistance then
+                            closestPlayer = p
+                            shortestDistance = dist
+                        end
+                    end
+                end
+
+                if closestPlayer then
+                    -- 弾の行き先をターゲットの座標に偽装
+                    return closestPlayer.Character.HumanoidRootPart.CFrame
+                end
+            end
+            return oldIndex(self, index)
+        end)
+
+        setreadonly(mt, true)
+    end
+})
 -- [[ 3. UI構築 ]]
 local BlobmanTab = Window:MakeTab({ Name = "Blobman 2", Icon = "rbxassetid://6031064398" })
 
