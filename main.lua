@@ -1938,9 +1938,9 @@ BlobmanTab:AddButton({
     end
 })
 
--- デストロイサーバー (Auto-TP + Rapid Grab/Release)
+-- デストロイサーバー (究極精度・両手一括 Grab)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Auto-TP Edition)",
+    Name = "Destroy Server (Ultimate Precision)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1953,47 +1953,54 @@ BlobmanTab:AddToggle({
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     local seat = hum and hum.SeatPart
                     
-                    -- Blobmanに乗っているかチェック
                     if seat and seat.Parent and seat.Parent.Name == "CreatureBlobman" then
                         local blobman = seat.Parent
                         local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        local detector = blobman:FindFirstChild("LeftDetector")
-                        local weld = detector and (detector:FindFirstChild("LeftWeld") or detector:FindFirstChildWhichIsA("Weld"))
                         
-                        if remote and blobRoot and detector then
-                            for _, p in pairs(game.Players:GetPlayers()) do
+                        -- 両手の検出器を取得
+                        local leftDetector = blobman:FindFirstChild("LeftDetector")
+                        local rightDetector = blobman:FindFirstChild("RightDetector")
+                        local leftWeld = leftDetector and (leftDetector:FindFirstChild("LeftWeld") or leftDetector:FindFirstChildWhichIsA("Weld"))
+                        local rightWeld = rightDetector and (rightDetector:FindFirstChild("RightWeld") or rightDetector:FindFirstChildWhichIsA("Weld"))
+                        
+                        if remote and blobRoot then
+                            local allPlayers = game.Players:GetPlayers()
+                            
+                            for _, p in pairs(allPlayers) do
                                 if not _G.BringAllLongReach then break end
+                                if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
+                                if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
                                 
-                                -- 自分とフレンドを除外
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                    if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
-                                    
-                                    local targetHRP = p.Character.HumanoidRootPart
-                                    
-                                    -- 【精度向上】ターゲットの目の前にテレポート
-                                    blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 0, -2) 
-                                    blobRoot.Velocity = Vector3.zero
-                                    
-                                    -- 【超高速処理】掴んで即離す（パケットを連続送信）
-                                    -- 2 = 掴む, 1 = 離す
-                                    remote:FireServer(detector, targetHRP, weld, 2)
-                                    -- 待機なし、あるいは極小待機で精度と速度を両立
-                                    RunService.Heartbeat:Wait() 
-                                    remote:FireServer(detector, targetHRP, weld, 1)
-                                    
-                                    -- サーバーキック対策の微小待機
-                                    task.wait(0.01) 
+                                local targetHRP = p.Character.HumanoidRootPart
+                                
+                                -- 【テレポート】維持しつつ、より確実に重なる位置へ
+                                blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 0)
+                                blobRoot.Velocity = Vector3.new(0, 0, 0)
+                                
+                                -- 【精度UP】一瞬で全員にパケットを叩き込む
+                                -- 左手と右手で交互、あるいは同時に掴み命令を飛ばす
+                                if leftDetector and leftWeld then
+                                    remote:FireServer(leftDetector, targetHRP, leftWeld, 2)
                                 end
+                                if rightDetector and rightWeld then
+                                    remote:FireServer(rightDetector, targetHRP, rightWeld, 2)
+                                end
+                                
+                                -- 離す処理をHeartbeatに同期させて「掴みっぱなし」に近い状態を作る
+                                task.spawn(function()
+                                    RunService.Heartbeat:Wait()
+                                    if leftDetector then remote:FireServer(leftDetector, targetHRP, leftWeld, 1) end
+                                    if rightDetector then remote:FireServer(rightDetector, targetHRP, rightWeld, 1) end
+                                end)
                             end
                         end
                     else
-                        -- Blobmanに乗っていない場合は警告を出してオフにする
                         _G.BringAllLongReach = false
-                        print("Blobmanに乗ってください。")
                         break
                     end
-                    task.wait(0.1)
+                    -- ループ速度を最速に設定
+                    RunService.Heartbeat:Wait()
                 end
             end)
         end
