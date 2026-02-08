@@ -1982,20 +1982,18 @@ BlobTab:AddToggle({
     end
 })
 
--- === デストロイ専用タブの作成 ===
-local DestroyTab = Window:MakeTab({
+-- 変数名を既存のものと被らないように「DestTab」「DestSec」にしています
+local DestTab = Window:MakeTab({
 	Name = "Destroy Server",
-	Icon = "rbxassetid://4483345998", -- ドクロや警告っぽいアイコン
+	Icon = "rbxassetid://4483345998",
 	PremiumOnly = false
 })
 
--- セクションの追加
-local Section = DestroyTab:AddSection({
-	Name = "Main Functions (Requires Blobman)"
+local DestSec = DestTab:AddSection({
+	Name = "Massive Bring & Kick"
 })
 
--- === デストロイサーバー (動画再現版：全員集約 & キック) ===
-Section:AddToggle({
+DestSec:AddToggle({
 	Name = "Massive Bring & Blackhole",
 	Default = false,
 	Callback = function(Value)
@@ -2003,90 +2001,57 @@ Section:AddToggle({
 		if Value then
 			task.spawn(function()
 				local RunService = game:GetService("RunService")
-				
 				while _G.BringAllLongReach do
-					local char = lp.Character
+					local char = game.Players.LocalPlayer.Character
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					
-					-- 生存チェック（バグ防止）
-					if not hum or hum.Health <= 0 then
-						_G.BringAllLongReach = false
-						-- Orionの通知機能があればここで「死んだため停止しました」と出せます
-						break
-					end
-
+					-- 1. 生存・Blobman搭乗チェック
+					if not hum or hum.Health <= 0 then _G.BringAllLongReach = false break end
 					local seat = hum.SeatPart
-					if seat and seat.Parent and (seat.Parent.Name == "CreatureBlobman" or seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript")) then
-						local blobman = seat.Parent
-						local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
-						local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-						local leftDet = blobman:FindFirstChild("LeftDetector")
-						local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
-						
-						if remote and blobRoot and leftDet then
-							local originalPos = blobRoot.CFrame -- 帰還ポイントを固定
-							local grabbedPlayers = {} -- ターゲットリスト
-
-							-- 【STEP 1: マップ中の全員を巡回して「数珠つなぎ」にする】
-							for _, p in pairs(game.Players:GetPlayers()) do
-								if not _G.BringAllLongReach then break end
-								if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
-								if p.Character.Humanoid.Health <= 0 then continue end
-								if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
-
-								local targetHRP = p.Character.HumanoidRootPart
-								
-								-- 相手の座標へ一瞬で移動してネットワーク権限を取得
-								blobRoot.CFrame = targetHRP.CFrame
-								remote:FireServer(leftDet, targetHRP, leftWeld, 2) -- 掴む(2)
-								
-								table.insert(grabbedPlayers, targetHRP)
-								
-								-- サーバーに「掴んだ」と認識させる最小限のラグ
-								RunService.Heartbeat:Wait()
-							end
-							
-							-- 【STEP 2: 全員を連れて元の場所へ帰還】
-							blobRoot.CFrame = originalPos
-							
-							-- 【STEP 3: 全員が自分の手元に重なるまで待機（物理バグを誘発）】
-							task.wait(0.6) 
-							
-							-- 【STEP 4: 全員一斉にブラックホール射出】
-							for _, targetHRP in pairs(grabbedPlayers) do
-								remote:FireServer(leftDet, targetHRP, leftWeld, 1) -- 離す(1)
-							end
-							
-							-- 完了後の処理
-							RunService.Heartbeat:Wait()
-						end
-					else
-						-- Blobmanに乗っていない場合は解除
+					if not (seat and seat.Parent and seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript")) then
 						_G.BringAllLongReach = false
-						OrionLib:MakeNotification({
-							Name = "Error",
-							Content = "Blobmanに乗ってください！",
-							Image = "rbxassetid://4483345998",
-							Time = 5
-						})
 						break
 					end
-					task.wait(1.5) -- サーバーのレートリミット対策（無限稼働のため）
+
+					-- 2. 実行用変数の取得
+					local blobman = seat.Parent
+					local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
+					local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+					local leftDet = blobman:FindFirstChild("LeftDetector")
+					local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
+					
+					if remote and blobRoot and leftDet then
+						local originalPos = blobRoot.CFrame
+						local grabbedPlayers = {}
+
+						-- 3. 全員巡回して掴む
+						for _, p in pairs(game.Players:GetPlayers()) do
+							if not _G.BringAllLongReach then break end
+							if p ~= game.Players.LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+								if not (_G.WhitelistFriends2 and game.Players.LocalPlayer:IsFriendsWith(p.UserId)) then
+									local targetHRP = p.Character.HumanoidRootPart
+									blobRoot.CFrame = targetHRP.CFrame
+									remote:FireServer(leftDet, targetHRP, leftWeld, 2)
+									table.insert(grabbedPlayers, targetHRP)
+									RunService.Heartbeat:Wait()
+								end
+							end
+						end
+						
+						-- 4. 帰還して一斉射出
+						blobRoot.CFrame = originalPos
+						task.wait(0.6) 
+
+						for _, targetHRP in pairs(grabbedPlayers) do
+							remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+						end
+					end
+					task.wait(1.5)
 				end
 			end)
 		end
 	end    
 })
-
--- ホワイトリスト設定（フレンドを守る用）
-Section:AddToggle({
-	Name = "Whitelist Friends",
-	Default = true,
-	Callback = function(Value)
-		_G.WhitelistFriends2 = Value
-	end
-})
-
 
 --==============================
 -- 初期化
