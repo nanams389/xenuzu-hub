@@ -1938,37 +1938,62 @@ BlobmanTab:AddButton({
     end
 })
 
--- デストロイサーバー (Rapid Grab/Release)
+-- デストロイサーバー (Auto-TP + Rapid Grab/Release)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Rapid Grab/Release)",
+    Name = "Destroy Server (Auto-TP Edition)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
         if Value then
             task.spawn(function()
+                local RunService = game:GetService("RunService")
+                
                 while _G.BringAllLongReach do
                     local char = lp.Character
-                    local seat = char.Humanoid.SeatPart
-                    if seat and seat.Parent then
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local seat = hum and hum.SeatPart
+                    
+                    -- Blobmanに乗っているかチェック
+                    if seat and seat.Parent and seat.Parent.Name == "CreatureBlobman" then
                         local blobman = seat.Parent
+                        local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        if remote then
-                            for _, p in pairs(players:GetPlayers()) do
+                        local detector = blobman:FindFirstChild("LeftDetector")
+                        local weld = detector and (detector:FindFirstChild("LeftWeld") or detector:FindFirstChildWhichIsA("Weld"))
+                        
+                        if remote and blobRoot and detector then
+                            for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLongReach then break end
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                
+                                -- 自分とフレンドを除外
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
+                                    
                                     local targetHRP = p.Character.HumanoidRootPart
-                                    local detector = blobman:FindFirstChild("LeftDetector")
-                                    local weld = detector and detector:FindFirstChild("LeftWeld")
-                                    if detector and weld then
-                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
-                                        task.wait(0.05)
-                                        remote:FireServer(detector, targetHRP, weld, 1) -- 即離す
-                                    end
+                                    
+                                    -- 【精度向上】ターゲットの目の前にテレポート
+                                    blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 0, -2) 
+                                    blobRoot.Velocity = Vector3.zero
+                                    
+                                    -- 【超高速処理】掴んで即離す（パケットを連続送信）
+                                    -- 2 = 掴む, 1 = 離す
+                                    remote:FireServer(detector, targetHRP, weld, 2)
+                                    -- 待機なし、あるいは極小待機で精度と速度を両立
+                                    RunService.Heartbeat:Wait() 
+                                    remote:FireServer(detector, targetHRP, weld, 1)
+                                    
+                                    -- サーバーキック対策の微小待機
+                                    task.wait(0.01) 
                                 end
                             end
                         end
+                    else
+                        -- Blobmanに乗っていない場合は警告を出してオフにする
+                        _G.BringAllLongReach = false
+                        print("Blobmanに乗ってください。")
+                        break
                     end
-                    task.wait(0.2)
+                    task.wait(0.1)
                 end
             end)
         end
