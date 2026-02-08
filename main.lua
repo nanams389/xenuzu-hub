@@ -1908,9 +1908,9 @@ BlobmanTab:AddButton({
     end
 })
 
--- デストロイサーバー (ブラックホール・エディション V7)
+-- デストロイサーバー (Bring & Massive Kick V8)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Blackhole Kick)",
+    Name = "Destroy Server (Bring & Kick)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1922,11 +1922,10 @@ BlobmanTab:AddToggle({
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 生存チェック（バグ防止）
+                    -- 死んだら完全に止める（生き返れないバグを確実に防ぐ）
                     if not hum or hum.Health <= 0 then
-                        repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
-                        char = lp.Character
-                        hum = char.Humanoid
+                        _G.BringAllLongReach = false
+                        break
                     end
 
                     local seat = hum.SeatPart
@@ -1936,11 +1935,9 @@ BlobmanTab:AddToggle({
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                         
                         local leftDet = blobman:FindFirstChild("LeftDetector")
-                        local rightDet = blobman:FindFirstChild("RightDetector")
                         local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
-                        local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
                         
-                        if remote and blobRoot then
+                        if remote and blobRoot and leftDet then
                             for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLongReach then break end
                                 if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
@@ -1949,31 +1946,29 @@ BlobmanTab:AddToggle({
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【テレポート】維持
-                                blobRoot.CFrame = targetHRP.CFrame
-                                blobRoot.Velocity = Vector3.zero
+                                -- 【1. ネットワーク奪取 & 手元へ引き寄せ】
+                                -- 相手の場所に飛ぶのではなく、自分の目の前に一瞬だけ相手を呼ぶ（動画の挙動）
+                                -- 2 = 掴む
+                                remote:FireServer(leftDet, targetHRP, leftWeld, 2)
                                 
-                                -- 【ブラックホール・キック発動】
-                                -- 1. まず掴む（両手）
-                                if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
-                                if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
-                                
-                                -- 2. 物理演算の1フレームだけ待つ（これが吹き飛ばしを最大化するコツ）
-                                RunService.Stepped:Wait()
-                                
-                                -- 3. 解放（この一瞬のラグが相手をブラックホールへ飛ばす）
-                                if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 1) end
-                                if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 1) end
-                                
-                                -- 4. 超高速巡回のための極小待機
+                                -- 【2. 安定化のためのウェイト】
+                                -- 自分の画面に相手が表示されるのを待つ（ここが早すぎるとバグる原因）
                                 RunService.Heartbeat:Wait()
+                                
+                                -- 【3. ブラックホール・キック】
+                                -- 自分の位置情報を一瞬だけ極端に動かして離す（これで相手が吹っ飛ぶ）
+                                remote:FireServer(leftDet, targetHRP, leftWeld, 1) -- 1 = 離す
+                                
+                                -- 【4. 次のターゲットへ行く前の「溜め」】
+                                -- 自分のPC画面が追いつくように少しだけ待機
+                                task.wait(0.1) 
                             end
                         end
                     else
                         _G.BringAllLongReach = false
                         break
                     end
-                    RunService.Heartbeat:Wait()
+                    task.wait(0.5) -- サーバーへの負荷を考えて1周ごとに一息つく
                 end
             end)
         end
