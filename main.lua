@@ -1938,9 +1938,9 @@ BlobmanTab:AddButton({
     end
 })
 
--- デストロイサーバー (究極精度・両手一括 Grab)
+-- デストロイサーバー (究極精度・リスポーンバグ修正版)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Ultimate Precision)",
+    Name = "Destroy Server (God Mode V4)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1951,35 +1951,41 @@ BlobmanTab:AddToggle({
                 while _G.BringAllLongReach do
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
-                    local seat = hum and hum.SeatPart
                     
+                    -- 死んでいたらリスポーンまで待機（バグ防止）
+                    if not hum or hum.Health <= 0 then
+                        repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
+                        char = lp.Character
+                        hum = char.Humanoid
+                    end
+
+                    local seat = hum.SeatPart
                     if seat and seat.Parent and seat.Parent.Name == "CreatureBlobman" then
                         local blobman = seat.Parent
                         local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                         
-                        -- 両手の検出器を取得
                         local leftDetector = blobman:FindFirstChild("LeftDetector")
                         local rightDetector = blobman:FindFirstChild("RightDetector")
                         local leftWeld = leftDetector and (leftDetector:FindFirstChild("LeftWeld") or leftDetector:FindFirstChildWhichIsA("Weld"))
                         local rightWeld = rightDetector and (rightDetector:FindFirstChild("RightWeld") or rightDetector:FindFirstChildWhichIsA("Weld"))
                         
                         if remote and blobRoot then
-                            local allPlayers = game.Players:GetPlayers()
-                            
-                            for _, p in pairs(allPlayers) do
+                            for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLongReach then break end
+                                -- 自分・死んでる人・フレンドを除外
                                 if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
+                                if p.Character:FindFirstChildOfClass("Humanoid") and p.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then continue end
                                 if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【テレポート】維持しつつ、より確実に重なる位置へ
-                                blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 0)
-                                blobRoot.Velocity = Vector3.new(0, 0, 0)
+                                -- 【超精度TP】相手の座標に完全同期
+                                blobRoot.CFrame = targetHRP.CFrame
+                                blobRoot.Velocity = Vector3.zero
                                 
-                                -- 【精度UP】一瞬で全員にパケットを叩き込む
-                                -- 左手と右手で交互、あるいは同時に掴み命令を飛ばす
+                                -- 【両手同時爆速Grab】
+                                -- 0.01秒だけ待つことでサーバーに「掴んだ状態」を分からせてから飛ばす
                                 if leftDetector and leftWeld then
                                     remote:FireServer(leftDetector, targetHRP, leftWeld, 2)
                                 end
@@ -1987,20 +1993,21 @@ BlobmanTab:AddToggle({
                                     remote:FireServer(rightDetector, targetHRP, rightWeld, 2)
                                 end
                                 
-                                -- 離す処理をHeartbeatに同期させて「掴みっぱなし」に近い状態を作る
-                                task.spawn(function()
-                                    RunService.Heartbeat:Wait()
-                                    if leftDetector then remote:FireServer(leftDetector, targetHRP, leftWeld, 1) end
-                                    if rightDetector then remote:FireServer(rightDetector, targetHRP, rightWeld, 1) end
-                                end)
+                                task.wait(0.02) -- ここがキック精度の肝（短すぎると空振り、長すぎると遅い）
+                                
+                                if leftDetector then remote:FireServer(leftDetector, targetHRP, leftWeld, 1) end
+                                if rightDetector then remote:FireServer(rightDetector, targetHRP, rightWeld, 1) end
+                                
+                                -- 次のターゲットへ行く前の極小待機（サーバー負荷調整）
+                                RunService.Heartbeat:Wait()
                             end
                         end
                     else
+                        -- Blobmanから降りたらループ終了
                         _G.BringAllLongReach = false
                         break
                     end
-                    -- ループ速度を最速に設定
-                    RunService.Heartbeat:Wait()
+                    task.wait(0.05)
                 end
             end)
         end
