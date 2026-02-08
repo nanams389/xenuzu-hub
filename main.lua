@@ -1938,9 +1938,9 @@ BlobmanTab:AddButton({
     end
 })
 
--- デストロイサーバー (高精度キック & 安定テレポート版)
+-- デストロイサーバー (無限継続・確定キック強化版)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Precision Kick V5)",
+    Name = "Destroy Server (Infinite Kick V6)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1950,7 +1950,7 @@ BlobmanTab:AddToggle({
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 生存確認（リスポーンバグ防止）
+                    -- 死んだら待機（生き返れないバグを完全に防止）
                     if not hum or hum.Health <= 0 then
                         repeat task.wait(1) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
                         char = lp.Character
@@ -1969,7 +1969,9 @@ BlobmanTab:AddToggle({
                         local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
                         
                         if remote and blobRoot then
-                            for _, p in pairs(game.Players:GetPlayers()) do
+                            local playersList = game.Players:GetPlayers()
+                            
+                            for _, p in pairs(playersList) do
                                 if not _G.BringAllLongReach then break end
                                 if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
                                 if p.Character.Humanoid.Health <= 0 then continue end
@@ -1977,33 +1979,35 @@ BlobmanTab:AddToggle({
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【安定テレポート】少しゆっくり移動
-                                blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 1) -- 相手の目の前1スタッドにピタッと止まる
+                                -- 【テレポート】位置は今のまま維持
+                                blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 1)
                                 blobRoot.Velocity = Vector3.zero
                                 
-                                -- 【キック精度重視のGrab】
-                                -- 複数回送ることでネットワークのラグを貫通させる
-                                for i = 1, 2 do
+                                -- 【精度UP：時間差多重Grab】
+                                -- サーバーのラグを貫通させるために、短時間に連続で掴むパケットを送る
+                                for i = 1, 3 do
                                     if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
                                     if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
+                                    task.wait(0.01) -- サーバーが処理できる限界の隙間
                                 end
                                 
-                                -- 掴み保持時間（ここを少し長くすると、より強力にキックできる）
-                                task.wait(0.15) 
+                                -- 掴み保持（ここを0.25秒にすることでキック威力を最大化）
+                                task.wait(0.25) 
                                 
-                                -- 解放（キック発生）
+                                -- 【解放：確定キック】
                                 if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 1) end
                                 if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 1) end
                                 
-                                -- 一人終わるごとに少しだけ待機（サーバーを落とさないための優しさ）
-                                task.wait(0.1) 
+                                -- 【超重要：無限継続のための待機】
+                                -- これを入れないと数分でサーバーに弾かれます
+                                task.wait(0.15) 
                             end
                         end
                     else
                         _G.BringAllLongReach = false
                         break
                     end
-                    task.wait(0.5) -- 全員一周した後のクールタイム
+                    task.wait(0.1) -- 周回間の微調整
                 end
             end)
         end
