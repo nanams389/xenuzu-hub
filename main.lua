@@ -1761,175 +1761,50 @@ DestTab:AddToggle({
     end
 })
 
---==============================
--- サイレントAIM機能
---==============================
-DestSec:AddToggle({
-    Name = "Silent Aim (Target Closest)",
-    Default = false,
-    Callback = function(Value)
-        _G.SilentAim = Value
-        
-        -- メタテーブルの書き換え（サイレントAIMの核心）
-        local mt = getrawmetatable(game)
-        local oldIndex = mt.__index
-        setreadonly(mt, false)
+--==================================================
+-- プレイヤーリスト管理 & 一撃キック機能 (DestTabに追加)
+--==================================================
 
-        mt.__index = newcclosure(function(self, index)
-            if _G.SilentAim and index == "Hit" and self.Name == "Mouse" then
-                -- 最も近いプレイヤーを探す
-                local closestPlayer = nil
-                local shortestDistance = math.huge
-                local lp = game.Players.LocalPlayer
-
-                for _, p in pairs(game.Players:GetPlayers()) do
-                    if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        local dist = (lp.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                        if dist < shortestDistance then
-                            closestPlayer = p
-                            shortestDistance = dist
-                        end
-                    end
-                end
-
-                if closestPlayer then
-                    -- 弾の行き先をターゲットの座標に偽装
-                    return closestPlayer.Character.HumanoidRootPart.CFrame
-                end
-            end
-            return oldIndex(self, index)
-        end)
-
-        setreadonly(mt, true)
+-- プレイヤー名を取得する関数 (既存のコードにない場合のため)
+local function getPlayerNames()
+    local pList = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            table.insert(pList, p.Name)
+        end
     end
-})
--- [[ 3. UI構築 ]]
-local BlobmanTab = Window:MakeTab({ Name = "Blobman 2", Icon = "rbxassetid://6031064398" })
+    return pList
+end
 
--- 公式エラー誘発キック (blobman 引き寄せ)
-BlobmanTab:AddButton({
-    Name = "blobmanで相手を掴む(グッチ、家貫通)",
-    Callback = function()
-        pcall(function()
-            local target = players:FindFirstChild(_G.PlayerToLongGrab)
-            local char = lp.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local seat = hum and hum.SeatPart
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
-                local blobman = seat.Parent
-                local targetHRP = target.Character.HumanoidRootPart
-                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                -- 1. 相手の場所にテレポート
-                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
-                if blobman.PrimaryPart then
-                    blobman:SetPrimaryPartCFrame(targetPos)
-                else
-                    seat.CFrame = targetPos
-                end
-                task.wait(0.1)
-                -- 2. 両手で掴む
-                local arms = {"Left", "Right"}
-                for _, side in ipairs(arms) do
-                    local detector = blobman:WaitForChild(side .. "Detector")
-                    local weld = detector:WaitForChild(side .. "Weld")
-                    remote:FireServer(detector, targetHRP, weld, 3)
-                end
-                -- 3. 公式エラー誘発
-                task.spawn(function()
-                    local leftDetector = blobman:FindFirstChild("LeftDetector")
-                    local rightDetector = blobman:FindFirstChild("RightDetector")
-                    local originalCF = leftDetector.CFrame
-                    for i = 1, 15 do
-                        local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0)
-                        if leftDetector then leftDetector.CFrame = shakePos end
-                        if rightDetector then rightDetector.CFrame = shakePos end
-                        task.wait(0.02)
-                        local shakePosUp = targetHRP.CFrame * CFrame.new(0, 20, 0)
-                        if leftDetector then leftDetector.CFrame = shakePosUp end
-                        if rightDetector then rightDetector.CFrame = shakePosUp end
-                        task.wait(0.02)
-                    end
-                    if leftDetector then leftDetector.CFrame = originalCF end
-                end)
-                -- 4. 浮上固定
-                if not hrp:FindFirstChild("ErrorFloat") then
-                    local bv = Instance.new("BodyVelocity")
-                    bv.Name = "ErrorFloat"
-                    bv.MaxForce = Vector3.new(0, 1e9, 0)
-                    bv.Velocity = Vector3.new(0, 35, 0)
-                    bv.Parent = hrp
-                    task.delay(0.6, function() if bv.Parent then bv.Velocity = Vector3.new(0, 0, 0) end end)
-                    game:GetService("Debris"):AddItem(bv, 2.0)
-                end
-            end
-        end)
-    end
-})
-
--- プレイヤー選択ドロップダウン
-local PlayerSelector = BlobmanTab:AddDropdown({
-    Name = "Select Player",
+-- 1. プレイヤー選択ドロップダウン
+local PlayerSelector = DestTab:AddDropdown({
+    Name = "Select Target (対象を選択)",
     Default = "",
     Options = getPlayerNames(),
-    Callback = function(t) _G.PlayerToLongGrab = t end
+    Callback = function(t) 
+        _G.PlayerToLongGrab = t 
+    end
 })
 
--- リスト更新ボタン
-BlobmanTab:AddButton({
+-- 2. プレイヤーリスト更新ボタン
+DestTab:AddButton({
     Name = "Refresh Player List (リスト更新)",
     Callback = function()
         PlayerSelector:Refresh(getPlayerNames(), true)
     end
 })
--- デストロイサーバー (Rapid Grab/Release)
-BlobmanTab:AddToggle({
-    Name = "Destroy Server (Rapid Grab/Release)",
-    Default = false,
-    Callback = function(Value)
-        _G.BringAllLongReach = Value
-        if Value then
-            task.spawn(function()
-                while _G.BringAllLongReach do
-                    local char = lp.Character
-                    local seat = char.Humanoid.SeatPart
-                    if seat and seat.Parent then
-                        local blobman = seat.Parent
-                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        if remote then
-                            for _, p in pairs(players:GetPlayers()) do
-                                if not _G.BringAllLongReach then break end
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                                    local targetHRP = p.Character.HumanoidRootPart
-                                    local detector = blobman:FindFirstChild("LeftDetector")
-                                    local weld = detector and detector:FindFirstChild("LeftWeld")
-                                    if detector and weld then
-                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
-                                        task.wait(0.05)
-                                        remote:FireServer(detector, targetHRP, weld, 1) -- 即離す
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    task.wait(0.2)
-                end
-            end)
-        end
-    end
-})
 
--- [[ 追加：一撃必殺キックボタン ]]
-BlobmanTab:AddButton({
-    Name = "【一撃】TP掴みキック (選んだ相手を即消去)",
+-- 3. 【一撃必殺】TP・掴み・エラー誘発キックボタン
+DestTab:AddButton({
+    Name = "ONE-TAP KICK (TP + Grab + Kick)",
     Callback = function()
         pcall(function()
-            -- _G.PlayerToLongGrab はドロップダウンで選択されたプレイヤー名
+            -- 選択されたプレイヤーを取得
             local target = game.Players:FindFirstChild(_G.PlayerToLongGrab)
             local lp = game.Players.LocalPlayer
             local char = lp.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local seat = hum and hum.SeatPart
             
             if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
@@ -1937,7 +1812,8 @@ BlobmanTab:AddButton({
                 local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                 
-                -- 1. 相手の場所にテレポート（相手の5スタッド上へ）
+                -- [[ STEP 1: 爆速テレポート ]]
+                -- 相手の5スタッド上に配置（貫通力を高める）
                 local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
                 if blobman.PrimaryPart then
                     blobman:SetPrimaryPartCFrame(targetPos)
@@ -1945,57 +1821,56 @@ BlobmanTab:AddButton({
                     seat.CFrame = targetPos
                 end
                 
-                -- ネットワーク権限取得のための極小待機
+                -- 物理演算の同期待ち（最短）
                 task.wait(0.05)
                 
-                -- 2. 両手で【最強モード(3)】で掴む
+                -- [[ STEP 2: 強制拘束 (モード3) ]]
                 local arms = {"Left", "Right"}
                 for _, side in ipairs(arms) do
                     local detector = blobman:FindFirstChild(side .. "Detector")
                     local weld = detector and (detector:FindFirstChild(side .. "Weld") or detector:FindFirstChildWhichIsA("Weld"))
-                    if detector and weld then
-                        remote:FireServer(detector, targetHRP, weld, 3) -- モード3（強力固定）
+                    if detector and weld and remote then
+                        remote:FireServer(detector, targetHRP, weld, 3) -- 最強固定
                     end
                 end
                 
-                -- 3. 公式エラー誘発（超高速物理シェイク）
+                -- [[ STEP 3: 限界突破物理シェイク (キック確定) ]]
                 task.spawn(function()
                     local leftDet = blobman:FindFirstChild("LeftDetector")
                     local rightDet = blobman:FindFirstChild("RightDetector")
                     if not leftDet or not rightDet then return end
                     
-                    local originalCF = leftDet.CFrame
-                    -- 20回高速ループで物理演算を破壊
+                    -- 揺らし幅を60、速度を0.01に設定して相手の物理挙動を破壊する
                     for i = 1, 20 do
-                        local shakePos = targetHRP.CFrame * CFrame.new(0, (i%2==0 and 60 or -60), 0)
-                        leftDet.CFrame = shakePos
-                        rightDet.CFrame = shakePos
+                        local shake = targetHRP.CFrame * CFrame.new(0, (i%2==0 and 60 or -60), 0)
+                        leftDet.CFrame = shake
+                        rightDet.CFrame = shake
                         task.wait(0.01)
                     end
-                    leftDet.CFrame = originalCF
                     
-                    -- 4. 最後にパージ（離して射出）
+                    -- [[ STEP 4: 射出 ]]
                     for _, side in ipairs(arms) do
                         local detector = blobman:FindFirstChild(side .. "Detector")
                         local weld = detector and (detector:FindFirstChild(side .. "Weld") or detector:FindFirstChildWhichIsA("Weld"))
-                        remote:FireServer(detector, targetHRP, weld, 1) -- 離す
+                        if remote then
+                            remote:FireServer(detector, targetHRP, weld, 1) -- 解放
+                        end
                     end
                 end)
                 
-                -- 5. 浮上固定エフェクト（道連れ防止）
-                if not hrp:FindFirstChild("ErrorFloat") then
+                -- [[ STEP 5: 自身の安定化 ]]
+                if hrp and not hrp:FindFirstChild("KickStabilizer") then
                     local bv = Instance.new("BodyVelocity")
-                    bv.Name = "ErrorFloat"
+                    bv.Name = "KickStabilizer"
                     bv.MaxForce = Vector3.new(0, 1e9, 0)
                     bv.Velocity = Vector3.new(0, 40, 0)
                     bv.Parent = hrp
-                    game:GetService("Debris"):AddItem(bv, 1.5)
+                    game:GetService("Debris"):AddItem(bv, 1.2)
                 end
             else
-                -- 失敗時の通知
                 OrionLib:MakeNotification({
                     Name = "Error",
-                    Content = "対象が見つからないか、Blobmanに乗っていません",
+                    Content = "Target invalid or Blobman not found.",
                     Time = 3
                 })
             end
