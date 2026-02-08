@@ -1774,9 +1774,9 @@ local DestTab = Window:MakeTab({
     PremiumOnly = false
 })
 
--- デストロイサーバー (ブラックホール・エディション V7)
-BlobmanTab:AddToggle({
-    Name = "Destroy Server (Blackhole Kick)",
+-- デストロイサーバー (超高速・高精度キック強化版)
+DestTab:AddToggle({
+    Name = "Destroy Server (High-Speed Kick)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1788,7 +1788,7 @@ BlobmanTab:AddToggle({
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 生存チェック（バグ防止）
+                    -- 生存チェック（死んでいたらリポーンまで自動待機）
                     if not hum or hum.Health <= 0 then
                         repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
                         char = lp.Character
@@ -1796,13 +1796,15 @@ BlobmanTab:AddToggle({
                     end
 
                     local seat = hum.SeatPart
-                    if seat and seat.Parent and seat.Parent.Name == "CreatureBlobman" then
+                    -- 判定を柔軟にするため FindFirstChild を使用
+                    if seat and seat.Parent and (seat.Parent.Name == "CreatureBlobman" or seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript")) then
                         local blobman = seat.Parent
                         local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                         
                         local leftDet = blobman:FindFirstChild("LeftDetector")
                         local rightDet = blobman:FindFirstChild("RightDetector")
+                        -- Weldの取得精度をUP
                         local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
                         local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
                         
@@ -1815,31 +1817,35 @@ BlobmanTab:AddToggle({
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【テレポート】維持
+                                -- 【超高速テレポート】維持
                                 blobRoot.CFrame = targetHRP.CFrame
                                 blobRoot.Velocity = Vector3.zero
                                 
-                                -- 【ブラックホール・キック発動】
-                                -- 1. まず掴む（両手）
-                                if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
-                                if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
+                                -- 【精度強化：両手パケットバースト】
+                                -- 掴むパケットを重ねて送り、サーバーに「強制的に」掴ませる
+                                for i = 1, 2 do
+                                    if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
+                                    if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
+                                end
                                 
-                                -- 2. 物理演算の1フレームだけ待つ（これが吹き飛ばしを最大化するコツ）
-                                RunService.Stepped:Wait()
+                                -- 物理エンジンの「反発」を最大化するための極小待機
+                                -- ここが 0.05〜0.1 だとキック力が最強になります
+                                task.wait(0.07) 
                                 
-                                -- 3. 解放（この一瞬のラグが相手をブラックホールへ飛ばす）
+                                -- 【解放（射出）】
                                 if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 1) end
                                 if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 1) end
                                 
-                                -- 4. 超高速巡回のための極小待機
+                                -- 次のプレイヤーへ行く前の超高速ウェイト
                                 RunService.Heartbeat:Wait()
                             end
                         end
                     else
+                        -- ブロブマンに乗っていない場合は自動オフ
                         _G.BringAllLongReach = false
                         break
                     end
-                    RunService.Heartbeat:Wait()
+                    task.wait(0.1) -- 全員巡回後のクールダウン
                 end
             end)
         end
