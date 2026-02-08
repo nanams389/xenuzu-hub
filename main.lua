@@ -1762,10 +1762,10 @@ DestTab:AddToggle({
 })
 
 --==================================================
--- プレイヤーリスト管理 & 一撃キック機能 (DestTabに追加)
+-- プレイヤーリスト管理 & 確定一撃キック (DestTab直下用)
 --==================================================
 
--- プレイヤー名を取得する関数 (既存のコードにない場合のため)
+-- 1. プレイヤー名取得関数 (これが無いとドロップダウンが動きません)
 local function getPlayerNames()
     local pList = {}
     for _, p in pairs(game.Players:GetPlayers()) do
@@ -1776,17 +1776,17 @@ local function getPlayerNames()
     return pList
 end
 
--- 1. プレイヤー選択ドロップダウン
+-- 2. プレイヤー選択ドロップダウン
 local PlayerSelector = DestTab:AddDropdown({
-    Name = "Select Target (対象を選択)",
+    Name = "Select Target (キック対象を選択)",
     Default = "",
     Options = getPlayerNames(),
     Callback = function(t) 
-        _G.PlayerToLongGrab = t 
+        _G.PlayerToLongGrab = t -- 選択した名前を保持
     end
 })
 
--- 2. プレイヤーリスト更新ボタン
+-- 3. リスト更新ボタン
 DestTab:AddButton({
     Name = "Refresh Player List (リスト更新)",
     Callback = function()
@@ -1794,90 +1794,81 @@ DestTab:AddButton({
     end
 })
 
--- 3. 【一撃必殺】TP・掴み・エラー誘発キックボタン
+-- 4. 【確定】一撃キックボタン (TP + 5回バースト掴み + 永続拘束)
 DestTab:AddButton({
-    Name = "ONE-TAP KICK (TP + Grab + Kick)",
+    Name = "ONE-TAP KICK (確定掴み・拘束強化)",
     Callback = function()
         pcall(function()
-            -- 選択されたプレイヤーを取得
             local target = game.Players:FindFirstChild(_G.PlayerToLongGrab)
             local lp = game.Players.LocalPlayer
             local char = lp.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local seat = hum and hum.SeatPart
             
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+            if target and target.Character and seat and seat.Parent then
                 local blobman = seat.Parent
-                local targetHRP = target.Character.HumanoidRootPart
+                local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                 
-                -- [[ STEP 1: 爆速テレポート ]]
-                -- 相手の5スタッド上に配置（貫通力を高める）
-                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
-                if blobman.PrimaryPart then
-                    blobman:SetPrimaryPartCFrame(targetPos)
-                else
-                    seat.CFrame = targetPos
-                end
+                if not targetHRP or not remote then return end
+
+                -- [確定TP] 相手の座標に完全に重ねる
+                blobman:SetPrimaryPartCFrame(targetHRP.CFrame)
                 
-                -- 物理演算の同期待ち（最短）
-                task.wait(0.05)
-                
-                -- [[ STEP 2: 強制拘束 (モード3) ]]
+                -- [確定掴み] バースト送信（5回連続で判定を叩き込む）
                 local arms = {"Left", "Right"}
-                for _, side in ipairs(arms) do
-                    local detector = blobman:FindFirstChild(side .. "Detector")
-                    local weld = detector and (detector:FindFirstChild(side .. "Weld") or detector:FindFirstChildWhichIsA("Weld"))
-                    if detector and weld and remote then
-                        remote:FireServer(detector, targetHRP, weld, 3) -- 最強固定
+                for i = 1, 5 do
+                    for _, side in ipairs(arms) do
+                        local det = blobman:FindFirstChild(side .. "Detector")
+                        local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
+                        if det and weld then
+                            remote:FireServer(det, targetHRP, weld, 3) -- モード3
+                        end
                     end
+                    task.wait()
                 end
-                
-                -- [[ STEP 3: 限界突破物理シェイク (キック確定) ]]
+
+                -- [離さないための永続拘束ループ] 
+                local holding = true
+                task.spawn(function()
+                    while holding do
+                        for _, side in ipairs(arms) do
+                            local det = blobman:FindFirstChild(side .. "Detector")
+                            local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
+                            if det and weld then
+                                remote:FireServer(det, targetHRP, weld, 3)
+                            end
+                        end
+                        task.wait(0.1) -- サーバーの「離し判定」を0.1秒ごとに上書き
+                    end
+                end)
+
+                -- [物理崩壊シェイク] 
                 task.spawn(function()
                     local leftDet = blobman:FindFirstChild("LeftDetector")
                     local rightDet = blobman:FindFirstChild("RightDetector")
-                    if not leftDet or not rightDet then return end
                     
-                    -- 揺らし幅を60、速度を0.01に設定して相手の物理挙動を破壊する
-                    for i = 1, 20 do
-                        local shake = targetHRP.CFrame * CFrame.new(0, (i%2==0 and 60 or -60), 0)
-                        leftDet.CFrame = shake
-                        rightDet.CFrame = shake
+                    for i = 1, 30 do 
+                        local shake = targetHRP.CFrame * CFrame.new(0, (i%2==0 and 70 or -70), 0)
+                        if leftDet then leftDet.CFrame = shake end
+                        if rightDet then rightDet.CFrame = shake end
                         task.wait(0.01)
                     end
                     
-                    -- [[ STEP 4: 射出 ]]
+                    holding = false -- ループ終了
+                    task.wait(0.05)
+                    
+                    -- [射出] 最後にパージ
                     for _, side in ipairs(arms) do
-                        local detector = blobman:FindFirstChild(side .. "Detector")
-                        local weld = detector and (detector:FindFirstChild(side .. "Weld") or detector:FindFirstChildWhichIsA("Weld"))
-                        if remote then
-                            remote:FireServer(detector, targetHRP, weld, 1) -- 解放
-                        end
+                        local det = blobman:FindFirstChild(side .. "Detector")
+                        local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
+                        remote:FireServer(det, targetHRP, weld, 1)
                     end
                 end)
-                
-                -- [[ STEP 5: 自身の安定化 ]]
-                if hrp and not hrp:FindFirstChild("KickStabilizer") then
-                    local bv = Instance.new("BodyVelocity")
-                    bv.Name = "KickStabilizer"
-                    bv.MaxForce = Vector3.new(0, 1e9, 0)
-                    bv.Velocity = Vector3.new(0, 40, 0)
-                    bv.Parent = hrp
-                    game:GetService("Debris"):AddItem(bv, 1.2)
-                end
-            else
-                OrionLib:MakeNotification({
-                    Name = "Error",
-                    Content = "Target invalid or Blobman not found.",
-                    Time = 3
-                })
             end
         end)
     end
 })
-
 --==============================
 -- 初期化
 --==============================
