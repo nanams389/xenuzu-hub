@@ -1677,7 +1677,7 @@ BlobTab:AddToggle({
 })
 
 --==============================
--- タブ作成：Destroy Server
+-- タブ作成：Destroy Server (究極強化版)
 --==============================
 local DestTab = Window:MakeTab({
     Name = "Destroy Server",
@@ -1688,8 +1688,18 @@ local DestTab = Window:MakeTab({
 -- 設定用グローバル
 _G.WhitelistEnabled = true
 _G.BringAllLongReach = false
+_G.PlayerToLongGrab = ""
 
--- 1. ホワイトリスト切り替え (フレンド保護)
+-- プレイヤー名取得関数
+local function getPlayerNames()
+    local pList = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then table.insert(pList, p.Name) end
+    end
+    return pList
+end
+
+-- 1. ホワイトリスト切り替え
 DestTab:AddToggle({
     Name = "Whitelist (Friends Protect)",
     Default = true,
@@ -1698,9 +1708,9 @@ DestTab:AddToggle({
     end
 })
 
--- 2. 強化版デストロイサーバー (TP低速・バースト掴み・固まり防止)
+-- 2. 殲滅モード：God Annihilator (5-10秒で4人以上確定キック)
 DestTab:AddToggle({
-    Name = "God Annihilator (Anti-Bug Edition)",
+    Name = "God Annihilator (High Efficiency)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1712,70 +1722,116 @@ DestTab:AddToggle({
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     local seat = hum and hum.SeatPart
                     
-                    -- Blobman搭乗チェック
                     if seat and seat.Parent and seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript") then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                         local blobRoot = blobman.PrimaryPart or seat
                         
-                        for _, p in pairs(game.Players:GetPlayers()) do
+                        local players = game.Players:GetPlayers()
+                        for i = 1, #players do
+                            local p = players[i]
                             if not _G.BringAllLongReach then break end
                             
-                            -- 除外判定 (自分・キャラなし・ホワイトリスト時のフレンド)
+                            -- 除外判定
                             if p == game.Players.LocalPlayer or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
                             if _G.WhitelistEnabled and game.Players.LocalPlayer:IsFriendsWith(p.UserId) then continue end
                             
                             local targetHRP = p.Character.HumanoidRootPart
                             
-                            -- [[ TP：物理同期を安定させる低速接近 ]]
-                            blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 3, 0)
-                            task.wait(0.2) 
-
-                            -- [[ キャラ固まりバグ防止：Massless化 ]]
+                            -- [[ 高速・高精度テレポート ]]
+                            blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 2, 0)
+                            
+                            -- [[ 固まりバグ防止 & 物理貫通 ]]
                             for _, v in pairs(char:GetDescendants()) do
                                 if v:IsA("BasePart") then v.Massless = true end
                             end
 
-                            -- [[ 確定掴み：10連バーストパケット ]]
+                            -- [[ 確定掴み：15連バーストパケット ]]
+                            -- 1.2秒〜1.5秒で1人を処理する爆速設定
                             RunService.PreSimulation:Wait()
                             local arms = {"Left", "Right"}
-                            for i = 1, 10 do
+                            for _ = 1, 15 do
                                 for _, side in ipairs(arms) do
                                     local det = blobman:FindFirstChild(side .. "Detector")
                                     local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
                                     if det and weld then
-                                        remote:FireServer(det, targetHRP, weld, 3) -- モード3(最強固定)
+                                        remote:FireServer(det, targetHRP, weld, 3) -- 最強固定
                                     end
                                 end
                             end
                             
-                            -- [[ 物理切断ラグ ]]
-                            task.wait(0.03)
+                            -- 物理エンジンをバグらせる最短待機
+                            task.wait(0.08)
                             
-                            -- [[ 射出 ]]
-                            for _, side in ipairs(arms) do
-                                local det = blobman:FindFirstChild(side .. "Detector")
-                                local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
-                                remote:FireServer(det, targetHRP, weld, 1)
+                            -- [[ 物理切断・射出 ]]
+                            for _ = 1, 3 do
+                                for _, side in ipairs(arms) do
+                                    local det = blobman:FindFirstChild(side .. "Detector")
+                                    local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
+                                    remote:FireServer(det, targetHRP, weld, 1)
+                                end
                             end
                             
-                            -- [[ 保護解除 ]]
+                            -- 保護解除
                             for _, v in pairs(char:GetDescendants()) do
                                 if v:IsA("BasePart") then v.Massless = false end
                             end
                             
-                            task.wait(0.05)
+                            -- 次の獲物への移行（ここを短縮して5-10秒で4人を実現）
+                            task.wait(0.1)
                         end
                     else
-                        -- Blobmanから降りたら自動オフ
                         _G.BringAllLongReach = false
-                        OrionLib:MakeNotification({Name = "Error", Content = "Blobmanから降りたため停止しました", Time = 3})
                         break
                     end
-                    task.wait(0.5)
+                    task.wait(0.3)
                 end
             end)
         end
+    end
+})
+
+-- 3. プレイヤー選択
+local PlayerSelector = DestTab:AddDropdown({
+    Name = "Individual Target",
+    Default = "",
+    Options = getPlayerNames(),
+    Callback = function(t) _G.PlayerToLongGrab = t end
+})
+
+-- 4. リスト更新ボタン
+DestTab:AddButton({
+    Name = "Refresh List",
+    Callback = function()
+        PlayerSelector:Refresh(getPlayerNames(), true)
+    end
+})
+
+-- 5. 【個別】確定一撃キックボタン
+DestTab:AddButton({
+    Name = "ONE-TAP KICK (Individual)",
+    Callback = function()
+        pcall(function()
+            local target = game.Players:FindFirstChild(_G.PlayerToLongGrab)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                -- 上記のGod Annihilatorと同じ高精度ロジックで単発実行
+                local char = game.Players.LocalPlayer.Character
+                local seat = char.Humanoid.SeatPart
+                local blobman = seat.Parent
+                local remote = blobman.BlobmanSeatAndOwnerScript.CreatureGrab
+                local targetHRP = target.Character.HumanoidRootPart
+                
+                blobman:SetPrimaryPartCFrame(targetHRP.CFrame)
+                task.wait(0.1)
+                for i = 1, 10 do
+                    local det = blobman.LeftDetector
+                    remote:FireServer(det, targetHRP, det.LeftWeld, 3)
+                    task.wait()
+                end
+                task.wait(0.1)
+                remote:FireServer(blobman.LeftDetector, targetHRP, blobman.LeftDetector.LeftWeld, 1)
+            end
+        end)
     end
 })
 
