@@ -1699,36 +1699,6 @@ BlobmanTab:AddButton({
     end
 })
 
-BlobmanTab:AddToggle({
-    Name = "Destroy Server (Fast Dual Grab)",
-    Default = false,
-    Callback = function(Value)
-        _G.BringAllLongReach = Value
-        if Value then
-            task.spawn(function()
-                local useLeft = true
-                while _G.BringAllLongReach do
-                    local playerList = players:GetPlayers()
-                    for _, p in pairs(playerList) do
-                        if not _G.BringAllLongReach then break end
-                        if p ~= lp and p.Character and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                            local arm = useLeft and "Left" or "Right"
-                            doBlobmanFastGrab(p, arm)
-                            useLeft = not useLeft
-                            task.wait(0.12) -- わずかに待機を増やしてサーバー負荷を逃がす
-                        end
-                    end
-                    task.wait(0.5)
-                end
-            end)
-        else
-            local float = lp.Character.HumanoidRootPart:FindFirstChild("TsunamiFloat")
-            if float then float:Destroy() end
-        end
-    end
-})
-
-BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
 -- --- テレポート系セクション (Blobman搭乗対応版) ---
 
