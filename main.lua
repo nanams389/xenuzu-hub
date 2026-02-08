@@ -1838,6 +1838,106 @@ DestSec:AddToggle({
     end    
 })
 
+-- [[ 3. UI構築 ]]
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 2", Icon = "rbxassetid://6031064398" })
+
+-- 公式エラー誘発キック (blobman 引き寄せ)
+BlobmanTab:AddButton({
+    Name = "blobmanで相手を掴む(グッチ、家貫通)",
+    Callback = function()
+        pcall(function()
+            local target = players:FindFirstChild(_G.PlayerToLongGrab)
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local seat = hum and hum.SeatPart
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+                local blobman = seat.Parent
+                local targetHRP = target.Character.HumanoidRootPart
+                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                -- 1. 相手の場所にテレポート
+                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
+                if blobman.PrimaryPart then
+                    blobman:SetPrimaryPartCFrame(targetPos)
+                else
+                    seat.CFrame = targetPos
+                end
+                task.wait(0.1)
+                -- 2. 両手で掴む
+                local arms = {"Left", "Right"}
+                for _, side in ipairs(arms) do
+                    local detector = blobman:WaitForChild(side .. "Detector")
+                    local weld = detector:WaitForChild(side .. "Weld")
+                    remote:FireServer(detector, targetHRP, weld, 3)
+                end
+                -- 3. 公式エラー誘発
+                task.spawn(function()
+                    local leftDetector = blobman:FindFirstChild("LeftDetector")
+                    local rightDetector = blobman:FindFirstChild("RightDetector")
+                    local originalCF = leftDetector.CFrame
+                    for i = 1, 15 do
+                        local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0)
+                        if leftDetector then leftDetector.CFrame = shakePos end
+                        if rightDetector then rightDetector.CFrame = shakePos end
+                        task.wait(0.02)
+                        local shakePosUp = targetHRP.CFrame * CFrame.new(0, 20, 0)
+                        if leftDetector then leftDetector.CFrame = shakePosUp end
+                        if rightDetector then rightDetector.CFrame = shakePosUp end
+                        task.wait(0.02)
+                    end
+                    if leftDetector then leftDetector.CFrame = originalCF end
+                end)
+                -- 4. 浮上固定
+                if not hrp:FindFirstChild("ErrorFloat") then
+                    local bv = Instance.new("BodyVelocity")
+                    bv.Name = "ErrorFloat"
+                    bv.MaxForce = Vector3.new(0, 1e9, 0)
+                    bv.Velocity = Vector3.new(0, 35, 0)
+                    bv.Parent = hrp
+                    task.delay(0.6, function() if bv.Parent then bv.Velocity = Vector3.new(0, 0, 0) end end)
+                    game:GetService("Debris"):AddItem(bv, 2.0)
+                end
+            end
+        end)
+    end
+})
+
+-- デストロイサーバー (Rapid Grab/Release)
+BlobmanTab:AddToggle({
+    Name = "Destroy Server (Rapid Grab/Release)",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLongReach = Value
+        if Value then
+            task.spawn(function()
+                while _G.BringAllLongReach do
+                    local char = lp.Character
+                    local seat = char.Humanoid.SeatPart
+                    if seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        if remote then
+                            for _, p in pairs(players:GetPlayers()) do
+                                if not _G.BringAllLongReach then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    local detector = blobman:FindFirstChild("LeftDetector")
+                                    local weld = detector and detector:FindFirstChild("LeftWeld")
+                                    if detector and weld then
+                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
+                                        task.wait(0.05)
+                                        remote:FireServer(detector, targetHRP, weld, 1) -- 即離す
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.2)
+                end
+            end)
+        end
+    end
+})
 --==============================
 -- 初期化
 --==============================
