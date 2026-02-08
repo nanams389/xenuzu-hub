@@ -1686,7 +1686,7 @@ local DestTab = Window:MakeTab({
 })
 
 DestTab:AddToggle({
-    Name = "Final Annihilator (25-Player Max)",
+    Name = "God Annihilator (Limit Break)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1716,45 +1716,50 @@ DestTab:AddToggle({
                         local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
                         
                         if remote and blobRoot then
-                            local playersList = game.Players:GetPlayers()
-                            
-                            for _, p in pairs(playersList) do
+                            for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLongReach then break end
-                                if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
-                                if p.Character.Humanoid.Health <= 0 then continue end
-                                if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
+                                
+                                -- 【ホワイトリスト：フレンドは絶対にスルー】
+                                if p == lp or lp:IsFriendsWith(p.UserId) then continue end
+                                
+                                if not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") or p.Character.Humanoid.Health <= 0 then 
+                                    continue 
+                                end
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【安定テレポート】リクエスト通り少しゆっくり（0.15秒の移動ラグ）
-                                -- 相手の少し上(2スタッド)に出ることで、物理判定をより強く当てる
-                                blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 2, 0)
-                                blobRoot.Velocity = Vector3.new(0, 0, 0)
-                                task.wait(0.12) -- テレポート後の安定待ち
-
-                                -- 【限界突破：同時バーストGrab】
-                                -- サーバーに「拒否権」を与えないよう、物理更新の直前にパケットを叩き込む
+                                -- 【超速テレポート】ラグを最小限に抑えた高速TP
+                                blobRoot.CFrame = targetHRP.CFrame
+                                -- blobRoot.Velocity = Vector3.new(0, 0, 0) -- 慣性を消すと遅くなるため、あえて消さない設定
+                                
+                                -- 【イベント回数倍増：クアッド・バースト】
+                                -- 1フレームの間に4回イベントを叩き込み、サーバーの判定を強制上書き
                                 RunService.PreSimulation:Wait()
-                                remote:FireServer(leftDet, targetHRP, leftWeld, 2)
-                                remote:FireServer(rightDet, targetHRP, rightWeld, 2)
+                                for i = 1, 4 do
+                                    remote:FireServer(leftDet, targetHRP, leftWeld, 2)
+                                    remote:FireServer(rightDet, targetHRP, rightWeld, 2)
+                                end
                                 
-                                -- 【確定キック判定】
-                                -- 0.03秒という「短すぎず長すぎない」時間が、Roblox物理エンジンを最もバグらせる
-                                task.wait(0.03)
+                                -- 【限界速度待機】
+                                -- 0.03秒から0.02秒へ。物理演算が壊れるギリギリのライン
+                                task.wait(0.02)
                                 
-                                -- 【ブラックホール射出】
-                                remote:FireServer(leftDet, targetHRP, leftWeld, 1)
-                                remote:FireServer(rightDet, targetHRP, rightWeld, 1)
+                                -- 【物理切断射出】
+                                -- 離す際もバースト送信することで、確実にサーバーから切断させる
+                                for i = 1, 2 do
+                                    remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                                    remote:FireServer(rightDet, targetHRP, rightWeld, 1)
+                                end
                                 
-                                -- パケット詰まり防止用の微小待機（これで速度が落ちなくなる）
-                                task.wait(0.05)
+                                -- 次のターゲットへの移行ラグを極限まで短縮
+                                task.wait(0.01)
                             end
                         end
                     else
                         _G.BringAllLongReach = false
                         break
                     end
-                    task.wait(0.3) -- 全員(25人)一周した後のリセット時間
+                    task.wait(0.1) -- サーバー全体の巡回スパンを短縮
                 end
             end)
         end
