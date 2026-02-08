@@ -2189,7 +2189,74 @@ BlobTab:AddToggle({
     end
 })
 
+-- デストロイサーバー (TP & All Bring & Blackhole)
+BlobmanTab:AddToggle({
+	Name = "Destroy Server (Bring & Kick V9)",
+	Default = false,
+	Callback = function(Value)
+		_G.BringAllLongReach = Value
+		if Value then
+			task.spawn(function()
+				local RunService = game:GetService("RunService")
+				
+				while _G.BringAllLongReach do
+					local char = lp.Character
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					
+					-- 生存チェック
+					if not hum or hum.Health <= 0 then
+						_G.BringAllLongReach = false
+						break
+					end
 
+					local seat = hum.SeatPart
+					if seat and seat.Parent and seat.Parent.Name == "CreatureBlobman" then
+						local blobman = seat.Parent
+						local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
+						local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+						local leftDet = blobman:FindFirstChild("LeftDetector")
+						local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
+						
+						if remote and blobRoot and leftDet then
+							-- 【1. 全員を順番に「掴んで」自分の手元にストックする】
+							for _, p in pairs(game.Players:GetPlayers()) do
+								if not _G.BringAllLongReach then break end
+								if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
+								if p.Character.Humanoid.Health <= 0 then continue end
+								if _G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId) then continue end
+
+								local targetHRP = p.Character.HumanoidRootPart
+								
+								-- 相手の場所に一瞬TPしてネットワーク権限を掴む
+								blobRoot.CFrame = targetHRP.CFrame
+								remote:FireServer(leftDet, targetHRP, leftWeld, 2) -- 掴む
+								
+								-- 自分の場所へ引き戻す（一瞬待機して同期）
+								RunService.Heartbeat:Wait()
+							end
+							
+							-- 【2. 数秒間、自分の周りに全員を「集約」させる】
+							-- この間に全員があなたの目の前にテレポートしてきます
+							task.wait(0.3)
+							
+							-- 【3. 集まった全員をブラックホールへ一斉射出】
+							for _, p in pairs(game.Players:GetPlayers()) do
+								if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+									remote:FireServer(leftDet, p.Character.HumanoidRootPart, leftWeld, 1) -- 離す
+								end
+							end
+							
+						end
+					else
+						_G.BringAllLongReach = false
+						break
+					end
+					task.wait(1) -- 次のサイクルまで待機（バグ防止）
+				end
+			end)
+		end
+	end
+})
 
 
 --==============================
