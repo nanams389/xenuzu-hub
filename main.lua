@@ -1842,8 +1842,9 @@ task.spawn(function()
         task.wait(0.1)
         local char = lp.Character
         if char and char:FindFirstChild("Humanoid") then
-            if char.Humanoid.SeatPart and char.Humanoid.SeatPart.Parent.Name == "Blobman" then
-                char.Humanoid.WalkSpeed = _G.BlobSpeed or 16
+            local hum = char.Humanoid
+            if hum.SeatPart and (hum.SeatPart.Parent.Name == "Blobman" or hum.SeatPart.Parent.Name == "CreatureBlobman") then
+                hum.WalkSpeed = _G.BlobSpeed or 16
             end
         end
     end
@@ -1857,6 +1858,8 @@ BlobTab:AddToggle({
         _G.BlobFly = v
         if v then
             local char = lp.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+            
             local bg = Instance.new("BodyGyro", char.HumanoidRootPart)
             bg.Name = "FlyGyro"
             bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
@@ -1877,8 +1880,8 @@ BlobTab:AddToggle({
                     bv.velocity = moveDir * (_G.BlobSpeed or 50)
                     bg.cframe = cam.CFrame
                 end
-                bg:Destroy()
-                bv:Destroy()
+                if bg then bg:Destroy() end
+                if bv then bv:Destroy() end
             end)
         end
     end
@@ -1886,7 +1889,6 @@ BlobTab:AddToggle({
 
 BlobTab:AddSection({ Name = "ループ掴み (セーフゾーン無視)" })
 
--- ドロップダウンを変数に入れておく（後で中身を書き換えるため）
 local PlayerDropdown = BlobTab:AddDropdown({
     Name = "ターゲット選択",
     Default = "",
@@ -1896,22 +1898,19 @@ local PlayerDropdown = BlobTab:AddDropdown({
     end    
 })
 
--- リスト更新ボタンの修正
 BlobTab:AddButton({
     Name = "プレイヤーリスト更新",
     Callback = function()
         local pList = {}
         for _, p in pairs(game.Players:GetPlayers()) do
-            if p ~= game.Players.LocalPlayer then 
+            if p ~= lp then 
                 table.insert(pList, p.Name) 
             end
         end
-        -- ドロップダウンの中身を最新のリストで上書きする
         PlayerDropdown:Refresh(pList, true)
     end
 })
 
--- 4. 指定プレイヤーをループ掴み
 BlobTab:AddToggle({
     Name = "指定プレイヤーをループ掴み",
     Default = false,
@@ -1929,10 +1928,10 @@ BlobTab:AddToggle({
                         if remote and targetHRP then
                             for _, arm in ipairs({"Left", "Right"}) do
                                 local det = blobman:FindFirstChild(arm .. "Detector")
-                                local weld = det and det:FindFirstChild(arm .. "Weld")
+                                local weld = det and (det:FindFirstChild(arm .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
                                 if det and weld then
-                                    remote:FireServer(det, targetHRP, weld, 2) -- 掴む
-                                    remote:FireServer(det, targetHRP, weld, 1) -- 離す
+                                    remote:FireServer(det, targetHRP, weld, 2)
+                                    remote:FireServer(det, targetHRP, weld, 1)
                                 end
                             end
                         end
@@ -1944,7 +1943,6 @@ BlobTab:AddToggle({
     end
 })
 
--- 5. 全員ループ掴み
 BlobTab:AddToggle({
     Name = "全員を高速ループ掴み",
     Default = false,
@@ -1965,7 +1963,7 @@ BlobTab:AddToggle({
                                     local targetHRP = p.Character.HumanoidRootPart
                                     for _, arm in ipairs({"Left", "Right"}) do
                                         local det = blobman:FindFirstChild(arm .. "Detector")
-                                        local weld = det and det:FindFirstChild(arm .. "Weld")
+                                        local weld = det and (det:FindFirstChild(arm .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
                                         if det and weld then
                                             remote:FireServer(det, targetHRP, weld, 2)
                                             remote:FireServer(det, targetHRP, weld, 1)
@@ -1982,75 +1980,77 @@ BlobTab:AddToggle({
     end
 })
 
--- 変数名を既存のものと被らないように「DestTab」「DestSec」にしています
+--==============================
+-- タブ：Destroy Server
+--==============================
 local DestTab = Window:MakeTab({
-	Name = "Destroy Server",
-	Icon = "rbxassetid://4483345998",
-	PremiumOnly = false
+    Name = "Destroy Server",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
 })
 
 local DestSec = DestTab:AddSection({
-	Name = "Massive Bring & Kick"
+    Name = "Massive Bring & Kick"
 })
 
 DestSec:AddToggle({
-	Name = "Massive Bring & Blackhole",
-	Default = false,
-	Callback = function(Value)
-		_G.BringAllLongReach = Value
-		if Value then
-			task.spawn(function()
-				local RunService = game:GetService("RunService")
-				while _G.BringAllLongReach do
-					local char = game.Players.LocalPlayer.Character
-					local hum = char and char:FindFirstChildOfClass("Humanoid")
-					
-					-- 1. 生存・Blobman搭乗チェック
-					if not hum or hum.Health <= 0 then _G.BringAllLongReach = false break end
-					local seat = hum.SeatPart
-					if not (seat and seat.Parent and seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript")) then
-						_G.BringAllLongReach = false
-						break
-					end
+    Name = "Massive Bring & Blackhole",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLongReach = Value
+        if Value then
+            task.spawn(function()
+                local RunService = game:GetService("RunService")
+                while _G.BringAllLongReach do
+                    local char = lp.Character
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    
+                    if not hum or hum.Health <= 0 then 
+                        _G.BringAllLongReach = false 
+                        break 
+                    end
 
-					-- 2. 実行用変数の取得
-					local blobman = seat.Parent
-					local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
-					local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-					local leftDet = blobman:FindFirstChild("LeftDetector")
-					local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
-					
-					if remote and blobRoot and leftDet then
-						local originalPos = blobRoot.CFrame
-						local grabbedPlayers = {}
+                    local seat = hum.SeatPart
+                    if seat and seat.Parent and seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript") then
+                        local blobman = seat.Parent
+                        local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        local leftDet = blobman:FindFirstChild("LeftDetector")
+                        local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
+                        
+                        if remote and blobRoot and leftDet then
+                            local originalPos = blobRoot.CFrame
+                            local grabbedPlayers = {}
 
-						-- 3. 全員巡回して掴む
-						for _, p in pairs(game.Players:GetPlayers()) do
-							if not _G.BringAllLongReach then break end
-							if p ~= game.Players.LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-								if not (_G.WhitelistFriends2 and game.Players.LocalPlayer:IsFriendsWith(p.UserId)) then
-									local targetHRP = p.Character.HumanoidRootPart
-									blobRoot.CFrame = targetHRP.CFrame
-									remote:FireServer(leftDet, targetHRP, leftWeld, 2)
-									table.insert(grabbedPlayers, targetHRP)
-									RunService.Heartbeat:Wait()
-								end
-							end
-						end
-						
-						-- 4. 帰還して一斉射出
-						blobRoot.CFrame = originalPos
-						task.wait(0.6) 
+                            for _, p in pairs(game.Players:GetPlayers()) do
+                                if not _G.BringAllLongReach then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
+                                    if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                        local targetHRP = p.Character.HumanoidRootPart
+                                        blobRoot.CFrame = targetHRP.CFrame
+                                        remote:FireServer(leftDet, targetHRP, leftWeld, 2)
+                                        table.insert(grabbedPlayers, targetHRP)
+                                        RunService.Heartbeat:Wait()
+                                    end
+                                end
+                            end
+                            
+                            blobRoot.CFrame = originalPos
+                            task.wait(0.6) 
 
-						for _, targetHRP in pairs(grabbedPlayers) do
-							remote:FireServer(leftDet, targetHRP, leftWeld, 1)
-						end
-					end
-					task.wait(1.5)
-				end
-			end)
-		end
-	end    
+                            for _, targetHRP in pairs(grabbedPlayers) do
+                                remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                            end
+                        end
+                    else
+                        _G.BringAllLongReach = false
+                        break
+                    end
+                    task.wait(1.5)
+                end
+            end)
+        end
+    end    
 })
 
 --==============================
