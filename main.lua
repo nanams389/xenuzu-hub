@@ -2007,6 +2007,87 @@ BlobmanTab:AddToggle({
         end
     end
 })
+
+--==============================
+-- タブ：Silent Aim Settings
+--==============================
+local AimTab = Window:MakeTab({
+    Name = "Silent Aim",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local AimSection = AimTab:AddSection({
+    Name = "Targeting Settings"
+})
+
+-- 設定用変数
+_G.SilentAimEnabled = false
+_G.AimRadius = 500 -- デフォルトの範囲
+_G.ShowFOV = false
+
+-- 1. サイレントAIMのオンオフ
+AimSection:AddToggle({
+    Name = "Enable Silent Aim",
+    Default = false,
+    Callback = function(Value)
+        _G.SilentAimEnabled = Value
+    end
+})
+
+-- 2. 範囲（FOV）の調整
+AimSection:AddSlider({
+    Name = "Aim Radius (FOV)",
+    Min = 50,
+    Max = 2000,
+    Default = 500,
+    Increment = 10,
+    Callback = function(Value)
+        _G.AimRadius = Value
+    end
+})
+
+-- サイレントAIMの核心ロジック (メタテーブル・フック)
+local lp = game.Players.LocalPlayer
+local mouse = lp:GetMouse()
+local mt = getrawmetatable(game)
+local oldIndex = mt.__index
+setreadonly(mt, false)
+
+mt.__index = newcclosure(function(self, index)
+    -- マウスの座標が参照された時、かつSilent AimがONの時
+    if _G.SilentAimEnabled and index == "Hit" and not checkcaller() then
+        local closestPlayer = nil
+        local shortestDistance = _G.AimRadius -- スライダーで設定した範囲内のみ
+
+        for _, p in pairs(game.Players:GetPlayers()) do
+            if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                -- 敵の画面上の位置ではなく、ワールド座標での距離で判定
+                local dist = (lp.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                
+                if dist < shortestDistance then
+                    closestPlayer = p
+                    shortestDistance = dist
+                end
+            end
+        end
+
+        if closestPlayer then
+            -- ターゲットのHumanoidRootPartを狙うように偽装
+            return closestPlayer.Character.HumanoidRootPart.CFrame
+        end
+    end
+    return oldIndex(self, index)
+end)
+
+setreadonly(mt, true)
+
+-- (おまけ) 視覚的に範囲を確認したい場合用のセクション
+local VisualSection = AimTab:AddSection({
+    Name = "Visuals"
+})
+
+VisualSection:AddLabel("Range is calculated in Studs from your Character.")
 --==============================
 -- 初期化
 --==============================
