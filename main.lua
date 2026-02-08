@@ -1908,21 +1908,23 @@ BlobmanTab:AddButton({
     end
 })
 
--- デストロイサーバー (無限継続・確定キック強化版)
+-- デストロイサーバー (ブラックホール・エディション V7)
 BlobmanTab:AddToggle({
-    Name = "Destroy Server (Infinite Kick V6)",
+    Name = "Destroy Server (Blackhole Kick)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
         if Value then
             task.spawn(function()
+                local RunService = game:GetService("RunService")
+                
                 while _G.BringAllLongReach do
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 死んだら待機（生き返れないバグを完全に防止）
+                    -- 生存チェック（バグ防止）
                     if not hum or hum.Health <= 0 then
-                        repeat task.wait(1) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
+                        repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
                         char = lp.Character
                         hum = char.Humanoid
                     end
@@ -1939,9 +1941,7 @@ BlobmanTab:AddToggle({
                         local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
                         
                         if remote and blobRoot then
-                            local playersList = game.Players:GetPlayers()
-                            
-                            for _, p in pairs(playersList) do
+                            for _, p in pairs(game.Players:GetPlayers()) do
                                 if not _G.BringAllLongReach then break end
                                 if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
                                 if p.Character.Humanoid.Health <= 0 then continue end
@@ -1949,35 +1949,31 @@ BlobmanTab:AddToggle({
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【テレポート】位置は今のまま維持
-                                blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 1)
+                                -- 【テレポート】維持
+                                blobRoot.CFrame = targetHRP.CFrame
                                 blobRoot.Velocity = Vector3.zero
                                 
-                                -- 【精度UP：時間差多重Grab】
-                                -- サーバーのラグを貫通させるために、短時間に連続で掴むパケットを送る
-                                for i = 1, 3 do
-                                    if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
-                                    if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
-                                    task.wait(0.01) -- サーバーが処理できる限界の隙間
-                                end
+                                -- 【ブラックホール・キック発動】
+                                -- 1. まず掴む（両手）
+                                if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
+                                if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
                                 
-                                -- 掴み保持（ここを0.25秒にすることでキック威力を最大化）
-                                task.wait(0.25) 
+                                -- 2. 物理演算の1フレームだけ待つ（これが吹き飛ばしを最大化するコツ）
+                                RunService.Stepped:Wait()
                                 
-                                -- 【解放：確定キック】
+                                -- 3. 解放（この一瞬のラグが相手をブラックホールへ飛ばす）
                                 if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 1) end
                                 if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 1) end
                                 
-                                -- 【超重要：無限継続のための待機】
-                                -- これを入れないと数分でサーバーに弾かれます
-                                task.wait(0.15) 
+                                -- 4. 超高速巡回のための極小待機
+                                RunService.Heartbeat:Wait()
                             end
                         end
                     else
                         _G.BringAllLongReach = false
                         break
                     end
-                    task.wait(0.1) -- 周回間の微調整
+                    RunService.Heartbeat:Wait()
                 end
             end)
         end
