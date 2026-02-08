@@ -1774,9 +1774,8 @@ local DestTab = Window:MakeTab({
     PremiumOnly = false
 })
 
--- デストロイサーバー (超高速・高精度キック強化版)
 DestTab:AddToggle({
-    Name = "Destroy Server (High-Speed Kick)",
+    Name = "Ultimate Destroyer (Stable High-Speed)",
     Default = false,
     Callback = function(Value)
         _G.BringAllLongReach = Value
@@ -1788,7 +1787,7 @@ DestTab:AddToggle({
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     
-                    -- 生存チェック（死んでいたらリポーンまで自動待機）
+                    -- 生存チェック
                     if not hum or hum.Health <= 0 then
                         repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
                         char = lp.Character
@@ -1796,7 +1795,6 @@ DestTab:AddToggle({
                     end
 
                     local seat = hum.SeatPart
-                    -- 判定を柔軟にするため FindFirstChild を使用
                     if seat and seat.Parent and (seat.Parent.Name == "CreatureBlobman" or seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript")) then
                         local blobman = seat.Parent
                         local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
@@ -1804,7 +1802,6 @@ DestTab:AddToggle({
                         
                         local leftDet = blobman:FindFirstChild("LeftDetector")
                         local rightDet = blobman:FindFirstChild("RightDetector")
-                        -- Weldの取得精度をUP
                         local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
                         local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
                         
@@ -1817,35 +1814,33 @@ DestTab:AddToggle({
                                 
                                 local targetHRP = p.Character.HumanoidRootPart
                                 
-                                -- 【超高速テレポート】維持
+                                -- 【安定テレポート】
+                                -- 速度を一定にするため、一瞬の移動後にごくわずかな静止時間を作る
                                 blobRoot.CFrame = targetHRP.CFrame
                                 blobRoot.Velocity = Vector3.zero
                                 
-                                -- 【精度強化：両手パケットバースト】
-                                -- 掴むパケットを重ねて送り、サーバーに「強制的に」掴ませる
-                                for i = 1, 2 do
-                                    if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 2) end
-                                    if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 2) end
-                                end
+                                -- 【効率重視のキック】
+                                -- 左右交互ではなく「両手で同時に挟み込む」パケットを1フレームで送信
+                                remote:FireServer(leftDet, targetHRP, leftWeld, 2)
+                                remote:FireServer(rightDet, targetHRP, rightWeld, 2)
                                 
-                                -- 物理エンジンの「反発」を最大化するための極小待機
-                                -- ここが 0.05〜0.1 だとキック力が最強になります
-                                task.wait(0.07) 
+                                -- ここがキック効率の鍵。0.03〜0.05が最も「詰まり」にくい高速域です
+                                task.wait(0.04) 
                                 
-                                -- 【解放（射出）】
-                                if leftDet then remote:FireServer(leftDet, targetHRP, leftWeld, 1) end
-                                if rightDet then remote:FireServer(rightDet, targetHRP, rightWeld, 1) end
+                                -- 解放して吹っ飛ばす
+                                remote:FireServer(leftDet, targetHRP, leftWeld, 1)
+                                remote:FireServer(rightDet, targetHRP, rightWeld, 1)
                                 
-                                -- 次のプレイヤーへ行く前の超高速ウェイト
-                                RunService.Heartbeat:Wait()
+                                -- テレポート間隔を「少しゆっくり」にしてサーバーの拒否を防ぐ
+                                task.wait(0.06) 
                             end
                         end
                     else
-                        -- ブロブマンに乗っていない場合は自動オフ
                         _G.BringAllLongReach = false
                         break
                     end
-                    task.wait(0.1) -- 全員巡回後のクールダウン
+                    -- 一巡した後の安定化ウェイト
+                    RunService.Heartbeat:Wait()
                 end
             end)
         end
