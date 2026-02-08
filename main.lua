@@ -1677,14 +1677,25 @@ BlobTab:AddToggle({
 })
 
 --==============================
--- タブ：Destroy Server
+-- 設定・変数（コードの冒頭に配置推奨）
 --==============================
-local DestTab = Window:MakeTab({
-    Name = "Destroy Server",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
+_G.WhitelistEnabled = true -- ホワイトリストの初期状態
+_G.BringAllLongReach = false
+
+--==============================
+-- Destroy Server 機能
+--==============================
+
+-- 1. ホワイトリスト切り替えトグル
+DestTab:AddToggle({
+    Name = "Whitelist (Friend Protection)",
+    Default = true,
+    Callback = function(Value)
+        _G.WhitelistEnabled = Value
+    end
 })
 
+-- 2. 強化版デストロイサーバー (サーバー殲滅)
 DestTab:AddToggle({
     Name = "God Annihilator (Limit Break)",
     Default = false,
@@ -1693,73 +1704,74 @@ DestTab:AddToggle({
         if Value then
             task.spawn(function()
                 local RunService = game:GetService("RunService")
-                
                 while _G.BringAllLongReach do
                     local char = lp.Character
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local seat = hum and hum.SeatPart
                     
-                    if not hum or hum.Health <= 0 then
-                        repeat task.wait(0.5) until lp.Character and lp.Character:FindFirstChild("Humanoid") and lp.Character.Humanoid.Health > 0
-                        char = lp.Character
-                        hum = char.Humanoid
-                    end
-
-                    local seat = hum.SeatPart
-                    if seat and seat.Parent and (seat.Parent.Name == "CreatureBlobman" or seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript")) then
+                    -- Blobmanに乗っているかチェック
+                    if seat and seat.Parent and seat.Parent:FindFirstChild("BlobmanSeatAndOwnerScript") then
                         local blobman = seat.Parent
-                        local blobRoot = blobman:FindFirstChild("HumanoidRootPart") or blobman.PrimaryPart
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        local blobRoot = blobman.PrimaryPart or seat
                         
-                        local leftDet = blobman:FindFirstChild("LeftDetector")
-                        local rightDet = blobman:FindFirstChild("RightDetector")
-                        local leftWeld = leftDet and (leftDet:FindFirstChild("LeftWeld") or leftDet:FindFirstChildWhichIsA("Weld"))
-                        local rightWeld = rightDet and (rightDet:FindFirstChild("RightWeld") or rightDet:FindFirstChildWhichIsA("Weld"))
-                        
-                        if remote and blobRoot then
-                            for _, p in pairs(game.Players:GetPlayers()) do
-                                if not _G.BringAllLongReach then break end
-                                
-                                -- 【ホワイトリスト：フレンドは絶対にスルー】
-                                if p == lp or lp:IsFriendsWith(p.UserId) then continue end
-                                
-                                if not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") or p.Character.Humanoid.Health <= 0 then 
-                                    continue 
-                                end
-                                
-                                local targetHRP = p.Character.HumanoidRootPart
-                                
-                                -- 【超速テレポート】ラグを最小限に抑えた高速TP
-                                blobRoot.CFrame = targetHRP.CFrame
-                                -- blobRoot.Velocity = Vector3.new(0, 0, 0) -- 慣性を消すと遅くなるため、あえて消さない設定
-                                
-                                -- 【イベント回数倍増：クアッド・バースト】
-                                -- 1フレームの間に4回イベントを叩き込み、サーバーの判定を強制上書き
-                                RunService.PreSimulation:Wait()
-                                for i = 1, 4 do
-                                    remote:FireServer(leftDet, targetHRP, leftWeld, 2)
-                                    remote:FireServer(rightDet, targetHRP, rightWeld, 2)
-                                end
-                                
-                                -- 【限界速度待機】
-                                -- 0.03秒から0.02秒へ。物理演算が壊れるギリギリのライン
-                                task.wait(0.02)
-                                
-                                -- 【物理切断射出】
-                                -- 離す際もバースト送信することで、確実にサーバーから切断させる
-                                for i = 1, 2 do
-                                    remote:FireServer(leftDet, targetHRP, leftWeld, 1)
-                                    remote:FireServer(rightDet, targetHRP, rightWeld, 1)
-                                end
-                                
-                                -- 次のターゲットへの移行ラグを極限まで短縮
-                                task.wait(0.01)
+                        for _, p in pairs(game.Players:GetPlayers()) do
+                            if not _G.BringAllLongReach then break end
+                            
+                            -- 除外条件（自分、またはホワイトリスト有効時のフレンド）
+                            if p == lp or not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then continue end
+                            if _G.WhitelistEnabled and lp:IsFriendsWith(p.UserId) then continue end
+                            
+                            local targetHRP = p.Character.HumanoidRootPart
+                            
+                            -- [[ TP：ゆっくり・確実に接近 ]]
+                            -- 物理計算の破綻を防ぐため、少し時間をかけて移動
+                            blobRoot.CFrame = targetHRP.CFrame * CFrame.new(0, 2, 0)
+                            task.wait(0.2) 
+
+                            -- [[ バグ回避：キャラ保護 ]]
+                            -- 自分のパーツを一時的に無重力化して、反動による「固まり」を防止
+                            for _, v in pairs(char:GetDescendants()) do
+                                if v:IsA("BasePart") then v.Massless = true end
                             end
+
+                            -- [[ 超強化：バースト・キャッチ ]]
+                            -- モード3（最強固定）を1フレーム内に10回叩き込む
+                            RunService.PreSimulation:Wait()
+                            local arms = {"Left", "Right"}
+                            for i = 1, 10 do
+                                for _, side in ipairs(arms) do
+                                    local det = blobman:FindFirstChild(side .. "Detector")
+                                    local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
+                                    if det and weld then
+                                        remote:FireServer(det, targetHRP, weld, 3)
+                                    end
+                                end
+                            end
+                            
+                            -- [[ キック確定ラグ ]]
+                            task.wait(0.02)
+                            
+                            -- [[ ブラックホール射出 ]]
+                            for _, side in ipairs(arms) do
+                                local det = blobman:FindFirstChild(side .. "Detector")
+                                local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
+                                remote:FireServer(det, targetHRP, weld, 1)
+                            end
+                            
+                            -- [[ 保護解除 ]]
+                            for _, v in pairs(char:GetDescendants()) do
+                                if v:IsA("BasePart") then v.Massless = false end
+                            end
+                            
+                            task.wait(0.05)
                         end
                     else
+                        -- Blobmanから降りたら停止
                         _G.BringAllLongReach = false
                         break
                     end
-                    task.wait(0.1) -- サーバー全体の巡回スパンを短縮
+                    task.wait(0.5)
                 end
             end)
         end
