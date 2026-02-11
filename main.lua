@@ -1676,127 +1676,109 @@ BlobTab:AddToggle({
     end
 })
 
---// 設定・変数
+--==============================
+-- タブ作成：Destroy Server
+--==============================
+local DestTab = Window:MakeTab({
+    Name = "Destroy Server",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- 設定用グローバル（重複エラー防止のためpcallか確認）
 _G.AnnihilatorEnabled = false
 _G.WhitelistEnabled = true
+_G.PlayerToLongGrab = ""
 
---// 強化版キックロジック (WindUIベース)
-local function blobKickGodMode(blob, target, side)
-    pcall(function()
-        local remote = blob.BlobmanSeatAndOwnerScript.CreatureGrab
-        local det = blob:FindFirstChild(side .. "Detector")
-        local weld = det and (det:FindFirstChild(side .. "Weld") or det:FindFirstChildWhichIsA("Weld"))
-        
-        if not det or not weld then return end
-
-        -- [[ STEP 1: ネットワーク所有権の強制奪取 ]]
-        -- 相手を自分の管理下に置くことで物理ハックを通しやすくする
-        SetNetworkOwner(target)
-        
-        -- [[ STEP 2: 超速バースト掴み ]]
-        for i = 1, 15 do
-            remote:FireServer(det, target, weld, 3) -- モード3
-        end
-        
-        -- [[ STEP 3: 物理演算破壊(Fling) & 射出 ]]
-        task.wait(0.05)
-        target.Velocity = Vector3.new(0, 1000, 0) -- 上空へ超加速
-        target.RotVelocity = Vector3.new(500, 500, 500) -- 高速回転(Fling)
-        
-        for i = 1, 5 do
-            remote:FireServer(det, target, weld, 1) -- 射出
-        end
-        
-        -- [[ STEP 4: 切断処理 ]]
-        ungrab(target)
-    end)
+-- プレイヤーリスト取得
+local function getUpdateNames()
+    local pList = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then table.insert(pList, p.Name) end
+    end
+    return pList
 end
 
---// デストロイサーバー実行ループ
+-- 1. 殲滅トグル (Aura + TP)
+DestTab:AddToggle({
+    Name = "God Annihilator (Aura + TP)",
+    Default = false,
+    Callback = function(Value)
+        _G.AnnihilatorEnabled = Value
+    end
+})
+
+-- 2. ホワイトリスト
+DestTab:AddToggle({
+    Name = "Whitelist (Friends Protect)",
+    Default = true,
+    Callback = function(Value)
+        _G.WhitelistEnabled = Value
+    end
+})
+
+-- 3. ターゲット選択
+local PlayerSelector = DestTab:AddDropdown({
+    Name = "Target Player",
+    Default = "",
+    Options = getUpdateNames(),
+    Callback = function(t)
+        _G.PlayerToLongGrab = t
+    end
+})
+
+-- 4. リスト更新
+DestTab:AddButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        PlayerSelector:Refresh(getUpdateNames(), true)
+    end
+})
+
+-- [[ 殲滅ロジック本体 ]]
 task.spawn(function()
+    local RunService = game:GetService("RunService")
     while true do
         if _G.AnnihilatorEnabled then
-            local blob = getBlobman()
-            local lpChar = getLocalChar()
-            local root = getLocalRoot()
-            
-            if blob and root then
-                local players = service.Players:GetPlayers()
-                for _, player in ipairs(players) do
-                    if not _G.AnnihilatorEnabled then break end
-                    
-                    -- ホワイトリストと自分自身を除外
-                    if player == getLocalPlayer() or not player.Character then continue end
-                    if _G.WhitelistEnabled and getLocalPlayer():IsFriendsWith(player.UserId) then continue end
-                    
-                    local targetRoot = get(player.Character, "HumanoidRootPart")
-                    if targetRoot and player.Character.Humanoid.Health > 0 then
+            pcall(function()
+                local lp = game.Players.LocalPlayer
+                local blob = getBlobman() -- 既存の取得関数を使用
+                local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+                
+                if blob and root then
+                    for _, player in ipairs(game.Players:GetPlayers()) do
+                        if not _G.AnnihilatorEnabled then break end
+                        if player == lp or not player.Character then continue end
+                        if _G.WhitelistEnabled and lp:IsFriendsWith(player.UserId) then continue end
                         
-                        -- [[ 自動テレポート接近 ]]
-                        -- 今のテレポート速度を維持しつつ接近
-                        local blobRoot = blob.PrimaryPart or blob:FindFirstChild("HumanoidRootPart")
-                        if blobRoot then
-                            blobRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 2, 0)
-                            task.wait(0.2) -- 安定のための待機
-                        end
-
-                        -- [[ Kick Aura発動 ]]
-                        -- 射程内(30スタッド)に入った瞬間キック
-                        if (targetRoot.Position - root.Position).Magnitude < 35 then
-                            blobKickGodMode(blob, targetRoot, "Left")
-                            blobKickGodMode(blob, targetRoot, "Right")
-                            task.wait(0.1) -- 次のターゲットへ
+                        local tRoot = player.Character:FindFirstChild("HumanoidRootPart")
+                        if tRoot and player.Character.Humanoid.Health > 0 then
+                            -- 自動TP（指定の速度）
+                            local bRoot = blob.PrimaryPart or blob:FindFirstChild("HumanoidRootPart")
+                            bRoot.CFrame = tRoot.CFrame * CFrame.new(0, 2, 0)
+                            task.wait(0.2)
+                            
+                            -- Kick Aura (35スタッド以内)
+                            if (tRoot.Position - root.Position).Magnitude < 40 then
+                                local remote = blob.BlobmanSeatAndOwnerScript.CreatureGrab
+                                -- 15連バースト + Fling物理付与
+                                for i = 1, 15 do
+                                    remote:FireServer(blob.LeftDetector, tRoot, blob.LeftDetector:FindFirstChildWhichIsA("Weld"), 3)
+                                    remote:FireServer(blob.RightDetector, tRoot, blob.RightDetector:FindFirstChildWhichIsA("Weld"), 3)
+                                end
+                                task.wait(0.05)
+                                tRoot.Velocity = Vector3.new(0, 1500, 0) -- ぶっ飛ばし
+                                tRoot.RotVelocity = Vector3.new(800, 800, 800)
+                                task.wait(0.1)
+                            end
                         end
                     end
                 end
-            end
+            end)
         end
-        task.wait(0.3)
+        task.wait(0.5)
     end
 end)
-
---// GUI ELEMENTS (Destroy Serverタブに追加)
-local destTab = window:Tab({
-    Title = "Destroy Server",
-    Icon = "lucide:skull"
-})
-
-destTab:Toggle({
-    Title = "God Annihilator (Aura + TP)",
-    Value = false,
-    Callback = function(value)
-        _G.AnnihilatorEnabled = value
-        if value then
-            wind:Notify({Title = "System", Content = "殲滅モード起動: 全員をキックします", Duration = 3})
-        else
-            wind:Notify({Title = "System", Content = "殲滅モード停止", Duration = 3})
-        end
-    end
-})
-
-destTab:Toggle({
-    Title = "Whitelist (Friends Protect)",
-    Value = true,
-    Callback = function(value)
-        _G.WhitelistEnabled = value
-    end
-})
-
--- ここにさっきのプレイヤーリストと更新ボタンを配置
-local pDropdown = destTab:Dropdown({
-    Title = "Target Player",
-    Multi = false,
-    Options = getPlayerNames(),
-    Callback = function(t) _G.PlayerToLongGrab = t end
-})
-
-destTab:Button({
-    Title = "Refresh List",
-    Callback = function()
-        pDropdown:SetOptions(getPlayerNames())
-    end
-})
-
 
 
 --==============================
