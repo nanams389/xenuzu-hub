@@ -1676,110 +1676,69 @@ BlobTab:AddToggle({
     end
 })
 
---==============================
--- タブ作成：Destroy Server
---==============================
-local DestTab = Window:MakeTab({
-    Name = "Destroy Server",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
+-- [[ 3. UI構築 ]]
+local BlobmanTab = Window:MakeTab({ Name = "Blobman 2", Icon = "rbxassetid://6031064398" })
 
--- 設定用グローバル（重複エラー防止のためpcallか確認）
-_G.AnnihilatorEnabled = false
-_G.WhitelistEnabled = true
-_G.PlayerToLongGrab = ""
-
--- プレイヤーリスト取得
-local function getUpdateNames()
-    local pList = {}
-    for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= game.Players.LocalPlayer then table.insert(pList, p.Name) end
-    end
-    return pList
-end
-
--- 1. 殲滅トグル (Aura + TP)
-DestTab:AddToggle({
-    Name = "God Annihilator (Aura + TP)",
-    Default = false,
-    Callback = function(Value)
-        _G.AnnihilatorEnabled = Value
-    end
-})
-
--- 2. ホワイトリスト
-DestTab:AddToggle({
-    Name = "Whitelist (Friends Protect)",
-    Default = true,
-    Callback = function(Value)
-        _G.WhitelistEnabled = Value
-    end
-})
-
--- 3. ターゲット選択
-local PlayerSelector = DestTab:AddDropdown({
-    Name = "Target Player",
-    Default = "",
-    Options = getUpdateNames(),
-    Callback = function(t)
-        _G.PlayerToLongGrab = t
-    end
-})
-
--- 4. リスト更新
-DestTab:AddButton({
-    Name = "Refresh Player List",
+-- 公式エラー誘発キック (blobman 引き寄せ)
+BlobmanTab:AddButton({
+    Name = "blobmanで相手を掴む(グッチ、家貫通)",
     Callback = function()
-        PlayerSelector:Refresh(getUpdateNames(), true)
+        pcall(function()
+            local target = players:FindFirstChild(_G.PlayerToLongGrab)
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local seat = hum and hum.SeatPart
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
+                local blobman = seat.Parent
+                local targetHRP = target.Character.HumanoidRootPart
+                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                -- 1. 相手の場所にテレポート
+                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
+                if blobman.PrimaryPart then
+                    blobman:SetPrimaryPartCFrame(targetPos)
+                else
+                    seat.CFrame = targetPos
+                end
+                task.wait(0.1)
+                -- 2. 両手で掴む
+                local arms = {"Left", "Right"}
+                for _, side in ipairs(arms) do
+                    local detector = blobman:WaitForChild(side .. "Detector")
+                    local weld = detector:WaitForChild(side .. "Weld")
+                    remote:FireServer(detector, targetHRP, weld, 3)
+                end
+                -- 3. 公式エラー誘発
+                task.spawn(function()
+                    local leftDetector = blobman:FindFirstChild("LeftDetector")
+                    local rightDetector = blobman:FindFirstChild("RightDetector")
+                    local originalCF = leftDetector.CFrame
+                    for i = 1, 15 do
+                        local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0)
+                        if leftDetector then leftDetector.CFrame = shakePos end
+                        if rightDetector then rightDetector.CFrame = shakePos end
+                        task.wait(0.02)
+                        local shakePosUp = targetHRP.CFrame * CFrame.new(0, 20, 0)
+                        if leftDetector then leftDetector.CFrame = shakePosUp end
+                        if rightDetector then rightDetector.CFrame = shakePosUp end
+                        task.wait(0.02)
+                    end
+                    if leftDetector then leftDetector.CFrame = originalCF end
+                end)
+                -- 4. 浮上固定
+                if not hrp:FindFirstChild("ErrorFloat") then
+                    local bv = Instance.new("BodyVelocity")
+                    bv.Name = "ErrorFloat"
+                    bv.MaxForce = Vector3.new(0, 1e9, 0)
+                    bv.Velocity = Vector3.new(0, 35, 0)
+                    bv.Parent = hrp
+                    task.delay(0.6, function() if bv.Parent then bv.Velocity = Vector3.new(0, 0, 0) end end)
+                    game:GetService("Debris"):AddItem(bv, 2.0)
+                end
+            end
+        end)
     end
 })
-
--- [[ 殲滅ロジック本体 ]]
-task.spawn(function()
-    local RunService = game:GetService("RunService")
-    while true do
-        if _G.AnnihilatorEnabled then
-            pcall(function()
-                local lp = game.Players.LocalPlayer
-                local blob = getBlobman() -- 既存の取得関数を使用
-                local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-                
-                if blob and root then
-                    for _, player in ipairs(game.Players:GetPlayers()) do
-                        if not _G.AnnihilatorEnabled then break end
-                        if player == lp or not player.Character then continue end
-                        if _G.WhitelistEnabled and lp:IsFriendsWith(player.UserId) then continue end
-                        
-                        local tRoot = player.Character:FindFirstChild("HumanoidRootPart")
-                        if tRoot and player.Character.Humanoid.Health > 0 then
-                            -- 自動TP（指定の速度）
-                            local bRoot = blob.PrimaryPart or blob:FindFirstChild("HumanoidRootPart")
-                            bRoot.CFrame = tRoot.CFrame * CFrame.new(0, 2, 0)
-                            task.wait(0.2)
-                            
-                            -- Kick Aura (35スタッド以内)
-                            if (tRoot.Position - root.Position).Magnitude < 40 then
-                                local remote = blob.BlobmanSeatAndOwnerScript.CreatureGrab
-                                -- 15連バースト + Fling物理付与
-                                for i = 1, 15 do
-                                    remote:FireServer(blob.LeftDetector, tRoot, blob.LeftDetector:FindFirstChildWhichIsA("Weld"), 3)
-                                    remote:FireServer(blob.RightDetector, tRoot, blob.RightDetector:FindFirstChildWhichIsA("Weld"), 3)
-                                end
-                                task.wait(0.05)
-                                tRoot.Velocity = Vector3.new(0, 1500, 0) -- ぶっ飛ばし
-                                tRoot.RotVelocity = Vector3.new(800, 800, 800)
-                                task.wait(0.1)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-        task.wait(0.5)
-    end
-end)
-
 
 --==============================
 -- 初期化
