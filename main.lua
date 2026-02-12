@@ -1756,6 +1756,101 @@ BlobmanTab:AddButton({
     end
 })
 
+-- 単体実行ボタン
+BlobmanTab:AddButton({
+    Name = "Grab & Kick (単体実行)",
+    Callback = function()
+        local target = players:FindFirstChild(_G.PlayerToLongGrab)
+        if target then doBlobmanGrab(target) end
+    end
+})
+
+-- デストロイサーバー (Rapid Grab/Release)
+BlobmanTab:AddToggle({
+    Name = "Destroy Server (Rapid Grab/Release)",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLongReach = Value
+        if Value then
+            task.spawn(function()
+                while _G.BringAllLongReach do
+                    local char = lp.Character
+                    local seat = char.Humanoid.SeatPart
+                    if seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        if remote then
+                            for _, p in pairs(players:GetPlayers()) do
+                                if not _G.BringAllLongReach then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    local detector = blobman:FindFirstChild("LeftDetector")
+                                    local weld = detector and detector:FindFirstChild("LeftWeld")
+                                    if detector and weld then
+                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
+                                        task.wait(0.05)
+                                        remote:FireServer(detector, targetHRP, weld, 1) -- 即離す
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.2)
+                end
+            end)
+        end
+    end
+})
+-- デストロイサーバー (極限・即掴み即離し)
+BlobmanTab:AddToggle({
+    Name = "Destroy Server (Instant Release)",
+    Default = false,
+    Callback = function(Value)
+        _G.BringAllLongReach = Value
+        if Value then
+            task.spawn(function()
+                while _G.BringAllLongReach do
+                    local char = lp.Character
+                    local seat = char and char.Humanoid.SeatPart
+                    
+                    if seat and seat.Parent then
+                        local blobman = seat.Parent
+                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
+                        
+                        if remote then
+                            for _, p in pairs(players:GetPlayers()) do
+                                if not _G.BringAllLongReach then break end
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                    
+                                    local targetHRP = p.Character.HumanoidRootPart
+                                    
+                                    -- 左右の手で実行
+                                    for _, armSide in ipairs({"Left", "Right"}) do
+                                        local detector = blobman:FindFirstChild(armSide .. "Detector")
+                                        local weld = detector and detector:FindFirstChild(armSide .. "Weld")
+                                        
+                                        if detector and weld then
+                                            -- 1. 掴む (Mode 2)
+                                            remote:FireServer(detector, targetHRP, weld, 2)
+                                            
+                                            -- 2. 即座に（待ち時間なしで）離す (Mode 1)
+                                            -- 念のため2回送ってサーバーに「離せ」と強制する
+                                            remote:FireServer(detector, targetHRP, weld, 1)
+                                            remote:FireServer(detector, targetHRP, weld, 1)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    -- ループの間隔を極限まで短く（0.1秒）
+                    task.wait(0.1) 
+                end
+            end)
+        end
+    end
+})
+BlobmanTab:AddToggle({ Name = "Whitelist Friends", Default = false, Callback = function(v) _G.WhitelistFriends2 = v end })
 
 --==============================
 -- 初期化
