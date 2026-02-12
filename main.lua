@@ -1740,6 +1740,23 @@ BlobmanTab:AddButton({
     end
 })
 
+-- プレイヤー選択ドロップダウン
+local PlayerSelector = BlobmanTab:AddDropdown({
+    Name = "Select Player",
+    Default = "",
+    Options = getPlayerNames(),
+    Callback = function(t) _G.PlayerToLongGrab = t end
+})
+
+-- リスト更新ボタン
+BlobmanTab:AddButton({
+    Name = "Refresh Player List (リスト更新)",
+    Callback = function()
+        PlayerSelector:Refresh(getPlayerNames(), true)
+    end
+})
+
+
 --==============================
 -- 初期化
 --==============================
