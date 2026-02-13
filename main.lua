@@ -1676,18 +1676,21 @@ BlobTab:AddToggle({
     end
 })
 
--- [[ 3. UI構築 (Orion UI版) ]]
-local BlobmanTab = Window:NewTab({
+-- [[ 3. UI構築 (Orion UI 正式準拠版) ]]
+
+-- タブの作成: NewTab ではなく MakeTab を使用
+local BlobmanTab = Window:MakeTab({
     Name = "Blobman 2",
-    Icon = "rbxassetid://6031064398"
+    Icon = "rbxassetid://6031064398",
+    PremiumOnly = false
 })
 
--- セクション分け（見やすさのため）
+-- セクション: Blobman Controls
 local MainSection = BlobmanTab:AddSection({
     Name = "Blobman Controls"
 })
 
--- 公式エラー誘発キック (blobman 引き寄せ)
+-- ボタン: blobmanで相手を掴む
 MainSection:AddButton({
     Name = "blobmanで相手を掴む(グッチ、家貫通)",
     Callback = function()
@@ -1695,8 +1698,9 @@ MainSection:AddButton({
             local target = players:FindFirstChild(_G.PlayerToLongGrab)
             local char = lp.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local seat = hum and hum.SeatPart
+            
             if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
                 local blobman = seat.Parent
                 local targetHRP = target.Character.HumanoidRootPart
@@ -1723,7 +1727,7 @@ MainSection:AddButton({
                 task.spawn(function()
                     local leftDetector = blobman:FindFirstChild("LeftDetector")
                     local rightDetector = blobman:FindFirstChild("RightDetector")
-                    local originalCF = leftDetector.CFrame
+                    local originalCF = leftDetector and leftDetector.CFrame
                     for i = 1, 15 do
                         local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0)
                         if leftDetector then leftDetector.CFrame = shakePos end
@@ -1734,11 +1738,11 @@ MainSection:AddButton({
                         if rightDetector then rightDetector.CFrame = shakePosUp end
                         task.wait(0.02)
                     end
-                    if leftDetector then leftDetector.CFrame = originalCF end
+                    if leftDetector and originalCF then leftDetector.CFrame = originalCF end
                 end)
                 
                 -- 4. 浮上固定
-                if not hrp:FindFirstChild("ErrorFloat") then
+                if hrp and not hrp:FindFirstChild("ErrorFloat") then
                     local bv = Instance.new("BodyVelocity")
                     bv.Name = "ErrorFloat"
                     bv.MaxForce = Vector3.new(0, 1e9, 0)
@@ -1752,12 +1756,12 @@ MainSection:AddButton({
     end
 })
 
--- プレイヤー選択セクション
+---
+-- セクション: プレイヤー選択
 local PlayerSection = BlobmanTab:AddSection({
     Name = "Target Selection"
 })
 
--- プレイヤー選択ドロップダウン
 local PlayerSelector = PlayerSection:AddDropdown({
     Name = "Select Player",
     Default = "",
@@ -1767,29 +1771,29 @@ local PlayerSelector = PlayerSection:AddDropdown({
     end
 })
 
--- リスト更新ボタン
 PlayerSection:AddButton({
     Name = "Refresh Player List (リスト更新)",
     Callback = function()
+        -- Orionのドロップダウン更新用関数
         PlayerSelector:Refresh(getPlayerNames(), true)
     end
 })
 
--- 単体実行ボタン
 PlayerSection:AddButton({
     Name = "Grab & Kick (単体実行)",
     Callback = function()
         local target = players:FindFirstChild(_G.PlayerToLongGrab)
-        if target then doBlobmanGrab(target) end
+        -- doBlobmanGrab関数が定義されている前提
+        if target and doBlobmanGrab then doBlobmanGrab(target) end
     end
 })
 
--- サーバー破壊セクション
+---
+-- セクション: サーバー破壊系
 local ChaosSection = BlobmanTab:AddSection({
     Name = "Chaos Features"
 })
 
--- デストロイサーバー (Rapid Grab/Release)
 ChaosSection:AddToggle({
     Name = "Destroy Server (Rapid Grab/Release)",
     Default = false,
@@ -1799,21 +1803,24 @@ ChaosSection:AddToggle({
             task.spawn(function()
                 while _G.BringAllLongReach do
                     local char = lp.Character
-                    local seat = char.Humanoid.SeatPart
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local seat = hum and hum.SeatPart
                     if seat and seat.Parent then
                         local blobman = seat.Parent
                         local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                         if remote then
                             for _, p in pairs(players:GetPlayers()) do
                                 if not _G.BringAllLongReach then break end
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                                    local targetHRP = p.Character.HumanoidRootPart
-                                    local detector = blobman:FindFirstChild("LeftDetector")
-                                    local weld = detector and detector:FindFirstChild("LeftWeld")
-                                    if detector and weld then
-                                        remote:FireServer(detector, targetHRP, weld, 2) -- 掴む
-                                        task.wait(0.05)
-                                        remote:FireServer(detector, targetHRP, weld, 1) -- 即離す
+                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    if not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
+                                        local targetHRP = p.Character.HumanoidRootPart
+                                        local detector = blobman:FindFirstChild("LeftDetector")
+                                        local weld = detector and detector:FindFirstChild("LeftWeld")
+                                        if detector and weld then
+                                            remote:FireServer(detector, targetHRP, weld, 2)
+                                            task.wait(0.05)
+                                            remote:FireServer(detector, targetHRP, weld, 1)
+                                        end
                                     end
                                 end
                             end
@@ -1826,54 +1833,7 @@ ChaosSection:AddToggle({
     end
 })
 
--- デストロイサーバー (極限・即掴み即離し)
 ChaosSection:AddToggle({
-    Name = "Destroy Server (Instant Release)",
-    Default = false,
-    Callback = function(Value)
-        _G.BringAllLongReach = Value
-        if Value then
-            task.spawn(function()
-                while _G.BringAllLongReach do
-                    local char = lp.Character
-                    local seat = char and char.Humanoid.SeatPart
-                    
-                    if seat and seat.Parent then
-                        local blobman = seat.Parent
-                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        
-                        if remote then
-                            for _, p in pairs(players:GetPlayers()) do
-                                if not _G.BringAllLongReach then break end
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                                    local targetHRP = p.Character.HumanoidRootPart
-                                    
-                                    -- 左右の手で実行
-                                    for _, armSide in ipairs({"Left", "Right"}) do
-                                        local detector = blobman:FindFirstChild(armSide .. "Detector")
-                                        local weld = detector and detector:FindFirstChild(armSide .. "Weld")
-                                        
-                                        if detector and weld then
-                                            -- 1. 掴む (Mode 2)
-                                            remote:FireServer(detector, targetHRP, weld, 2)
-                                            -- 2. 即座に（待ち時間なしで）離す (Mode 1)
-                                            remote:FireServer(detector, targetHRP, weld, 1)
-                                            remote:FireServer(detector, targetHRP, weld, 1)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    task.wait(0.1) 
-                end
-            end)
-        end
-    end
-})
-
--- フレンド除外設定
-ChaosSection:AddToggle({ 
     Name = "Whitelist Friends", 
     Default = false, 
     Callback = function(v) 
