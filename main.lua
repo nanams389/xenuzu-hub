@@ -1676,168 +1676,163 @@ BlobTab:AddToggle({
     end
 })
 
--- [[ 3. UI構築 (Orion UI 完全・機能維持版) ]]
+-- [[ 3. UI構築 (WindUIロジック完全移植版) ]]
 
--- タブの作成
+-- サービス管理メタテーブル（提供コードを維持）
+local service = setmetatable({}, {
+    __index = function(self, k)
+        local s = game:GetService(k)
+        rawset(self, k, s)
+        return s
+    end,
+})
+
+-- ユーティリティ関数（提供コードを維持）
+local get = game.FindFirstChild
+local function getLocalPlayer() return service.Players.LocalPlayer end
+local function getLocalChar() return getLocalPlayer().Character end
+local function getLocalRoot()
+    if not getLocalChar() then return end
+    return get(getLocalChar(), "HumanoidRootPart") or get(getLocalChar(), "Torso")
+end
+
+local function getInv()
+    return get(workspace, getLocalPlayer().Name .. "SpawnedInToys")
+end
+
+local function SetNetworkOwner(part)
+    service.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(part, getLocalRoot().CFrame)
+end
+
+local function ungrab(part)
+    service.ReplicatedStorage.GrabEvents.DestroyGrabLine:FireServer(part)
+end
+
+-- Blobman取得ロジック（中身維持）
+local function getBlobman()
+    local v = get(getInv(), "CreatureBlobman", true)
+    if not v then
+        for _, p in ipairs(workspace.PlotItems:GetChildren()) do
+            local m = get(p, "CreatureBlobman")
+            if m and m.PlayerValue.Value == getLocalPlayer().Name then
+                v = m
+                break
+            end
+        end
+    end
+    return v
+end
+
+-- 操作ロジック（中身維持）
+local function blobGrab(blob, target, side)
+    local detector = get(blob, side .. "Detector")
+    local args = {
+        [1] = detector,
+        [2] = target,
+        [3] = detector and get(detector, side .. "Weld")
+    }
+    if blob:FindFirstChild("BlobmanSeatAndOwnerScript") then
+        blob.BlobmanSeatAndOwnerScript.CreatureGrab:FireServer(unpack(args))
+    end
+end
+
+local function blobBring(blob, target, side)
+    local root = getLocalRoot()
+    if not root or not target then return end
+    local pos = root.CFrame
+    root.CFrame = target.CFrame
+    task.wait(0.2)
+    blobGrab(blob, target, side)
+    task.wait(0.2)
+    root.CFrame = pos
+end
+
+local function blobKickOptimized(blob, target, side)
+    blobGrab(blob, getLocalRoot(), side)
+    task.wait(0.05)
+    SetNetworkOwner(target)
+    task.wait(0.05)
+    target.CFrame += Vector3.new(0, 20, 0)
+    task.wait(0.05)
+    ungrab(target)
+    blobGrab(blob, target, side)
+end
+
+-- --- UI構築 (Orion UI) ---
 local BlobmanTab = Window:MakeTab({
     Name = "Blobman 2",
     Icon = "rbxassetid://6031064398",
     PremiumOnly = false
 })
 
--- メインセクション
+-- 変数
+local kickAuraEnabled = false
+
+-- セクション：メイン機能
 local MainSection = BlobmanTab:AddSection({
-    Name = "Blobman Controls"
+    Name = "Suisei Hub Functions"
 })
 
--- 機能：blobmanで相手を掴む（元のロジックを1ミリも変えずに移植）
+-- BRING ALL ボタン
 MainSection:AddButton({
-    Name = "blobmanで相手を掴む(グッチ、家貫通)",
+    Name = "BRING ALL (全員引き寄せ)",
     Callback = function()
-        pcall(function()
-            local target = players:FindFirstChild(_G.PlayerToLongGrab)
-            local char = lp.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local seat = hum and hum.SeatPart
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and seat and seat.Parent then
-                local blobman = seat.Parent
-                local targetHRP = target.Character.HumanoidRootPart
-                local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                
-                -- 1. 相手の場所にテレポート
-                local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
-                if blobman.PrimaryPart then
-                    blobman:SetPrimaryPartCFrame(targetPos)
-                else
-                    seat.CFrame = targetPos
-                end
-                task.wait(0.1)
-                
-                -- 2. 両手で掴む
-                local arms = {"Left", "Right"}
-                for _, side in ipairs(arms) do
-                    local detector = blobman:WaitForChild(side .. "Detector")
-                    local weld = detector:WaitForChild(side .. "Weld")
-                    remote:FireServer(detector, targetHRP, weld, 3)
-                end
-                
-                -- 3. 公式エラー誘発
-                task.spawn(function()
-                    local leftDetector = blobman:FindFirstChild("LeftDetector")
-                    local rightDetector = blobman:FindFirstChild("RightDetector")
-                    local originalCF = leftDetector.CFrame
-                    for i = 1, 15 do
-                        local shakePos = targetHRP.CFrame * CFrame.new(0, -20, 0)
-                        if leftDetector then leftDetector.CFrame = shakePos end
-                        if rightDetector then rightDetector.CFrame = shakePos end
-                        task.wait(0.02)
-                        local shakePosUp = targetHRP.CFrame * CFrame.new(0, 20, 0)
-                        if leftDetector then leftDetector.CFrame = shakePosUp end
-                        if rightDetector then rightDetector.CFrame = shakePosUp end
-                        task.wait(0.02)
-                    end
-                    if leftDetector then leftDetector.CFrame = originalCF end
-                end)
-                
-                -- 4. 浮上固定
-                if not hrp:FindFirstChild("ErrorFloat") then
-                    local bv = Instance.new("BodyVelocity")
-                    bv.Name = "ErrorFloat"
-                    bv.MaxForce = Vector3.new(0, 1e9, 0)
-                    bv.Velocity = Vector3.new(0, 35, 0)
-                    bv.Parent = hrp
-                    task.delay(0.6, function() if bv.Parent then bv.Velocity = Vector3.new(0, 0, 0) end end)
-                    game:GetService("Debris"):AddItem(bv, 2.0)
+        local blob = getBlobman()
+        if not blob then
+            OrionLib:MakeNotification({Name = "Error", Content = "Blobman not found!", Time = 5})
+            return
+        end
+
+        OrionLib:MakeNotification({Name = "Success", Content = "Starting BRING ALL...", Time = 3})
+        
+        local playersList = service.Players:GetPlayers()
+        local lp = getLocalPlayer()
+
+        for _, player in ipairs(playersList) do
+            if player ~= lp and player.Character then
+                local targetRoot = get(player.Character, "HumanoidRootPart")
+                if targetRoot then
+                    blobBring(blob, targetRoot, "Left")
+                    task.wait(0.15)
                 end
             end
-        end)
+        end
+        OrionLib:MakeNotification({Name = "Success", Content = "BRING ALL Completed!", Time = 3})
     end
 })
 
--- プレイヤー選択セクション
-local PlayerSection = BlobmanTab:AddSection({
-    Name = "Target Selection"
-})
-
--- 【重要】Orion UIでプレイヤー名を表示させるためのDropdown
-local PlayerSelector = PlayerSection:AddDropdown({
-    Name = "Select Player",
-    Default = "",
-    Options = getPlayerNames(), -- ここで関数を呼び出し
-    Callback = function(t) 
-        _G.PlayerToLongGrab = t 
-    end
-})
-
--- リスト更新ボタン（OrionのRefresh機能を正しく使用）
-PlayerSection:AddButton({
-    Name = "Refresh Player List (リスト更新)",
-    Callback = function()
-        PlayerSelector:Refresh(getPlayerNames(), true)
-    end
-})
-
--- 単体実行ボタン（元の機能を維持）
-PlayerSection:AddButton({
-    Name = "Grab & Kick (単体実行)",
-    Callback = function()
-        local target = players:FindFirstChild(_G.PlayerToLongGrab)
-        if target then doBlobmanGrab(target) end
-    end
-})
-
--- カオス機能セクション
-local ChaosSection = BlobmanTab:AddSection({
-    Name = "Chaos Features"
-})
-
--- サーバー破壊 (元のロジックを完全維持)
-ChaosSection:AddToggle({
-    Name = "Destroy Server (Rapid Grab/Release)",
+-- Kick Aura トグル
+MainSection:AddToggle({
+    Name = "Kick Aura",
     Default = false,
-    Callback = function(Value)
-        _G.BringAllLongReach = Value
-        if Value then
-            task.spawn(function()
-                while _G.BringAllLongReach do
-                    local char = lp.Character
-                    local seat = char.Humanoid.SeatPart
-                    if seat and seat.Parent then
-                        local blobman = seat.Parent
-                        local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
-                        if remote then
-                            for _, p in pairs(players:GetPlayers()) do
-                                if not _G.BringAllLongReach then break end
-                                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and not (_G.WhitelistFriends2 and lp:IsFriendsWith(p.UserId)) then
-                                    local targetHRP = p.Character.HumanoidRootPart
-                                    local detector = blobman:FindFirstChild("LeftDetector")
-                                    local weld = detector and detector:FindFirstChild("LeftWeld")
-                                    if detector and weld then
-                                        remote:FireServer(detector, targetHRP, weld, 2)
-                                        task.wait(0.05)
-                                        remote:FireServer(detector, targetHRP, weld, 1)
-                                    end
-                                end
-                            end
+    Callback = function(value)
+        kickAuraEnabled = value
+        local status = value and "Enabled" or "Disabled"
+        OrionLib:MakeNotification({Name = "Aura", Content = "Kick Aura " .. status, Time = 3})
+    end
+})
+
+-- Kick Aura のループ処理 (バックグラウンドで動作)
+task.spawn(function()
+    while true do
+        if kickAuraEnabled then
+            local blob = getBlobman()
+            local root = getLocalRoot()
+            if blob and root then
+                for _, player in ipairs(service.Players:GetPlayers()) do
+                    if player ~= getLocalPlayer() and player.Character then
+                        local targetRoot = get(player.Character, "HumanoidRootPart")
+                        if targetRoot and (targetRoot.Position - root.Position).Magnitude < 30 then
+                            blobKickOptimized(blob, targetRoot, "Right")
+                            task.wait(0.1)
                         end
                     end
-                    task.wait(0.2)
                 end
-            end)
+            end
         end
+        task.wait(0.1)
     end
-})
-
--- フレンド除外
-ChaosSection:AddToggle({ 
-    Name = "Whitelist Friends", 
-    Default = false, 
-    Callback = function(v) 
-        _G.WhitelistFriends2 = v 
-    end 
-})
-
+end)
 --==============================
 -- 初期化
 --==============================
