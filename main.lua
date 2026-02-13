@@ -1676,21 +1676,20 @@ BlobTab:AddToggle({
     end
 })
 
--- [[ 3. UI構築 (Orion UI 正式準拠版) ]]
+-- [[ 3. UI構築 (Orion UI 完全修正版) ]]
 
--- タブの作成: NewTab ではなく MakeTab を使用
+-- 1. タブ作成 (ここは成功してるので維持)
 local BlobmanTab = Window:MakeTab({
     Name = "Blobman 2",
     Icon = "rbxassetid://6031064398",
     PremiumOnly = false
 })
 
--- セクション: Blobman Controls
+-- 2. メインセクション
 local MainSection = BlobmanTab:AddSection({
     Name = "Blobman Controls"
 })
 
--- ボタン: blobmanで相手を掴む
 MainSection:AddButton({
     Name = "blobmanで相手を掴む(グッチ、家貫通)",
     Callback = function()
@@ -1706,7 +1705,6 @@ MainSection:AddButton({
                 local targetHRP = target.Character.HumanoidRootPart
                 local remote = blobman.BlobmanSeatAndOwnerScript:FindFirstChild("CreatureGrab")
                 
-                -- 1. 相手の場所にテレポート
                 local targetPos = targetHRP.CFrame * CFrame.new(0, 5, 0)
                 if blobman.PrimaryPart then
                     blobman:SetPrimaryPartCFrame(targetPos)
@@ -1715,7 +1713,6 @@ MainSection:AddButton({
                 end
                 task.wait(0.1)
                 
-                -- 2. 両手で掴む
                 local arms = {"Left", "Right"}
                 for _, side in ipairs(arms) do
                     local detector = blobman:WaitForChild(side .. "Detector")
@@ -1723,7 +1720,6 @@ MainSection:AddButton({
                     remote:FireServer(detector, targetHRP, weld, 3)
                 end
                 
-                -- 3. 公式エラー誘発
                 task.spawn(function()
                     local leftDetector = blobman:FindFirstChild("LeftDetector")
                     local rightDetector = blobman:FindFirstChild("RightDetector")
@@ -1741,7 +1737,6 @@ MainSection:AddButton({
                     if leftDetector and originalCF then leftDetector.CFrame = originalCF end
                 end)
                 
-                -- 4. 浮上固定
                 if hrp and not hrp:FindFirstChild("ErrorFloat") then
                     local bv = Instance.new("BodyVelocity")
                     bv.Name = "ErrorFloat"
@@ -1756,16 +1751,18 @@ MainSection:AddButton({
     end
 })
 
----
--- セクション: プレイヤー選択
+-- 3. ターゲット選択セクション
 local PlayerSection = BlobmanTab:AddSection({
     Name = "Target Selection"
 })
 
+-- DropdownのOptionsが空だとバグるため、getPlayerNames()の結果をチェック
+local currentPlayers = (type(getPlayerNames) == "function" and getPlayerNames()) or {"None"}
+
 local PlayerSelector = PlayerSection:AddDropdown({
     Name = "Select Player",
     Default = "",
-    Options = getPlayerNames(),
+    Options = currentPlayers,
     Callback = function(t) 
         _G.PlayerToLongGrab = t 
     end
@@ -1774,8 +1771,8 @@ local PlayerSelector = PlayerSection:AddDropdown({
 PlayerSection:AddButton({
     Name = "Refresh Player List (リスト更新)",
     Callback = function()
-        -- Orionのドロップダウン更新用関数
-        PlayerSelector:Refresh(getPlayerNames(), true)
+        local newNames = (type(getPlayerNames) == "function" and getPlayerNames()) or {"None"}
+        PlayerSelector:Refresh(newNames, true)
     end
 })
 
@@ -1783,13 +1780,11 @@ PlayerSection:AddButton({
     Name = "Grab & Kick (単体実行)",
     Callback = function()
         local target = players:FindFirstChild(_G.PlayerToLongGrab)
-        -- doBlobmanGrab関数が定義されている前提
         if target and doBlobmanGrab then doBlobmanGrab(target) end
     end
 })
 
----
--- セクション: サーバー破壊系
+-- 4. カオス機能セクション
 local ChaosSection = BlobmanTab:AddSection({
     Name = "Chaos Features"
 })
@@ -1840,7 +1835,6 @@ ChaosSection:AddToggle({
         _G.WhitelistFriends2 = v 
     end 
 })
-
 --==============================
 -- 初期化
 --==============================
