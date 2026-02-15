@@ -23,12 +23,19 @@ local Window = OrionLib:MakeWindow({
 })
 
 --==============================
--- タブ：プレイヤー設定
+-- タブ：HOME（統合）
 --==============================
-local MainTab = Window:MakeTab({ Name = "プレイヤー設定", Icon = "rbxassetid://4483345998" })
-MainTab:AddSection({ Name = "基本ステータス" })
+local HomeTab = Window:MakeTab({ 
+    Name = "HOME", 
+    Icon = "rbxassetid://4483345998" 
+})
 
-MainTab:AddSlider({
+--==============================
+-- セクション：基本ステータス
+--==============================
+HomeTab:AddSection({ Name = "基本ステータス" })
+
+HomeTab:AddSlider({
     Name = "歩行速度", Min = 16, Max = 500, Default = 16, Increment = 1,
     Callback = function(v) 
         if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -37,7 +44,7 @@ MainTab:AddSlider({
     end    
 })
 
-MainTab:AddSlider({
+HomeTab:AddSlider({
     Name = "ジャンプ力", Min = 50, Max = 1000, Default = 50, Increment = 1,
     Callback = function(v) 
         if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -46,21 +53,30 @@ MainTab:AddSlider({
     end    
 })
 
-MainTab:AddToggle({ Name = "無限ジャンプ", Default = false, Callback = function(v) _G.InfJump = v end })
+HomeTab:AddToggle({ 
+    Name = "無限ジャンプ", 
+    Default = false, 
+    Callback = function(v) 
+        _G.InfJump = v 
+    end 
+})
+
 game:GetService("UserInputService").JumpRequest:Connect(function()
     if _G.InfJump then
         local hum = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum:ChangeState("Jumping") end
+        if hum then 
+            hum:ChangeState("Jumping") 
+        end
     end
 end)
 
 --==============================
--- タブ：ビジュアル・カメラ
+-- セクション：ビジュアル・カメラ
 --==============================
-local VisualTab = Window:MakeTab({ Name = "ビジュアル・カメラ", Icon = "rbxassetid://4483345998" })
+HomeTab:AddSection({ Name = "ビジュアル・カメラ" })
 
--- 自由視点 (Freecam) の設定
-VisualTab:AddToggle({
+-- 自由視点
+HomeTab:AddToggle({
     Name = "自由視点 (Freecam)",
     Default = false,
     Callback = function(v)
@@ -74,12 +90,12 @@ VisualTab:AddToggle({
     end
 })
 
--- 自由視点の移動制御 (WASDで移動)
+-- Freecam移動
 game:GetService("RunService").RenderStepped:Connect(function()
     if _G.Freecam then
         local cam = workspace.CurrentCamera
         local uis = game:GetService("UserInputService")
-        local speed = 1.0 -- 移動速度
+        local speed = 1.0
         if uis:IsKeyDown(Enum.KeyCode.W) then cam.CFrame = cam.CFrame * CFrame.new(0, 0, -speed) end
         if uis:IsKeyDown(Enum.KeyCode.S) then cam.CFrame = cam.CFrame * CFrame.new(0, 0, speed) end
         if uis:IsKeyDown(Enum.KeyCode.A) then cam.CFrame = cam.CFrame * CFrame.new(-speed, 0, 0) end
@@ -89,14 +105,13 @@ game:GetService("RunService").RenderStepped:Connect(function()
     end
 end)
 
--- 詳細ESPの設定
-VisualTab:AddToggle({
+-- ESP
+HomeTab:AddToggle({
     Name = "プレイヤー詳細ESP",
     Default = false,
     Callback = function(v)
         _G.ESPEnabled = v
         if not v then
-            -- OFFにした時に表示を消す処理
             for _, player in pairs(game.Players:GetPlayers()) do
                 if player.Character and player.Character:FindFirstChild("ESP_UI") then
                     player.Character.ESP_UI:Destroy()
@@ -106,7 +121,6 @@ VisualTab:AddToggle({
     end
 })
 
--- ESPの描画処理
 game:GetService("RunService").RenderStepped:Connect(function()
     if _G.ESPEnabled then
         for _, player in pairs(game.Players:GetPlayers()) do
@@ -124,6 +138,7 @@ game:GetService("RunService").RenderStepped:Connect(function()
                     local frame = Instance.new("Frame", billboard)
                     frame.Size = UDim2.new(1, 0, 1, 0)
                     frame.BackgroundTransparency = 1
+                    frame.Name = "Frame"
 
                     local textLabel = Instance.new("TextLabel", frame)
                     textLabel.Size = UDim2.new(1, 0, 0.7, 0)
@@ -131,6 +146,7 @@ game:GetService("RunService").RenderStepped:Connect(function()
                     textLabel.TextColor3 = Color3.new(1, 1, 1)
                     textLabel.TextStrokeTransparency = 0
                     textLabel.TextScaled = true
+                    textLabel.Name = "TextLabel"
 
                     local img = Instance.new("ImageLabel", frame)
                     img.Size = UDim2.new(0, 40, 0, 40)
@@ -139,33 +155,33 @@ game:GetService("RunService").RenderStepped:Connect(function()
                 end
 
                 local dist = math.floor((game.Players.LocalPlayer.Character.HumanoidRootPart.Position - head.Position).Magnitude)
-                billboard.Frame.TextLabel.Text = string.format("Display: %s\nID: %d\nDist: %dm", player.DisplayName, player.UserId, dist)
+                billboard.Frame.TextLabel.Text = 
+                    string.format("Display: %s\nID: %d\nDist: %dm", 
+                    player.DisplayName, player.UserId, dist)
             end
         end
     end
 end)
 
--- 一人称解除 (Force Third Person)
-VisualTab:AddToggle({
+-- 三人称強制
+HomeTab:AddToggle({
     Name = "三人称視点を強制許可",
     Default = false,
     Callback = function(v)
         local lp = game.Players.LocalPlayer
         if v then
-            -- ズーム距離の制限を解除して、三人称にできるようにする
-            lp.CameraMaxZoomDistance = 100 -- 好きな距離まで引けるように設定
+            lp.CameraMaxZoomDistance = 100
             lp.CameraMinZoomDistance = 0.5
-            lp.CameraMode = Enum.CameraMode.Classic -- 一人称固定(LockFirstPerson)を解除
+            lp.CameraMode = Enum.CameraMode.Classic
         else
-            -- ゲームデフォルトの設定に戻す（必要に応じて数値を調整してくれ）
             lp.CameraMaxZoomDistance = 12.8 
             lp.CameraMode = Enum.CameraMode.Classic
         end
     end
 })
 
--- 自分をキャラリセ (Kill) ボタン
-VisualTab:AddButton({
+-- リセットボタン
+HomeTab:AddButton({
     Name = "自分をキャラリセ (Reset)",
     Callback = function()
         local char = game.Players.LocalPlayer.Character
@@ -173,7 +189,6 @@ VisualTab:AddButton({
         
         if hum then
             hum.Health = 0
-            -- 通知を表示
             OrionLib:MakeNotification({
                 Name = "System",
                 Content = "キャラクターをリセットしました",
@@ -184,48 +199,72 @@ VisualTab:AddButton({
     end
 })
 
+
 --==============================
--- タブ：移動ハック
+-- タブ：移動ハック（統合版）
 --==============================
-local StealthTab = Window:MakeTab({ Name = "移動ハック", Icon = "rbxassetid://4483345998" })
-StealthTab:AddToggle({ Name = "壁抜け (Noclip)", Default = false, Callback = function(v) _G.Noclip = v end })
+local MoveTab = Window:MakeTab({ 
+    Name = "移動ハック", 
+    Icon = "rbxassetid://4483345998" 
+})
+
+--==============================
+-- セクション：基本移動ハック
+--==============================
+MoveTab:AddSection({ Name = "基本移動ハック" })
+
+MoveTab:AddToggle({ 
+    Name = "壁抜け (Noclip)", 
+    Default = false, 
+    Callback = function(v) 
+        _G.Noclip = v 
+    end 
+})
+
 game:GetService("RunService").Stepped:Connect(function()
     if _G.Noclip and game.Players.LocalPlayer.Character then
         for _, v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide = false end
+            if v:IsA("BasePart") then 
+                v.CanCollide = false 
+            end
         end
     end
 end)
 
 --==============================
--- 家（プロット）テレポート：ボタン形式 (エラー修正版)
+-- セクション：各家へのダイレクトテレポート
 --==============================
-local tpSection = StealthTab:AddSection({ Name = "各家へのダイレクトテレポート" })
+MoveTab:AddSection({ Name = "各家へのダイレクトテレポート" })
 
--- 1から12番までのボタンを生成
+-- 1〜12 Plotボタン生成
 for i = 1, 12 do
-    StealthTab:AddButton({
+    MoveTab:AddButton({
         Name = "Plot " .. i .. " (家) へテレポート",
         Callback = function()
-            local plotPath = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild("Plot" .. i)
+            local plotPath = workspace:FindFirstChild("Plots") 
+                and workspace.Plots:FindFirstChild("Plot" .. i)
             
             if plotPath then
-                -- 動画の構造 (PlotX -> House) に基づいてターゲットを探す
                 local house = plotPath:FindFirstChild("House")
                 local targetCFrame = nil
                 
                 if house and house:IsA("Model") then
-                    -- PrimaryPartがあればそこへ、なければ最初に見つかったパーツへ
-                    local primary = house.PrimaryPart or house:FindFirstChildWhichIsA("BasePart", true)
-                    if primary then targetCFrame = primary.CFrame end
+                    local primary = house.PrimaryPart 
+                        or house:FindFirstChildWhichIsA("BasePart", true)
+                    if primary then 
+                        targetCFrame = primary.CFrame 
+                    end
                 else
-                    -- Houseが見つからない場合はPlot直下のパーツ（床など）を探す
                     local base = plotPath:FindFirstChildWhichIsA("BasePart", true)
-                    if base then targetCFrame = base.CFrame end
+                    if base then 
+                        targetCFrame = base.CFrame 
+                    end
                 end
 
                 if targetCFrame then
-                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+                    game.Players.LocalPlayer.Character
+                        .HumanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+
                     OrionLib:MakeNotification({
                         Name = "Teleport Success",
                         Content = "Plot " .. i .. " に移動しました",
@@ -245,16 +284,24 @@ for i = 1, 12 do
                     Time = 2
                 })
             end
-        end -- Callbackの終わり
-    }) -- AddButtonの終わり
-end -- forループの終わり
+        end
+    })
+end
 
--- 3. 実行ボタン
-StealthTab:AddButton({
+--==============================
+-- セクション：オーナー家テレポート
+--==============================
+MoveTab:AddSection({ Name = "プレイヤー家テレポート" })
+
+MoveTab:AddButton({
     Name = "選択した家へテレポート",
     Callback = function()
         if selectedPlot == "" then
-            OrionLib:MakeNotification({Name = "エラー", Content = "先に家（プレイヤー名）を選んでください", Time = 3})
+            OrionLib:MakeNotification({
+                Name = "エラー", 
+                Content = "先に家（プレイヤー名）を選んでください", 
+                Time = 3
+            })
             return
         end
 
@@ -265,9 +312,12 @@ StealthTab:AddButton({
             for _, plot in pairs(plots:GetChildren()) do
                 local owner = plot:FindFirstChild("Owner")
                 if owner and tostring(owner.Value) == selectedPlot then
-                    -- プロットの基点（中心）へテレポート
-                    local targetPos = plot.PrimaryPart and plot.PrimaryPart.CFrame or plot:FindFirstChildWhichIsA("BasePart").CFrame
-                    lp.Character.HumanoidRootPart.CFrame = targetPos + Vector3.new(0, 3, 0)
+                    local targetPos = plot.PrimaryPart 
+                        and plot.PrimaryPart.CFrame 
+                        or plot:FindFirstChildWhichIsA("BasePart").CFrame
+                    
+                    game.Players.LocalPlayer.Character
+                        .HumanoidRootPart.CFrame = targetPos + Vector3.new(0, 3, 0)
                     
                     OrionLib:MakeNotification({
                         Name = "Teleport",
@@ -278,9 +328,15 @@ StealthTab:AddButton({
                 end
             end
         end
-        OrionLib:MakeNotification({Name = "Error", Content = "プロットが見つかりませんでした", Time = 3})
+
+        OrionLib:MakeNotification({
+            Name = "Error", 
+            Content = "プロットが見つかりませんでした", 
+            Time = 3
+        })
     end
 })
+
 
 
 --==============================
