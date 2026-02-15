@@ -529,7 +529,7 @@ end)
 
 -- [[ Anti-Grab Pro タブ ]]
 local AntiTab = Window:MakeTab({
-    Name = "Anti-Grab Pro",
+    Name = "Anti-",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
