@@ -340,14 +340,29 @@ MoveTab:AddButton({
 
 
 --==============================
--- タブ：攻撃オーラ (Aura)
+-- タブ：aura（統合版）
 --==============================
-local AuraTab = Window:MakeTab({ Name = "攻撃オーラ", Icon = "rbxassetid://6031064398" })
+local AuraTab = Window:MakeTab({ 
+    Name = "aura", 
+    Icon = "rbxassetid://6031064398" 
+})
+
 _G.isConstantAuraEnabled = false
-local kickAuraEnabled = false
+_G.KillAuraEnabled = false
+local autoVoidEnabled = false
+local voidPower = 20000
+local voidRange = 25
+
+--==============================
+-- セクション：Fling / Kill Aura
+--==============================
+AuraTab:AddSection({
+    Name = "Fling / Kill Aura"
+})
 
 AuraTab:AddToggle({
-    Name = "Flingオーラを有効化", Default = false,
+    Name = "Flingオーラを有効化", 
+    Default = false,
     Callback = function(Value)
         _G.isConstantAuraEnabled = Value
         if Value then
@@ -356,13 +371,21 @@ AuraTab:AddToggle({
                     task.wait(0.05)
                     local lp = game.Players.LocalPlayer
                     local rs = game:GetService("ReplicatedStorage")
-                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                    local SetNetworkOwner = rs:FindFirstChild("GrabEvents") 
+                        and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+
                     if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                         for _, player in ipairs(game.Players:GetPlayers()) do
-                            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            if player ~= lp and player.Character 
+                            and player.Character:FindFirstChild("HumanoidRootPart") then
+
                                 local targetHRP = player.Character.HumanoidRootPart
                                 if (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude <= 25 then
-                                    if SetNetworkOwner then SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) end
+                                    
+                                    if SetNetworkOwner then 
+                                        SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame) 
+                                    end
+
                                     local bv = Instance.new("BodyVelocity", targetHRP)
                                     bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
                                     bv.Velocity = Vector3.new(0, 50, 0)
@@ -385,39 +408,42 @@ AuraTab:AddToggle({
         if Value then
             task.spawn(function()
                 while _G.KillAuraEnabled do
-                    task.wait(0.1) -- 攻撃の間隔
+                    task.wait(0.1)
+
                     local lp = game.Players.LocalPlayer
-                    -- ゲームごとに異なるリモートイベントを探す（例：Combat, Hit, Damage）
                     local replicatedStorage = game:GetService("ReplicatedStorage")
-                    local combatEvent = replicatedStorage:FindFirstChild("Events") and replicatedStorage.Events:FindFirstChild("Combat") 
-                                     or replicatedStorage:FindFirstChild("HitEvent")
+                    local combatEvent = replicatedStorage:FindFirstChild("Events") 
+                        and replicatedStorage.Events:FindFirstChild("Combat") 
+                        or replicatedStorage:FindFirstChild("HitEvent")
 
                     if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                         for _, player in ipairs(game.Players:GetPlayers()) do
-                            if player ~= lp and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character:FindFirstChild("HumanoidRootPart") then
+                            if player ~= lp and player.Character 
+                            and player.Character:FindFirstChild("Humanoid") 
+                            and player.Character:FindFirstChild("HumanoidRootPart") then
+
                                 local targetHRP = player.Character.HumanoidRootPart
                                 local distance = (targetHRP.Position - lp.Character.HumanoidRootPart.Position).Magnitude
-                                
-                                -- 射程範囲内（例：20スタッド）なら攻撃
-                                if distance <= 20 and player.Character.Humanoid.Health > 0 then
+
+                                if distance <= 20 
+                                and player.Character.Humanoid.Health > 0 then
+
                                     pcall(function()
-                                        -- 1. ダメージイベントを連打（イベント名や引数はゲームによって要調整）
+
                                         if combatEvent then
-                                            -- 引数はゲームによって [相手のキャラ, 攻撃種類] などが一般的
                                             combatEvent:FireServer(player.Character, "Punch") 
                                         end
 
-                                        -- 2. 強制的に相手の所有権をバグらせる（Flingオーラのロジック流用）
                                         local rs = game:GetService("ReplicatedStorage")
-                                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+                                        local SetNetworkOwner = rs:FindFirstChild("GrabEvents") 
+                                            and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
                                         if SetNetworkOwner then
                                             SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
                                         end
-                                        
-                                        -- 3. 相手を少し浮かせて反撃を防ぐ
+
                                         local bv = Instance.new("BodyVelocity", targetHRP)
                                         bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-                                        bv.Velocity = Vector3.new(0, -10, 0) -- 地面に叩きつける
+                                        bv.Velocity = Vector3.new(0, -10, 0)
                                         game:GetService("Debris"):AddItem(bv, 0.1)
                                     end)
                                 end
@@ -430,24 +456,14 @@ AuraTab:AddToggle({
     end    
 })
 
-
-
--- [[ Void Aura タブ ]]
-local VoidTab = Window:MakeTab({
-    Name = "Void Aura",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
+--==============================
+-- セクション：Void Aura
+--==============================
+AuraTab:AddSection({
+    Name = "Void Aura"
 })
 
-local autoVoidEnabled = false
-local voidPower = 20000 -- 消し去るための超高速設定
-local voidRange = 25
-
-VoidTab:AddSection({
-    Name = "Auto-Fling Settings"
-})
-
-VoidTab:AddToggle({
+AuraTab:AddToggle({
     Name = "Enable Auto-Void (Near Players)",
     Default = false,
     Callback = function(Value)
@@ -455,7 +471,7 @@ VoidTab:AddToggle({
     end    
 })
 
-VoidTab:AddSlider({
+AuraTab:AddSlider({
     Name = "Void Range",
     Min = 5,
     Max = 50,
@@ -465,7 +481,7 @@ VoidTab:AddSlider({
     end    
 })
 
-VoidTab:AddSlider({
+AuraTab:AddSlider({
     Name = "Ejection Power",
     Min = 5000,
     Max = 100000,
@@ -475,33 +491,32 @@ VoidTab:AddSlider({
     end    
 })
 
--- [[ 自動射出ロジック ]]
+--==============================
+-- 自動射出ロジック（そのまま）
+--==============================
 task.spawn(function()
     while task.wait(0.1) do
         if autoVoidEnabled then
             local lp = game.Players.LocalPlayer
-            if not lp.Character or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
+            if not lp.Character 
+            or not lp.Character:FindFirstChild("HumanoidRootPart") then continue end
             
             local myRoot = lp.Character.HumanoidRootPart
 
             for _, p in pairs(game.Players:GetPlayers()) do
-                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                if p ~= lp and p.Character 
+                and p.Character:FindFirstChild("HumanoidRootPart") then
+
                     local targetRoot = p.Character.HumanoidRootPart
                     local dist = (targetRoot.Position - myRoot.Position).Magnitude
 
                     if dist <= voidRange then
-                        -- 1. 相手を強制ラグドール化（物理演算を有効にする）
                         game.ReplicatedStorage.PlayerEvents.RagdollPlayer:FireServer(p.Character)
-                        
-                        -- 2. 掴みイベントを「掴まずに」サーバーへ送り、所有権に干渉
                         game.ReplicatedStorage.GrabEvents.CreateGrabLine:FireServer(targetRoot)
-                        
-                        -- 3. 速度ベクトルを全方向に異常な値で上書き（Blackhole効果）
-                        -- これで近くに来たプレイヤーが自動的に射出されます
+
                         targetRoot.Velocity = Vector3.new(voidPower, voidPower, voidPower)
                         targetRoot.RotVelocity = Vector3.new(voidPower, voidPower, voidPower)
-                        
-                        -- 4. サーバー側へのダメ押し
+
                         game.ReplicatedStorage.CharacterEvents.Struggle:FireServer()
                     end
                 end
@@ -509,6 +524,7 @@ task.spawn(function()
         end
     end
 end)
+
 
 
 -- [[ Anti-Grab Pro タブ ]]
