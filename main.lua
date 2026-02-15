@@ -14,12 +14,12 @@ local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jen
 
 -- [[ ウィンドウ設定 ]]
 local Window = OrionLib:MakeWindow({
-    Name = "nazer Hub", 
+    Name = "ens Hub", 
     HidePremium = false, 
     SaveConfig = true, 
-    ConfigFolder = "nazer Hub",
+    ConfigFolder = "ens Hub",
     IntroEnabled = true,
-    IntroText = "nazer Hub 起動中..."
+    IntroText = "ens Hub 起動中..."
 })
 
 --==============================
@@ -1770,7 +1770,7 @@ local kickAuraEnabled = false
 
 -- セクション：メイン機能
 local MainSection = BlobmanTab:AddSection({
-    Name = "Suisei Hub Functions"
+    Name = "ens Hub Functions"
 })
 
 -- BRING ALL ボタン
