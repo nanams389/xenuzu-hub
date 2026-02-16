@@ -1046,6 +1046,127 @@ invulnerabilitySection:AddToggle({
         end
     end
 })
+
+-- ============================================================
+-- Anti Lag (Grab Line Destroy)
+-- ============================================================
+
+do
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local createGrabLineCopy
+    local extendGrabLineCopy
+
+    -- 初回バックアップ
+    local grabFolder = ReplicatedStorage:FindFirstChild("GrabEvents")
+    if grabFolder then
+        local originalCreate = grabFolder:FindFirstChild("CreateGrabLine")
+        local originalExtend = grabFolder:FindFirstChild("ExtendGrabLine")
+
+        if originalCreate then
+            createGrabLineCopy = originalCreate:Clone()
+        end
+        if originalExtend then
+            extendGrabLineCopy = originalExtend:Clone()
+        end
+    end
+
+    invulnerabilitySection:AddToggle({
+        Name = "Anti Lag (Grab Line)",
+        Default = false,
+        Callback = function(Value)
+            local grabFolder = ReplicatedStorage:FindFirstChild("GrabEvents")
+            if not grabFolder then return end
+
+            if Value then
+                -- Destroy
+                local create = grabFolder:FindFirstChild("CreateGrabLine")
+                local extend = grabFolder:FindFirstChild("ExtendGrabLine")
+
+                if create and create:IsA("RemoteEvent") then
+                    pcall(function() create:Destroy() end)
+                end
+                if extend and extend:IsA("RemoteEvent") then
+                    pcall(function() extend:Destroy() end)
+                end
+
+                for _, v in ipairs(workspace:GetDescendants()) do
+                    if v:IsA("Beam") or v.Name:lower():find("line") then
+                        pcall(function() v:Destroy() end)
+                    end
+                end
+
+            else
+                -- Restore
+                if createGrabLineCopy and not grabFolder:FindFirstChild("CreateGrabLine") then
+                    pcall(function()
+                        createGrabLineCopy:Clone().Parent = grabFolder
+                    end)
+                end
+
+                if extendGrabLineCopy and not grabFolder:FindFirstChild("ExtendGrabLine") then
+                    pcall(function()
+                        extendGrabLineCopy:Clone().Parent = grabFolder
+                    end)
+                end
+            end
+        end
+    })
+end
+
+-- ============================================================
+-- Anti Burn
+-- ============================================================
+
+do
+    local Player = game.Players.LocalPlayer
+    local hookBurnConn
+
+    invulnerabilitySection:AddToggle({
+        Name = "Anti Burn",
+        Default = false,
+        Callback = function(on)
+            if on then
+                if Player.Character then
+                    pcall(function()
+                        hookBurn(Player.Character)
+                    end)
+                end
+            else
+                if hookBurnConn then
+                    pcall(function()
+                        hookBurnConn:Disconnect()
+                    end)
+                    hookBurnConn = nil
+                end
+            end
+        end
+    })
+end
+
+-- ============================================================
+-- Anti Sticky
+-- ============================================================
+
+do
+    local Player = game.Players.LocalPlayer
+    local antiStickyT = false
+
+    invulnerabilitySection:AddToggle({
+        Name = "Anti Sticky",
+        Default = false,
+        Callback = function(Value)
+            antiStickyT = Value
+
+            local ps = Player:FindFirstChild("PlayerScripts")
+            if ps and ps:FindFirstChild("StickyPartsTouchDetection") then
+                pcall(function()
+                    ps.StickyPartsTouchDetection.Disabled = Value
+                end)
+            end
+        end
+    })
+end
+
 --==============================
 -- タブ：究極オーラ (Ultimate)
 --==============================
