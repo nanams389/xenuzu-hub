@@ -4160,6 +4160,257 @@ FloatTab:AddSlider({ Name = "Ball: 頭上ふわふわ速度", Min = 0, Max = 5, 
 
 FloatTab:AddSlider({ Name = "Ball: 頭上ふわふわ幅", Min = 0, Max = 2, Default = 0.4, Increment = 0.05, ValueName = "",
     Callback = function(v) ballFConfig.headBobAmp = v end })
+
+--==============================
+-- タブ：アンチグッチ (ORION UI版)
+-- ※ OrionLib:Init() の前に挿入
+-- ※ 機能・ロジックは元スクリプトと完全同一
+--==============================
+
+local Players         = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace       = game:GetService("Workspace")
+local RunService      = game:GetService("RunService")
+
+local AG_LocalPlayer = Players.LocalPlayer
+
+-- 便利関数（元スクリプトと同一）
+local function ag_getLocalChar()
+    return AG_LocalPlayer.Character
+end
+
+local function ag_getLocalRoot()
+    local char = ag_getLocalChar()
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+end
+
+local function ag_getLocalHum()
+    local char = ag_getLocalChar()
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+end
+
+local function ag_getInv()
+    return Workspace:FindFirstChild(AG_LocalPlayer.Name .. "SpawnedInToys")
+end
+
+-- spawntoy（元スクリプトと同一）
+local function ag_spawntoy(name, cframe)
+    local toy = ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(
+        name,
+        cframe,
+        Vector3.zero
+    )
+    if toy and ag_getInv() then
+        return ag_getInv():FindFirstChild(name)
+    end
+    return nil
+end
+
+-- destroyToy（元スクリプトと同一）
+local function ag_destroyToy(model)
+    ReplicatedStorage.MenuToys.DestroyToy:FireServer(model)
+end
+
+-- ragdoll（元スクリプトと同一）
+local function ag_ragdoll()
+    local root = ag_getLocalRoot()
+    if root then
+        ReplicatedStorage.CharacterEvents.RagdollRemote:FireServer(root, 0)
+    end
+end
+
+-- アンチグッチの状態変数
+local AG_Enabled  = false
+local AG_Blob     = nil
+local AG_Conn     = nil
+local AG_lastCheck = 0
+
+-- オン処理（元スクリプトのAntiGucciToggle ON部分と同一）
+local function ag_turnOn()
+    AG_Enabled = true
+
+    task.spawn(function()
+        repeat task.wait() until ag_getLocalChar() and ag_getLocalRoot() and ag_getLocalHum()
+
+        local pos = ag_getLocalRoot().CFrame
+
+        local blob = ag_spawntoy("CreatureBlobman", ag_getLocalRoot().CFrame)
+        AG_Blob = blob
+
+        if blob then
+            local head = blob:FindFirstChild("Head")
+            if head then
+                head.CFrame = CFrame.new(1e5, 1e5, 1e5)
+                head.Anchored = true
+            end
+
+            task.wait(0.25)
+
+            if blob:FindFirstChild("VehicleSeat") then
+                local seat = blob.VehicleSeat
+                ag_getLocalRoot().CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+                seat:Sit(ag_getLocalHum())
+            end
+
+            task.wait(0.25)
+
+            ag_getLocalHum():ChangeState(Enum.HumanoidStateType.Jumping)
+            task.wait(0.25)
+            ag_getLocalRoot().CFrame = pos
+        end
+    end)
+end
+
+-- オフ処理（元スクリプトのAntiGucciToggle OFF部分と同一）
+local function ag_turnOff()
+    AG_Enabled = false
+    if AG_Blob then
+        ag_destroyToy(AG_Blob)
+        AG_Blob = nil
+    end
+end
+
+-- Heartbeatループ（元スクリプトのRunService.Heartbeatと同一）
+AG_Conn = RunService.Heartbeat:Connect(function(deltaTime)
+    if AG_Enabled then
+        -- ragdollを維持（元スクリプトと同一）
+        local hum = ag_getLocalHum()
+        if hum then
+            ag_ragdoll()
+        end
+
+        -- ブロブ状態チェック（元スクリプトと同一）
+        if AG_Blob then
+            if not AG_Blob.Parent then
+                AG_Blob = nil
+                task.spawn(function()
+                    task.wait(0.5)
+                    if AG_Enabled then
+                        ag_turnOff()
+                        task.wait(0.5)
+                        ag_turnOn()
+                        OrionLib:MakeNotification({ Name = "アンチグッチ", Content = "ブロブが消えたため再起動しました", Time = 2 })
+                    end
+                end)
+            end
+        else
+            AG_lastCheck = AG_lastCheck + deltaTime
+            if AG_lastCheck >= 1 then
+                AG_lastCheck = 0
+                if AG_Enabled and ag_getInv() then
+                    local existingBlob = ag_getInv():FindFirstChild("CreatureBlobman")
+                    if existingBlob then
+                        AG_Blob = existingBlob
+                        local head = existingBlob:FindFirstChild("Head")
+                        if head then
+                            head.CFrame = CFrame.new(1e5, 1e5, 1e5)
+                            head.Anchored = true
+                        end
+                    else
+                        task.spawn(function()
+                            ag_turnOff()
+                            task.wait(0.5)
+                            if AG_Enabled then
+                                ag_turnOn()
+                                OrionLib:MakeNotification({ Name = "アンチグッチ", Content = "ブロブを再生成しました", Time = 2 })
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- キャラリセット時（元スクリプトのCharacterRemoving/CharacterAddedと同一）
+AG_LocalPlayer.CharacterRemoving:Connect(function()
+    if AG_Blob then
+        ag_destroyToy(AG_Blob)
+        AG_Blob = nil
+    end
+    AG_Enabled = false
+end)
+
+AG_LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(2)
+    if AG_Enabled then
+        AG_Blob = nil
+        task.spawn(function()
+            task.wait(1)
+            if AG_Enabled then
+                ag_turnOn()
+            end
+        end)
+    end
+end)
+
+--==============================
+-- ORION UI タブ
+--==============================
+local AntiGucciTab = Window:MakeTab({
+    Name = "アンチグッチ",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false,
+})
+
+AntiGucciTab:AddSection({ Name = "アンチグッチ制御" })
+
+-- メイントグル（ON/OFFの切り替え）
+AntiGucciTab:AddToggle({
+    Name = "アンチグッチ 有効化",
+    Default = false,
+    Flag = "AntiGucciEnabled",
+    Callback = function(Value)
+        if Value then
+            ag_turnOn()
+            OrionLib:MakeNotification({
+                Name = "アンチグッチ",
+                Content = "有効化しました",
+                Time = 2,
+            })
+        else
+            ag_turnOff()
+            OrionLib:MakeNotification({
+                Name = "アンチグッチ",
+                Content = "無効化しました",
+                Time = 2,
+            })
+        end
+    end,
+})
+
+-- 手動再起動ボタン
+AntiGucciTab:AddButton({
+    Name = "手動でブロブを再起動",
+    Callback = function()
+        ag_turnOff()
+        task.wait(0.5)
+        if AG_Enabled then
+            ag_turnOn()
+            OrionLib:MakeNotification({ Name = "アンチグッチ", Content = "ブロブを再起動しました", Time = 2 })
+        else
+            OrionLib:MakeNotification({ Name = "アンチグッチ", Content = "先にトグルをONにしてください", Time = 2 })
+        end
+    end,
+})
+
+-- 強制オフ＆ブロブ削除ボタン
+AntiGucciTab:AddButton({
+    Name = "強制停止 & ブロブ削除",
+    Callback = function()
+        ag_turnOff()
+        AG_Enabled = false
+        OrionLib:MakeNotification({ Name = "アンチグッチ", Content = "強制停止しました", Time = 2 })
+    end,
+})
+
+AntiGucciTab:AddSection({ Name = "説明" })
+
+AntiGucciTab:AddLabel("ONにするとCreatureBlobmanを自動生成し")
+AntiGucciTab:AddLabel("グッチキックを防御します。")
+AntiGucciTab:AddLabel("ブロブが消えた場合は自動で再生成されます。")
 --==============================
 -- 初期化
 --==============================
