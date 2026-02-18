@@ -1938,6 +1938,542 @@ task.spawn(function()
         task.wait(0.1)
     end
 end)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local rowConfig = {
+    spacing = 1.2,
+    heightOffset = 1,
+    forwardOffset = 4,
+    maxSparklers = 20,
+    waveSpeed = 2.5,
+    baseAmplitude = 2,
+    distanceMultiplier = 0.4,
+    phaseOffset = 0.3,
+    xRotation = -45,
+    yRotation = 0,
+    zRotation = 90,
+    enabled = true,
+    smoothness = 0.6,
+    horizontalWaveAmount = 0.5,
+    targetPlayer = nil,
+}
+
+local Toys = {}
+local rowPoints = {}
+local assignedToys = {}
+local time = 0
+
+local function findFireworkSparklers()
+    local toys = {}
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if item:IsA("Model") and item.Name == "FireworkSparkler" then
+            local alreadyAdded = false
+            for _, existingToy in ipairs(toys) do
+                if existingToy == item then
+                    alreadyAdded = true
+                    break
+                end
+            end
+            if not alreadyAdded then
+                table.insert(toys, item)
+            end
+        end
+    end
+    table.sort(toys, function(a, b) return a.Name < b.Name end)
+    return toys
+end
+
+local function CP()
+    local Part = Instance.new("Part")
+    Part.CanCollide = false
+    Part.Anchored = true
+    Part.Transparency = 1
+    Part.Size = Vector3.new(4, 1, 4)
+    Part.Parent = workspace
+    return Part
+end
+
+local function CBM(Part)
+    if not Part then return nil, nil end
+    local existingBG = Part:FindFirstChildOfClass("BodyGyro")
+    local existingBP = Part:FindFirstChildOfClass("BodyPosition")
+    if existingBG and existingBP then return existingBG, existingBP end
+    if existingBG then existingBG:Destroy() end
+    if existingBP then existingBP:Destroy() end
+    local BP = Instance.new("BodyPosition")
+    local BG = Instance.new("BodyGyro")
+    BP.P = 25000
+    BP.D = 800
+    BP.MaxForce = Vector3.new(1, 1, 1) * 1e10
+    BP.Parent = Part
+    BG.P = 25000
+    BG.D = 800
+    BG.MaxTorque = Vector3.new(1, 1, 1) * 1e10
+    BG.Parent = Part
+    return BG, BP
+end
+
+local function getPrimaryPart(model)
+    if model.PrimaryPart then return model.PrimaryPart end
+    local potentialParts = {"Handle", "Main", "Part", "Base", "Sparkler", "Firework"}
+    for _, partName in ipairs(potentialParts) do
+        local part = model:FindFirstChild(partName)
+        if part and part:IsA("BasePart") then return part end
+    end
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("BasePart") then return child end
+    end
+    return nil
+end
+
+local function createRowPoints(count)
+    local points = {}
+    if count == 0 then return points end
+    local halfCount = math.floor(count / 2)
+    local isOdd = count % 2 == 1
+    local index = 1
+    if isOdd then
+        points[index] = { offsetX = 0, part = CP(), assignedToy = nil, index = index, baseOffsetX = 0 }
+        index = index + 1
+    end
+    for i = 1, halfCount do
+        local offset = i * rowConfig.spacing
+        points[index] = { offsetX = offset, part = CP(), assignedToy = nil, index = index, baseOffsetX = offset }
+        index = index + 1
+        points[index] = { offsetX = -offset, part = CP(), assignedToy = nil, index = index, baseOffsetX = -offset }
+        index = index + 1
+    end
+    return points
+end
+
+local function disableSystem()
+    for _, point in ipairs(rowPoints) do
+        if point.assignedToy and point.assignedToy.Pallet then
+            if point.assignedToy.BP then
+                point.assignedToy.BP:Destroy()
+                point.assignedToy.BP = nil
+            end
+            if point.assignedToy.BG then
+                point.assignedToy.BG:Destroy()
+                point.assignedToy.BG = nil
+            end
+            for _, child in ipairs(point.assignedToy.Model:GetChildren()) do
+                if child:IsA("BasePart") then
+                    child.Anchored = true
+                    child.Velocity = Vector3.new(0, 0, 0)
+                    child.RotVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end
+    end
+end
+
+local function enableSystem()
+    for _, point in ipairs(rowPoints) do
+        if point.assignedToy and point.assignedToy.Pallet then
+            for _, child in ipairs(point.assignedToy.Model:GetChildren()) do
+                if child:IsA("BasePart") then child.Anchored = false end
+            end
+            local BG, BP = CBM(point.assignedToy.Pallet)
+            point.assignedToy.BG = BG
+            point.assignedToy.BP = BP
+        end
+    end
+end
+
+local function getTargetCharacter()
+    if rowConfig.targetPlayer and rowConfig.targetPlayer.Character then
+        return rowConfig.targetPlayer.Character
+    elseif LocalPlayer.Character then
+        return LocalPlayer.Character
+    end
+    return nil
+end
+
+local function assignToysToPoints()
+    local assigned = {}
+    local character = getTargetCharacter()
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return assigned end
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    if not humanoidRootPart or not torso then return assigned end
+    local charCFrame = humanoidRootPart.CFrame
+    local rightVector = charCFrame.RightVector
+    local lookVector = charCFrame.LookVector
+    local basePosition = torso.Position + Vector3.new(0, rowConfig.heightOffset, 0) + (lookVector * rowConfig.forwardOffset)
+    for i = 1, math.min(#Toys, #rowPoints) do
+        local toy = Toys[i]
+        if toy and toy:IsA("Model") and toy.Name == "FireworkSparkler" then
+            local primaryPart = getPrimaryPart(toy)
+            if primaryPart then
+                for _, child in ipairs(toy:GetChildren()) do
+                    if child:IsA("BasePart") then
+                        child.CanCollide = false
+                        child.CanTouch = false
+                        child.Anchored = false
+                    end
+                end
+                local BG, BP = CBM(primaryPart)
+                local initialPosition = basePosition + (rightVector * rowPoints[i].offsetX)
+                local toyTable = {
+                    BG = BG, BP = BP, Pallet = primaryPart, Model = toy,
+                    RowIndex = i, offsetX = rowPoints[i].offsetX,
+                    baseOffsetX = rowPoints[i].baseOffsetX, index = rowPoints[i].index,
+                }
+                if BP then BP.Position = initialPosition end
+                if BG then
+                    local baseCFrame = CFrame.new(initialPosition)
+                    local _, playerYRot, _ = charCFrame:ToOrientation()
+                    baseCFrame = baseCFrame * CFrame.Angles(0, playerYRot + math.rad(rowConfig.yRotation), 0)
+                    baseCFrame = baseCFrame * CFrame.Angles(math.rad(rowConfig.xRotation), 0, 0)
+                    baseCFrame = baseCFrame * CFrame.Angles(0, 0, math.rad(rowConfig.zRotation))
+                    BG.CFrame = baseCFrame
+                end
+                rowPoints[i].assignedToy = toyTable
+                table.insert(assigned, toyTable)
+            end
+        end
+    end
+    return assigned
+end
+
+local function getPlayerList()
+    local playerNames = {"自分"}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(playerNames, player.Name)
+        end
+    end
+    return playerNames
+end
+
+local function refreshFireworks()
+    Toys = findFireworkSparklers()
+    rowPoints = createRowPoints(math.min(#Toys, rowConfig.maxSparklers))
+    assignedToys = assignToysToPoints()
+end
+
+-- 初期化
+Toys = findFireworkSparklers()
+rowPoints = createRowPoints(math.min(#Toys, rowConfig.maxSparklers))
+assignedToys = assignToysToPoints()
+
+workspace.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("Model") and descendant.Name == "FireworkSparkler" then
+        task.wait(0.5)
+        refreshFireworks()
+    end
+end)
+
+-- ===== ORION UI タブコード =====
+-- ※ Windowとタブは既にある前提。以下を既存のタブ変数に追加する。
+-- 例: local Tab = Window:MakeTab({ Name = "FireworkSparkler", ... })
+
+local Tab = Window:MakeTab({
+    Name = "FireworkSparkler",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false,
+})
+
+-- システム制御セクション
+local SystemSection = Tab:AddSection({ Name = "システム制御" })
+
+SystemSection:AddToggle({
+    Name = "システムを有効化",
+    Default = rowConfig.enabled,
+    Save = false,
+    Flag = "SystemEnabled",
+    Callback = function(Value)
+        rowConfig.enabled = Value
+        if Value then
+            enableSystem()
+            OrionLib:MakeNotification({
+                Name = "システム有効化",
+                Content = "花火システムがオンになりました",
+                Time = 2,
+            })
+        else
+            disableSystem()
+            OrionLib:MakeNotification({
+                Name = "システム無効化",
+                Content = "花火がその場で固定されました",
+                Time = 2,
+            })
+        end
+    end,
+})
+
+local playerDropdown
+playerDropdown = SystemSection:AddDropdown({
+    Name = "対象プレイヤー",
+    Default = "自分",
+    Options = getPlayerList(),
+    Callback = function(Value)
+        if Value == "自分" then
+            rowConfig.targetPlayer = nil
+            OrionLib:MakeNotification({ Name = "対象変更", Content = "自分に設定しました", Time = 2 })
+        else
+            local targetPlayer = Players:FindFirstChild(Value)
+            if targetPlayer then
+                rowConfig.targetPlayer = targetPlayer
+                OrionLib:MakeNotification({ Name = "対象変更", Content = Value .. "に設定しました", Time = 2 })
+            end
+        end
+        assignedToys = assignToysToPoints()
+    end,
+})
+
+SystemSection:AddButton({
+    Name = "プレイヤーリストを更新",
+    Callback = function()
+        playerDropdown:Refresh(getPlayerList(), true)
+        OrionLib:MakeNotification({ Name = "更新完了", Content = "プレイヤーリストを更新しました", Time = 2 })
+    end,
+})
+
+SystemSection:AddButton({
+    Name = "花火を再検出",
+    Callback = function()
+        refreshFireworks()
+        OrionLib:MakeNotification({ Name = "再検出完了", Content = "花火数: " .. #Toys, Time = 2 })
+    end,
+})
+
+-- 配置設定セクション
+local PlacementSection = Tab:AddSection({ Name = "配置設定" })
+
+PlacementSection:AddSlider({
+    Name = "最大花火数",
+    Min = 2,
+    Max = 40,
+    Default = rowConfig.maxSparklers,
+    Increment = 1,
+    ValueName = "本",
+    Callback = function(Value)
+        rowConfig.maxSparklers = Value
+        refreshFireworks()
+        OrionLib:MakeNotification({ Name = "最大花火数変更", Content = "新しい最大数: " .. Value, Time = 2 })
+    end,
+})
+
+PlacementSection:AddSlider({
+    Name = "花火の間隔",
+    Min = 0.5,
+    Max = 5,
+    Default = rowConfig.spacing,
+    Increment = 0.1,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.spacing = Value
+        refreshFireworks()
+    end,
+})
+
+PlacementSection:AddSlider({
+    Name = "高さオフセット",
+    Min = -5,
+    Max = 10,
+    Default = rowConfig.heightOffset,
+    Increment = 0.1,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.heightOffset = Value
+    end,
+})
+
+PlacementSection:AddSlider({
+    Name = "前方オフセット",
+    Min = 0,
+    Max = 15,
+    Default = rowConfig.forwardOffset,
+    Increment = 0.1,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.forwardOffset = Value
+    end,
+})
+
+-- 回転設定セクション
+local RotationSection = Tab:AddSection({ Name = "回転設定" })
+
+RotationSection:AddSlider({
+    Name = "X軸回転（前後の傾き）",
+    Min = -180,
+    Max = 180,
+    Default = rowConfig.xRotation,
+    Increment = 1,
+    ValueName = "°",
+    Callback = function(Value)
+        rowConfig.xRotation = Value
+    end,
+})
+
+RotationSection:AddSlider({
+    Name = "Y軸回転（左右の向き）",
+    Min = -180,
+    Max = 180,
+    Default = rowConfig.yRotation,
+    Increment = 1,
+    ValueName = "°",
+    Callback = function(Value)
+        rowConfig.yRotation = Value
+    end,
+})
+
+RotationSection:AddSlider({
+    Name = "Z軸回転（ロール）",
+    Min = -180,
+    Max = 180,
+    Default = rowConfig.zRotation,
+    Increment = 1,
+    ValueName = "°",
+    Callback = function(Value)
+        rowConfig.zRotation = Value
+    end,
+})
+
+RotationSection:AddButton({
+    Name = "回転をリセット",
+    Callback = function()
+        rowConfig.xRotation = -45
+        rowConfig.yRotation = 0
+        rowConfig.zRotation = 90
+        OrionLib:MakeNotification({ Name = "回転リセット", Content = "デフォルト値に戻しました", Time = 2 })
+    end,
+})
+
+-- 波動設定セクション
+local WaveSection = Tab:AddSection({ Name = "波動設定（鳥の翼のような動き）" })
+
+WaveSection:AddSlider({
+    Name = "波の速度",
+    Min = 0,
+    Max = 10,
+    Default = rowConfig.waveSpeed,
+    Increment = 0.1,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.waveSpeed = Value
+    end,
+})
+
+WaveSection:AddSlider({
+    Name = "基本振幅（上下の動き）",
+    Min = 0,
+    Max = 10,
+    Default = rowConfig.baseAmplitude,
+    Increment = 0.1,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.baseAmplitude = Value
+    end,
+})
+
+WaveSection:AddSlider({
+    Name = "距離による振幅増加",
+    Min = 0,
+    Max = 2,
+    Default = rowConfig.distanceMultiplier,
+    Increment = 0.01,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.distanceMultiplier = Value
+    end,
+})
+
+WaveSection:AddSlider({
+    Name = "波の位相差",
+    Min = 0,
+    Max = 2,
+    Default = rowConfig.phaseOffset,
+    Increment = 0.1,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.phaseOffset = Value
+    end,
+})
+
+WaveSection:AddSlider({
+    Name = "内側への寄り具合",
+    Min = 0,
+    Max = 2,
+    Default = rowConfig.horizontalWaveAmount,
+    Increment = 0.1,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.horizontalWaveAmount = Value
+    end,
+})
+
+WaveSection:AddSlider({
+    Name = "動きの滑らかさ",
+    Min = 0.1,
+    Max = 1,
+    Default = rowConfig.smoothness,
+    Increment = 0.01,
+    ValueName = "",
+    Callback = function(Value)
+        rowConfig.smoothness = Value
+    end,
+})
+
+-- メインループ
+RunService.RenderStepped:Connect(function(dt)
+    if not rowConfig.enabled then return end
+    local character = getTargetCharacter()
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not torso or not humanoidRootPart then return end
+
+    time += dt * rowConfig.waveSpeed
+
+    local charCFrame = humanoidRootPart.CFrame
+    local rightVector = charCFrame.RightVector
+    local lookVector = charCFrame.LookVector
+    local basePosition = torso.Position + Vector3.new(0, rowConfig.heightOffset, 0) + (lookVector * rowConfig.forwardOffset)
+
+    for i, point in ipairs(rowPoints) do
+        if point.assignedToy and point.assignedToy.BP and point.assignedToy.BG then
+            local toy = point.assignedToy
+            local distanceFromCenter = math.abs(toy.baseOffsetX)
+            local amplitude = rowConfig.baseAmplitude + (distanceFromCenter * rowConfig.distanceMultiplier)
+            local phase = time + (toy.index * rowConfig.phaseOffset)
+            local waveValue = math.sin(phase)
+            local waveMovement = waveValue * amplitude
+            local horizontalOffset = toy.baseOffsetX
+            if toy.baseOffsetX ~= 0 then
+                local horizontalShrink = waveValue * rowConfig.horizontalWaveAmount
+                local sign = toy.baseOffsetX > 0 and 1 or -1
+                horizontalOffset = toy.baseOffsetX - (sign * math.abs(toy.baseOffsetX) * horizontalShrink)
+            end
+            local targetPosition = basePosition + (rightVector * horizontalOffset)
+            local finalPosition = targetPosition + Vector3.new(0, waveMovement, 0)
+            if point.part then point.part.Position = finalPosition end
+            toy.BP.Position = finalPosition
+            local baseCFrame = CFrame.new(finalPosition)
+            local _, playerYRot, _ = charCFrame:ToOrientation()
+            baseCFrame = baseCFrame * CFrame.Angles(0, playerYRot + math.rad(rowConfig.yRotation), 0)
+            baseCFrame = baseCFrame * CFrame.Angles(math.rad(rowConfig.xRotation), 0, 0)
+            baseCFrame = baseCFrame * CFrame.Angles(0, 0, math.rad(rowConfig.zRotation))
+            toy.BG.CFrame = toy.BG.CFrame:Lerp(baseCFrame, rowConfig.smoothness)
+        end
+    end
+end)
+
+OrionLib:MakeNotification({
+    Name = "FireworkSparkler 起動",
+    Content = "検出された花火数: " .. #Toys .. " / 最大" .. rowConfig.maxSparklers .. "本",
+    Time = 5,
+})
+
+print("FireworkSparkler横一列システムが起動しました")
+print("検出されたFireworkSparkler数: " .. #Toys)
+print("配置されている数: " .. #assignedToys)
+print("他のプレイヤーにも花火を付けられます")
 --==============================
 -- 初期化
 --==============================
