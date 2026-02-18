@@ -3638,6 +3638,528 @@ WingsTab:AddButton({ Name = "Ball: 再検索 & 再起動", Callback = function()
         OrionLib:MakeNotification({ Name = "検索", Content = #f .. "個発見", Time = 3 })
     end
 end })
+
+--==============================
+-- タブ：Campfire & Ball Float
+-- ※ OrionLib:Init() の前に挿入
+--==============================
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
+-- 共通ユーティリティ
+--==================================================
+local function cf_findByName(name)
+    local found = {}
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if (item:IsA("BasePart") or item:IsA("Model")) and item.Name == name then
+            table.insert(found, item)
+        end
+    end
+    return found
+end
+
+local function cf_getBasePart(obj)
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+    elseif obj:IsA("BasePart") then
+        return obj
+    end
+    return nil
+end
+
+local function cf_setupMovers(part)
+    if not part then return nil, nil end
+    for _, c in ipairs({"BodyPosition", "BodyGyro"}) do
+        local e = part:FindFirstChildOfClass(c)
+        if e then e:Destroy() end
+    end
+    local BP = Instance.new("BodyPosition")
+    BP.P = 25000; BP.D = 800
+    BP.MaxForce = Vector3.new(1,1,1) * 1e10
+    BP.Parent = part
+    local BG = Instance.new("BodyGyro")
+    BG.P = 25000; BG.D = 800
+    BG.MaxTorque = Vector3.new(1,1,1) * 1e10
+    BG.Parent = part
+    return BP, BG
+end
+
+local function cf_setupObj(obj)
+    local base = cf_getBasePart(obj)
+    if not base then return nil end
+    if obj:IsA("Model") then
+        for _, c in ipairs(obj:GetDescendants()) do
+            if c:IsA("BasePart") then
+                c.CanCollide = false; c.CanTouch = false; c.Anchored = false
+            end
+        end
+    else
+        base.CanCollide = false; base.CanTouch = false; base.Anchored = false
+    end
+    local BP, BG = cf_setupMovers(base)
+    return { BP = BP, BG = BG, Part = base, Original = obj }
+end
+
+local function cf_releaseObj(obj)
+    if obj.BP and obj.BP.Parent then obj.BP:Destroy() end
+    if obj.BG and obj.BG.Parent then obj.BG:Destroy() end
+    if obj.Part and obj.Part.Parent then obj.Part.Anchored = true end
+end
+
+--==================================================
+-- [A] Campfire システム
+--==================================================
+local campConfig = {
+    enabled        = false,
+    partName       = "Campfire",
+    -- 周回設定
+    orbitCount     = 6,       -- 周回するCampfireの数
+    orbitRadius    = 5,
+    orbitSpeed     = 1.2,
+    orbitHeight    = 0,
+    orbitShape     = "Circle", -- Circle / Wave / Figure8 / Star
+    waveAmp        = 1.5,
+    waveFreq       = 2,
+    starPoints     = 5,
+    starInner      = 2,
+    -- 頭上設定
+    headEnabled    = true,
+    headHeight     = 3.5,
+    headBobSpeed   = 1.5,
+    headBobAmp     = 0.3,
+    -- 共通
+    smoothness     = 0.18,
+    faceCenter     = false,
+    useAllFound    = false,    -- falseのとき orbitCount+1(頭上)個だけ使う
+}
+
+local campOrbitObjs = {}   -- 周回用
+local campHeadObj   = nil  -- 頭上用
+local campTime      = 0
+local campConn      = nil
+
+local function campGetOrbitPos(index, total, t, charPos, charCF)
+    local angle = (index - 1) / total * math.pi * 2
+    local r = campConfig.orbitRadius
+    local x, y, z = 0, campConfig.orbitHeight, 0
+    local shape = campConfig.orbitShape
+
+    if shape == "Circle" then
+        local a = angle + t * campConfig.orbitSpeed
+        x = math.cos(a) * r; z = math.sin(a) * r
+
+    elseif shape == "Wave" then
+        local a = angle + t * campConfig.orbitSpeed
+        x = math.cos(a) * r; z = math.sin(a) * r
+        y = campConfig.orbitHeight + math.sin(a * campConfig.waveFreq + t * campConfig.orbitSpeed) * campConfig.waveAmp
+
+    elseif shape == "Figure8" then
+        local a = t * campConfig.orbitSpeed + angle
+        x = math.sin(a) * r; z = math.sin(a * 2) * r * 0.5
+
+    elseif shape == "Star" then
+        local pts = campConfig.starPoints
+        local innerR = campConfig.starInner
+        local a = angle + t * campConfig.orbitSpeed
+        local pA = (math.pi * 2) / pts
+        local blend = (a % pA) / pA
+        local dist = innerR + (r - innerR) * math.abs(math.sin(blend * math.pi))
+        x = math.cos(a) * dist; z = math.sin(a) * dist
+    end
+
+    -- キャラの向きに合わせる
+    local _, cYR, _ = charCF:ToOrientation()
+    local fx = x * math.cos(cYR) - z * math.sin(cYR)
+    local fz = x * math.sin(cYR) + z * math.cos(cYR)
+    return charPos + Vector3.new(fx, y, fz)
+end
+
+local function campStop()
+    if campConn then campConn:Disconnect(); campConn = nil end
+    for _, obj in ipairs(campOrbitObjs) do cf_releaseObj(obj) end
+    campOrbitObjs = {}
+    if campHeadObj then cf_releaseObj(campHeadObj); campHeadObj = nil end
+end
+
+local function campStart()
+    campStop()
+
+    local found = cf_findByName(campConfig.partName)
+    if #found == 0 then
+        OrionLib:MakeNotification({ Name = "エラー", Content = "'" .. campConfig.partName .. "' が見つかりません", Time = 3 })
+        return
+    end
+
+    local needed = campConfig.orbitCount + (campConfig.headEnabled and 1 or 0)
+    local useCount = campConfig.useAllFound and #found or math.min(needed, #found)
+
+    -- 頭上は最後の1個を使う
+    local headIdx = campConfig.headEnabled and useCount or nil
+    local orbitEnd = headIdx and (useCount - 1) or useCount
+
+    for i = 1, orbitEnd do
+        local obj = cf_setupObj(found[i])
+        if obj then table.insert(campOrbitObjs, obj) end
+    end
+
+    if headIdx and found[headIdx] then
+        campHeadObj = cf_setupObj(found[headIdx])
+    end
+
+    OrionLib:MakeNotification({
+        Name = "Campfire 起動",
+        Content = "周回: " .. #campOrbitObjs .. "個" .. (campHeadObj and " / 頭上: 1個" or ""),
+        Time = 3,
+    })
+
+    campTime = 0
+
+    campConn = RunService.RenderStepped:Connect(function(dt)
+        if not campConfig.enabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        if not hrp then return end
+
+        campTime += dt
+
+        local charPos = hrp.Position
+        local charCF  = hrp.CFrame
+        local total   = #campOrbitObjs
+
+        -- 周回
+        for i, obj in ipairs(campOrbitObjs) do
+            if obj.BP and obj.BP.Parent then
+                local pos = campGetOrbitPos(i, total, campTime, charPos, charCF)
+                obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * campConfig.smoothness
+                if campConfig.faceCenter and obj.BG and obj.BG.Parent then
+                    obj.BG.CFrame = obj.BG.CFrame:Lerp(CFrame.lookAt(pos, charPos), 0.2)
+                end
+            end
+        end
+
+        -- 頭上（ふわふわ浮く）
+        if campHeadObj and campHeadObj.BP and campHeadObj.BP.Parent then
+            local headPos = (head and head.Position or charPos) + Vector3.new(0, campConfig.headHeight, 0)
+            headPos = headPos + Vector3.new(0, math.sin(campTime * campConfig.headBobSpeed) * campConfig.headBobAmp, 0)
+            campHeadObj.BP.Position = campHeadObj.BP.Position + (headPos - campHeadObj.BP.Position) * campConfig.smoothness
+        end
+    end)
+end
+
+--==================================================
+-- [B] BallMagicLight Float システム（同じ構造）
+--==================================================
+local ballFConfig = {
+    enabled        = false,
+    partName       = "BallMagicLight",
+    orbitCount     = 8,
+    orbitRadius    = 5,
+    orbitSpeed     = 1.5,
+    orbitHeight    = 0,
+    orbitShape     = "Circle",
+    waveAmp        = 1.5,
+    waveFreq       = 2,
+    starPoints     = 5,
+    starInner      = 2,
+    headEnabled    = true,
+    headHeight     = 4,
+    headBobSpeed   = 2,
+    headBobAmp     = 0.4,
+    smoothness     = 0.18,
+    faceCenter     = false,
+    useAllFound    = false,
+}
+
+local ballFOrbitObjs = {}
+local ballFHeadObj   = nil
+local ballFTime      = 0
+local ballFConn      = nil
+
+local function ballFGetOrbitPos(index, total, t, charPos, charCF)
+    local angle = (index - 1) / total * math.pi * 2
+    local r = ballFConfig.orbitRadius
+    local x, y, z = 0, ballFConfig.orbitHeight, 0
+    local shape = ballFConfig.orbitShape
+
+    if shape == "Circle" then
+        local a = angle + t * ballFConfig.orbitSpeed
+        x = math.cos(a) * r; z = math.sin(a) * r
+
+    elseif shape == "Wave" then
+        local a = angle + t * ballFConfig.orbitSpeed
+        x = math.cos(a) * r; z = math.sin(a) * r
+        y = ballFConfig.orbitHeight + math.sin(a * ballFConfig.waveFreq + t * ballFConfig.orbitSpeed) * ballFConfig.waveAmp
+
+    elseif shape == "Figure8" then
+        local a = t * ballFConfig.orbitSpeed + angle
+        x = math.sin(a) * r; z = math.sin(a * 2) * r * 0.5
+
+    elseif shape == "Star" then
+        local pts = ballFConfig.starPoints
+        local innerR = ballFConfig.starInner
+        local a = angle + t * ballFConfig.orbitSpeed
+        local pA = (math.pi * 2) / pts
+        local blend = (a % pA) / pA
+        local dist = innerR + (r - innerR) * math.abs(math.sin(blend * math.pi))
+        x = math.cos(a) * dist; z = math.sin(a) * dist
+    end
+
+    local _, cYR, _ = charCF:ToOrientation()
+    local fx = x * math.cos(cYR) - z * math.sin(cYR)
+    local fz = x * math.sin(cYR) + z * math.cos(cYR)
+    return charPos + Vector3.new(fx, y, fz)
+end
+
+local function ballFStop()
+    if ballFConn then ballFConn:Disconnect(); ballFConn = nil end
+    for _, obj in ipairs(ballFOrbitObjs) do cf_releaseObj(obj) end
+    ballFOrbitObjs = {}
+    if ballFHeadObj then cf_releaseObj(ballFHeadObj); ballFHeadObj = nil end
+end
+
+local function ballFStart()
+    ballFStop()
+
+    local found = cf_findByName(ballFConfig.partName)
+    if #found == 0 then
+        OrionLib:MakeNotification({ Name = "エラー", Content = "'" .. ballFConfig.partName .. "' が見つかりません", Time = 3 })
+        return
+    end
+
+    local needed  = ballFConfig.orbitCount + (ballFConfig.headEnabled and 1 or 0)
+    local useCount = ballFConfig.useAllFound and #found or math.min(needed, #found)
+    local headIdx  = ballFConfig.headEnabled and useCount or nil
+    local orbitEnd = headIdx and (useCount - 1) or useCount
+
+    for i = 1, orbitEnd do
+        local obj = cf_setupObj(found[i])
+        if obj then table.insert(ballFOrbitObjs, obj) end
+    end
+    if headIdx and found[headIdx] then
+        ballFHeadObj = cf_setupObj(found[headIdx])
+    end
+
+    OrionLib:MakeNotification({
+        Name = "BallMagicLight 起動",
+        Content = "周回: " .. #ballFOrbitObjs .. "個" .. (ballFHeadObj and " / 頭上: 1個" or ""),
+        Time = 3,
+    })
+
+    ballFTime = 0
+
+    ballFConn = RunService.RenderStepped:Connect(function(dt)
+        if not ballFConfig.enabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp  = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        if not hrp then return end
+
+        ballFTime += dt
+
+        local charPos = hrp.Position
+        local charCF  = hrp.CFrame
+        local total   = #ballFOrbitObjs
+
+        for i, obj in ipairs(ballFOrbitObjs) do
+            if obj.BP and obj.BP.Parent then
+                local pos = ballFGetOrbitPos(i, total, ballFTime, charPos, charCF)
+                obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * ballFConfig.smoothness
+                if ballFConfig.faceCenter and obj.BG and obj.BG.Parent then
+                    obj.BG.CFrame = obj.BG.CFrame:Lerp(CFrame.lookAt(pos, charPos), 0.2)
+                end
+            end
+        end
+
+        if ballFHeadObj and ballFHeadObj.BP and ballFHeadObj.BP.Parent then
+            local headPos = (head and head.Position or charPos) + Vector3.new(0, ballFConfig.headHeight, 0)
+            headPos = headPos + Vector3.new(0, math.sin(ballFTime * ballFConfig.headBobSpeed) * ballFConfig.headBobAmp, 0)
+            ballFHeadObj.BP.Position = ballFHeadObj.BP.Position + (headPos - ballFHeadObj.BP.Position) * ballFConfig.smoothness
+        end
+    end)
+end
+
+--==================================================
+-- ORION UI タブ
+--==================================================
+local FloatTab = Window:MakeTab({
+    Name = "Float & Orbit",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false,
+})
+
+-- ============================================
+-- セクション1: Campfire
+-- ============================================
+FloatTab:AddSection({ Name = "🔥 Campfire Orbit + 頭上" })
+
+FloatTab:AddToggle({
+    Name = "Campfire: 有効化",
+    Default = false,
+    Flag = "CampEnabled",
+    Callback = function(v)
+        campConfig.enabled = v
+        if v then campStart()
+        else campStop(); OrionLib:MakeNotification({ Name = "Campfire停止", Content = "停止しました", Time = 2 }) end
+    end,
+})
+
+FloatTab:AddTextbox({
+    Name = "Campfire: Part名",
+    Default = "Campfire",
+    TextDisappear = false,
+    Callback = function(v) campConfig.partName = v end,
+})
+
+FloatTab:AddButton({
+    Name = "Campfire: 再検索 & 再起動",
+    Callback = function()
+        if campConfig.enabled then campStart()
+        else
+            local f = cf_findByName(campConfig.partName)
+            OrionLib:MakeNotification({ Name = "検索", Content = #f .. "個発見", Time = 3 })
+        end
+    end,
+})
+
+FloatTab:AddToggle({ Name = "Campfire: 全Part使用", Default = false, Flag = "CampUseAll",
+    Callback = function(v) campConfig.useAllFound = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 周回数（頭上除く）", Min = 1, Max = 30, Default = 6, Increment = 1, ValueName = "個",
+    Callback = function(v) campConfig.orbitCount = v end })
+
+FloatTab:AddDropdown({ Name = "Campfire: 形状", Default = "Circle",
+    Options = { "Circle", "Wave", "Figure8", "Star" },
+    Callback = function(v) campConfig.orbitShape = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 半径", Min = 1, Max = 30, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) campConfig.orbitRadius = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 回転速度", Min = -10, Max = 10, Default = 1.2, Increment = 0.1, ValueName = "",
+    Callback = function(v) campConfig.orbitSpeed = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 周回高さ", Min = -5, Max = 10, Default = 0, Increment = 0.5, ValueName = "",
+    Callback = function(v) campConfig.orbitHeight = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 波振幅 (Wave)", Min = 0, Max = 5, Default = 1.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) campConfig.waveAmp = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 波周波数 (Wave)", Min = 1, Max = 10, Default = 2, Increment = 0.5, ValueName = "",
+    Callback = function(v) campConfig.waveFreq = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 星頂点数 (Star)", Min = 3, Max = 12, Default = 5, Increment = 1, ValueName = "点",
+    Callback = function(v) campConfig.starPoints = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 星内半径 (Star)", Min = 0.5, Max = 10, Default = 2, Increment = 0.5, ValueName = "",
+    Callback = function(v) campConfig.starInner = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 滑らかさ", Min = 0.01, Max = 1, Default = 0.18, Increment = 0.01, ValueName = "",
+    Callback = function(v) campConfig.smoothness = v end })
+
+FloatTab:AddToggle({ Name = "Campfire: 中心を向く", Default = false, Flag = "CampFace",
+    Callback = function(v) campConfig.faceCenter = v end })
+
+-- 頭上設定
+FloatTab:AddToggle({ Name = "Campfire: 頭上1個を有効化", Default = true, Flag = "CampHead",
+    Callback = function(v) campConfig.headEnabled = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 頭上の高さ", Min = 1, Max = 10, Default = 3.5, Increment = 0.5, ValueName = "",
+    Callback = function(v) campConfig.headHeight = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 頭上ふわふわ速度", Min = 0, Max = 5, Default = 1.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) campConfig.headBobSpeed = v end })
+
+FloatTab:AddSlider({ Name = "Campfire: 頭上ふわふわ幅", Min = 0, Max = 2, Default = 0.3, Increment = 0.05, ValueName = "",
+    Callback = function(v) campConfig.headBobAmp = v end })
+
+-- ============================================
+-- セクション2: BallMagicLight
+-- ============================================
+FloatTab:AddSection({ Name = "✨ BallMagicLight Orbit + 頭上" })
+
+FloatTab:AddToggle({
+    Name = "Ball: 有効化",
+    Default = false,
+    Flag = "BallFEnabled",
+    Callback = function(v)
+        ballFConfig.enabled = v
+        if v then ballFStart()
+        else ballFStop(); OrionLib:MakeNotification({ Name = "Ball停止", Content = "停止しました", Time = 2 }) end
+    end,
+})
+
+FloatTab:AddTextbox({
+    Name = "Ball: Part名",
+    Default = "BallMagicLight",
+    TextDisappear = false,
+    Callback = function(v) ballFConfig.partName = v end,
+})
+
+FloatTab:AddButton({
+    Name = "Ball: 再検索 & 再起動",
+    Callback = function()
+        if ballFConfig.enabled then ballFStart()
+        else
+            local f = cf_findByName(ballFConfig.partName)
+            OrionLib:MakeNotification({ Name = "検索", Content = #f .. "個発見", Time = 3 })
+        end
+    end,
+})
+
+FloatTab:AddToggle({ Name = "Ball: 全Part使用", Default = false, Flag = "BallFUseAll",
+    Callback = function(v) ballFConfig.useAllFound = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 周回数（頭上除く）", Min = 1, Max = 30, Default = 8, Increment = 1, ValueName = "個",
+    Callback = function(v) ballFConfig.orbitCount = v end })
+
+FloatTab:AddDropdown({ Name = "Ball: 形状", Default = "Circle",
+    Options = { "Circle", "Wave", "Figure8", "Star" },
+    Callback = function(v) ballFConfig.orbitShape = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 半径", Min = 1, Max = 30, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) ballFConfig.orbitRadius = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 回転速度", Min = -10, Max = 10, Default = 1.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) ballFConfig.orbitSpeed = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 周回高さ", Min = -5, Max = 10, Default = 0, Increment = 0.5, ValueName = "",
+    Callback = function(v) ballFConfig.orbitHeight = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 波振幅 (Wave)", Min = 0, Max = 5, Default = 1.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) ballFConfig.waveAmp = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 波周波数 (Wave)", Min = 1, Max = 10, Default = 2, Increment = 0.5, ValueName = "",
+    Callback = function(v) ballFConfig.waveFreq = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 星頂点数 (Star)", Min = 3, Max = 12, Default = 5, Increment = 1, ValueName = "点",
+    Callback = function(v) ballFConfig.starPoints = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 星内半径 (Star)", Min = 0.5, Max = 10, Default = 2, Increment = 0.5, ValueName = "",
+    Callback = function(v) ballFConfig.starInner = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 滑らかさ", Min = 0.01, Max = 1, Default = 0.18, Increment = 0.01, ValueName = "",
+    Callback = function(v) ballFConfig.smoothness = v end })
+
+FloatTab:AddToggle({ Name = "Ball: 中心を向く", Default = false, Flag = "BallFFace",
+    Callback = function(v) ballFConfig.faceCenter = v end })
+
+-- 頭上設定
+FloatTab:AddToggle({ Name = "Ball: 頭上1個を有効化", Default = true, Flag = "BallFHead",
+    Callback = function(v) ballFConfig.headEnabled = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 頭上の高さ", Min = 1, Max = 10, Default = 4, Increment = 0.5, ValueName = "",
+    Callback = function(v) ballFConfig.headHeight = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 頭上ふわふわ速度", Min = 0, Max = 5, Default = 2, Increment = 0.1, ValueName = "",
+    Callback = function(v) ballFConfig.headBobSpeed = v end })
+
+FloatTab:AddSlider({ Name = "Ball: 頭上ふわふわ幅", Min = 0, Max = 2, Default = 0.4, Increment = 0.05, ValueName = "",
+    Callback = function(v) ballFConfig.headBobAmp = v end })
 --==============================
 -- 初期化
 --==============================
