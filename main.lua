@@ -5074,7 +5074,313 @@ GlassTab:AddSlider({ Name = "Robot: 脚の高さ", Min = 0, Max = 5, Default = 1
 GlassTab:AddSlider({ Name = "Robot: 行進振幅 (March/Surround)", Min = 0, Max = 5, Default = 1.2, Increment = 0.1, ValueName = "",
     Callback = function(v) gbgConfig.robotMarchAmp = v end })
 
+--==================================================
+-- [D] SpotlightBlue 設定
+-- ※ fwConfig, fwToys などと同じ構造で独立して動作
+--==================================================
 
+local sbConfig = {
+    enabled = false,
+    targetPlayer = nil,
+    targetPartName = "SpotlightBlue",  -- ← ここだけ変更
+    maxSpotlights = 20,
+    spacing = 1.2,
+    heightOffset = 1,
+    forwardOffset = 4,
+    waveSpeed = 2.5,
+    baseAmplitude = 2,
+    distanceMultiplier = 0.4,
+    phaseOffset = 0.3,
+    horizontalWaveAmount = 0.5,
+    smoothness = 0.6,
+    xRotation = -45,
+    yRotation = 0,
+    zRotation = 90,
+}
+local sbToys = {}
+local sbRowPoints = {}
+local sbAssigned = {}
+local sbTime = 0
+
+-- SpotlightBlue を workspace から検索
+local function sbFindSpotlights()
+    local toys = {}
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if item:IsA("Model") and item.Name == sbConfig.targetPartName then
+            local dup = false
+            for _, e in ipairs(toys) do if e == item then dup = true break end end
+            if not dup then table.insert(toys, item) end
+        end
+    end
+    table.sort(toys, function(a, b) return a.Name < b.Name end)
+    return toys
+end
+
+-- ダミー制御用パーツ生成
+local function sbCP()
+    local p = Instance.new("Part")
+    p.CanCollide = false; p.Anchored = true; p.Transparency = 1
+    p.Size = Vector3.new(4, 1, 4); p.Parent = workspace
+    return p
+end
+
+-- BodyMover セットアップ
+local function sbCBM(part)
+    if not part then return nil, nil end
+    local eBG = part:FindFirstChildOfClass("BodyGyro")
+    local eBP = part:FindFirstChildOfClass("BodyPosition")
+    if eBG and eBP then return eBG, eBP end
+    if eBG then eBG:Destroy() end
+    if eBP then eBP:Destroy() end
+    local BP = Instance.new("BodyPosition")
+    BP.P = 25000; BP.D = 800
+    BP.MaxForce = Vector3.new(1, 1, 1) * 1e10; BP.Parent = part
+    local BG = Instance.new("BodyGyro")
+    BG.P = 25000; BG.D = 800
+    BG.MaxTorque = Vector3.new(1, 1, 1) * 1e10; BG.Parent = part
+    return BG, BP
+end
+
+-- モデルからプライマリパーツを取得
+local function sbGetPrimary(model)
+    if model.PrimaryPart then return model.PrimaryPart end
+    for _, n in ipairs({"Handle", "Main", "Part", "Base", "Spotlight", "Light"}) do
+        local p = model:FindFirstChild(n)
+        if p and p:IsA("BasePart") then return p end
+    end
+    for _, c in ipairs(model:GetChildren()) do
+        if c:IsA("BasePart") then return c end
+    end
+    return nil
+end
+
+-- 行配置ポイントを生成（左右対称）
+local function sbCreateRowPoints(count)
+    local points = {}
+    if count == 0 then return points end
+    local half = math.floor(count / 2)
+    local isOdd = count % 2 == 1
+    local idx = 1
+    if isOdd then
+        table.insert(points, { baseOffsetX = 0, part = sbCP(), index = idx }); idx += 1
+    end
+    for i = 1, half do
+        local off = i * sbConfig.spacing
+        table.insert(points, { baseOffsetX = off,  part = sbCP(), index = idx }); idx += 1
+        table.insert(points, { baseOffsetX = -off, part = sbCP(), index = idx }); idx += 1
+    end
+    return points
+end
+
+-- 無効化（固定）
+local function sbDisable()
+    for _, point in ipairs(sbRowPoints) do
+        if point.assignedToy and point.assignedToy.Pallet then
+            if point.assignedToy.BP then point.assignedToy.BP:Destroy(); point.assignedToy.BP = nil end
+            if point.assignedToy.BG then point.assignedToy.BG:Destroy(); point.assignedToy.BG = nil end
+            for _, c in ipairs(point.assignedToy.Model:GetChildren()) do
+                if c:IsA("BasePart") then
+                    c.Anchored = true
+                    c.Velocity = Vector3.new(0, 0, 0)
+                    c.RotVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end
+    end
+end
+
+-- 有効化（BodyMover再生成）
+local function sbEnable()
+    for _, point in ipairs(sbRowPoints) do
+        if point.assignedToy and point.assignedToy.Pallet then
+            for _, c in ipairs(point.assignedToy.Model:GetChildren()) do
+                if c:IsA("BasePart") then c.Anchored = false end
+            end
+            local BG, BP = sbCBM(point.assignedToy.Pallet)
+            point.assignedToy.BG = BG; point.assignedToy.BP = BP
+        end
+    end
+end
+
+-- ポイントにSpotlightBlueを割り当て
+local function sbAssignToPoints()
+    local assigned = {}
+    local character = _getTargetChar(sbConfig.targetPlayer)
+    if not character then return assigned end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    if not hrp or not torso then return assigned end
+    local charCF = hrp.CFrame
+    local basePos = torso.Position + Vector3.new(0, sbConfig.heightOffset, 0) + charCF.LookVector * sbConfig.forwardOffset
+    for i = 1, math.min(#sbToys, #sbRowPoints) do
+        local toy = sbToys[i]
+        if toy and toy:IsA("Model") and toy.Name == sbConfig.targetPartName then
+            local primary = sbGetPrimary(toy)
+            if primary then
+                for _, c in ipairs(toy:GetChildren()) do
+                    if c:IsA("BasePart") then c.CanCollide = false; c.CanTouch = false; c.Anchored = false end
+                end
+                local BG, BP = sbCBM(primary)
+                local initPos = basePos + charCF.RightVector * sbRowPoints[i].baseOffsetX
+                local t = {
+                    BG = BG, BP = BP, Pallet = primary, Model = toy,
+                    offsetX = sbRowPoints[i].baseOffsetX,
+                    baseOffsetX = sbRowPoints[i].baseOffsetX,
+                    index = sbRowPoints[i].index,
+                }
+                if BP then BP.Position = initPos end
+                if BG then
+                    local cf = CFrame.new(initPos)
+                    local _, pYR, _ = charCF:ToOrientation()
+                    cf = cf * CFrame.Angles(0, pYR + math.rad(sbConfig.yRotation), 0)
+                    cf = cf * CFrame.Angles(math.rad(sbConfig.xRotation), 0, 0)
+                    cf = cf * CFrame.Angles(0, 0, math.rad(sbConfig.zRotation))
+                    BG.CFrame = cf
+                end
+                sbRowPoints[i].assignedToy = t
+                table.insert(assigned, t)
+            end
+        end
+    end
+    return assigned
+end
+
+-- 再検出 & 再割り当て
+local function sbRefresh()
+    sbToys = sbFindSpotlights()
+    sbRowPoints = sbCreateRowPoints(math.min(#sbToys, sbConfig.maxSpotlights))
+    sbAssigned = sbAssignToPoints()
+end
+
+-- プレイヤーリスト（FWと共通関数 fwGetPlayerList を再利用）
+-- ※ fwGetPlayerList() がすでに定義されていれば省略可
+
+-- 初期化
+sbRefresh()
+workspace.DescendantAdded:Connect(function(d)
+    if d:IsA("Model") and d.Name == sbConfig.targetPartName then
+        task.wait(0.5); sbRefresh()
+    end
+end)
+
+-- メインループ（RenderStepped で毎フレーム更新）
+RunService.RenderStepped:Connect(function(dt)
+    if not sbConfig.enabled then return end
+    local character = _getTargetChar(sbConfig.targetPlayer)
+    if not character then return end
+    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not torso or not hrp then return end
+    sbTime += dt * sbConfig.waveSpeed
+    local charCF = hrp.CFrame
+    local basePos = torso.Position + Vector3.new(0, sbConfig.heightOffset, 0) + charCF.LookVector * sbConfig.forwardOffset
+    for _, point in ipairs(sbRowPoints) do
+        if point.assignedToy and point.assignedToy.BP and point.assignedToy.BG then
+            local toy = point.assignedToy
+            local dist = math.abs(toy.baseOffsetX)
+            local amp = sbConfig.baseAmplitude + dist * sbConfig.distanceMultiplier
+            local wave = math.sin(sbTime + toy.index * sbConfig.phaseOffset)
+            local hOff = toy.baseOffsetX
+            if toy.baseOffsetX ~= 0 then
+                local sign = toy.baseOffsetX > 0 and 1 or -1
+                hOff = toy.baseOffsetX - sign * math.abs(toy.baseOffsetX) * wave * sbConfig.horizontalWaveAmount
+            end
+            local finalPos = basePos + charCF.RightVector * hOff + Vector3.new(0, wave * amp, 0)
+            if point.part then point.part.Position = finalPos end
+            toy.BP.Position = finalPos
+            local cf = CFrame.new(finalPos)
+            local _, pYR, _ = charCF:ToOrientation()
+            cf = cf * CFrame.Angles(0, pYR + math.rad(sbConfig.yRotation), 0)
+            cf = cf * CFrame.Angles(math.rad(sbConfig.xRotation), 0, 0)
+            cf = cf * CFrame.Angles(0, 0, math.rad(sbConfig.zRotation))
+            toy.BG.CFrame = toy.BG.CFrame:Lerp(cf, sbConfig.smoothness)
+        end
+    end
+end)
+
+--==================================================
+-- ORION UI: Wings & Orbit タブに追加するセクション
+-- ※ WingsTab が定義された後、OrionLib:Init() の前に挿入
+--==================================================
+
+-- ============================================
+-- セクション4: SpotlightBlue
+-- ============================================
+WingsTab:AddSection({ Name = "💙 SpotlightBlue" })
+
+WingsTab:AddToggle({
+    Name = "SB: 有効化",
+    Default = false,
+    Flag = "SBEnabled",
+    Callback = function(v)
+        sbConfig.enabled = v
+        if v then sbEnable(); OrionLib:MakeNotification({ Name = "SB ON", Content = "SpotlightBlue 起動", Time = 2 })
+        else sbDisable(); OrionLib:MakeNotification({ Name = "SB OFF", Content = "SpotlightBlue 固定", Time = 2 }) end
+    end,
+})
+
+local sbPlayerDropdown
+sbPlayerDropdown = WingsTab:AddDropdown({
+    Name = "SB: 対象プレイヤー",
+    Default = "自分",
+    Options = fwGetPlayerList(),  -- fwGetPlayerList を再利用
+    Callback = function(v)
+        if v == "自分" then sbConfig.targetPlayer = nil
+        else sbConfig.targetPlayer = Players:FindFirstChild(v) end
+        sbAssigned = sbAssignToPoints()
+    end,
+})
+
+WingsTab:AddButton({
+    Name = "SB: プレイヤーリスト更新",
+    Callback = function()
+        sbPlayerDropdown:Refresh(fwGetPlayerList(), true)
+        OrionLib:MakeNotification({ Name = "更新", Content = "リスト更新完了", Time = 2 })
+    end,
+})
+
+WingsTab:AddButton({
+    Name = "SB: SpotlightBlueを再検出",
+    Callback = function()
+        sbRefresh()
+        OrionLib:MakeNotification({ Name = "再検出", Content = "SpotlightBlue数: " .. #sbToys, Time = 2 })
+    end,
+})
+
+WingsTab:AddSlider({ Name = "SB: 最大数", Min = 2, Max = 40, Default = 20, Increment = 1, ValueName = "本",
+    Callback = function(v) sbConfig.maxSpotlights = v; sbRefresh() end })
+WingsTab:AddSlider({ Name = "SB: 間隔", Min = 0.5, Max = 5, Default = 1.2, Increment = 0.1, ValueName = "",
+    Callback = function(v) sbConfig.spacing = v; sbRefresh() end })
+WingsTab:AddSlider({ Name = "SB: 高さ", Min = -5, Max = 10, Default = 1, Increment = 0.5, ValueName = "",
+    Callback = function(v) sbConfig.heightOffset = v end })
+WingsTab:AddSlider({ Name = "SB: 前方オフセット", Min = 0, Max = 15, Default = 4, Increment = 0.5, ValueName = "",
+    Callback = function(v) sbConfig.forwardOffset = v end })
+WingsTab:AddSlider({ Name = "SB: 波速度", Min = 0, Max = 10, Default = 2.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) sbConfig.waveSpeed = v end })
+WingsTab:AddSlider({ Name = "SB: 振幅", Min = 0, Max = 10, Default = 2, Increment = 0.1, ValueName = "",
+    Callback = function(v) sbConfig.baseAmplitude = v end })
+WingsTab:AddSlider({ Name = "SB: 位相差", Min = 0, Max = 2, Default = 0.3, Increment = 0.05, ValueName = "",
+    Callback = function(v) sbConfig.phaseOffset = v end })
+WingsTab:AddSlider({ Name = "SB: 内側への寄り", Min = 0, Max = 2, Default = 0.5, Increment = 0.05, ValueName = "",
+    Callback = function(v) sbConfig.horizontalWaveAmount = v end })
+WingsTab:AddSlider({ Name = "SB: 滑らかさ", Min = 0.01, Max = 1, Default = 0.6, Increment = 0.01, ValueName = "",
+    Callback = function(v) sbConfig.smoothness = v end })
+WingsTab:AddSlider({ Name = "SB: X軸回転", Min = -180, Max = 180, Default = -45, Increment = 1, ValueName = "°",
+    Callback = function(v) sbConfig.xRotation = v end })
+WingsTab:AddSlider({ Name = "SB: Y軸回転", Min = -180, Max = 180, Default = 0, Increment = 1, ValueName = "°",
+    Callback = function(v) sbConfig.yRotation = v end })
+WingsTab:AddSlider({ Name = "SB: Z軸回転", Min = -180, Max = 180, Default = 90, Increment = 1, ValueName = "°",
+    Callback = function(v) sbConfig.zRotation = v end })
+WingsTab:AddButton({ Name = "SB: 回転リセット", Callback = function()
+    sbConfig.xRotation = -45; sbConfig.yRotation = 0; sbConfig.zRotation = 90
+    OrionLib:MakeNotification({ Name = "リセット", Content = "回転をデフォルトに戻しました", Time = 2 })
+end })
+
+--==================================================
+-- ↑ ここまでを Wings & Orbit タブの
+--   「Ball Orbit: 星内半径」スライダーの後ろ、
+--   「Ball: 再検索 & 再起動」ボタンの後ろに挿入する
+--==================================================
 
 --==============================
 -- 初期化
