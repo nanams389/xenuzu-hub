@@ -1319,7 +1319,87 @@ task.spawn(function()
     end
 end)
 
+--==============================
+-- Auraタブ内に追加：ターゲット抹殺セクション
+--==============================
+AuraTab:AddSection({
+    Name = "Target Individual Kill (ターゲット個別抹殺)"
+})
 
+local selectedTarget = nil
+local allPlayersData = {}
+
+-- プレイヤーリスト取得
+local function getNames()
+    local n = {}
+    allPlayersData = {}
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer then
+            table.insert(n, p.Name)
+            allPlayersData[p.Name] = p
+        end
+    end
+    return n
+end
+
+-- ターゲット選択
+local TargetDrop = AuraTab:AddDropdown({
+    Name = "ターゲットを選択",
+    Default = "",
+    Options = getNames(),
+    Callback = function(v)
+        selectedTarget = allPlayersData[v]
+    end
+})
+
+-- リスト更新ボタン
+AuraTab:AddButton({
+    Name = "プレイヤーリスト更新",
+    Callback = function()
+        TargetDrop:Refresh(getNames(), true)
+    end
+})
+
+-- 【抹殺実行ボタン】
+AuraTab:AddButton({
+    Name = "選択したターゲットを抹殺 (TP & Kill)",
+    Callback = function()
+        if not selectedTarget or not selectedTarget.Character then 
+            return OrionLib:MakeNotification({Name = "Error", Content = "ターゲットを選んでください", Time = 2}) 
+        end
+
+        local lp = game.Players.LocalPlayer
+        local targetChar = selectedTarget.Character
+        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+        local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+        local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+
+        if targetHRP and targetHum and myHRP then
+            -- 1. 相手にTP（接触判定を出すため）
+            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 2)
+            task.wait(0.1)
+
+            -- 2. GrabEventsのSetNetworkOwnerで操作権を奪う（既存のロジック流用）
+            local rs = game:GetService("ReplicatedStorage")
+            local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
+            if SetNetworkOwner then
+                SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
+            end
+
+            -- 3. 強制キル処理
+            pcall(function()
+                targetHum.Health = 0
+                targetHum:ChangeState(Enum.HumanoidStateType.Dead)
+                
+                -- グラブ解除
+                local destroyGrab = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("DestroyGrabLine")
+                if destroyGrab then destroyGrab:FireServer(targetHRP) end
+            end)
+            
+            OrionLib:MakeNotification({Name = "Success", Content = selectedTarget.Name .. " を抹殺しました", Time = 3})
+        end
+    end
+})
 
 -- [[ Anti-Grab Pro タブ ]]
 local AntiTab = Window:MakeTab({
@@ -4902,119 +4982,7 @@ AntiGucciTab:AddLabel("ONにするとCreatureBlobmanを自動生成し")
 AntiGucciTab:AddLabel("グッチキックを防御します。")
 AntiGucciTab:AddLabel("ブロブが消えた場合は自動で再生成されます。")
 
--- ========================================
--- KILL タブの作成
--- ========================================
-local KillTab = Window:MakeTab({
-    Name = "KILL", 
-    Icon = "rbxassetid://6031094674", 
-    PremiumOnly = false
-})
 
--- 初期リストの更新
-UpdatePlayerList()
-
-KillTab:AddSection({Name = "Player Selection"})
-
--- プレイヤー選択ドロップダウン
-local PlayerDropdown = KillTab:AddDropdown({
-    Name = "Select Target Player",
-    Default = "",
-    Options = playerNames,
-    Callback = function(selectedName)
-        SelectedPlayer = playerData[selectedName]
-        
-        if SelectedPlayer then
-            OrionLib:MakeNotification({
-                Name = "Player Selected",
-                Content = SelectedPlayer.Name .. " has been selected!",
-                Image = "rbxassetid://4483345875",
-                Time = 3
-            })
-            print("Selected Target: " .. SelectedPlayer.Name)
-        end
-    end    
-})
-
--- アイコン追加処理の呼び出し
-task.spawn(addIconsToDropdown)
-
--- リフレッシュボタン
-KillTab:AddButton({
-    Name = "Refresh Player List",
-    Callback = function()
-        local newList = UpdatePlayerList()
-        PlayerDropdown:Refresh(newList, true)
-        task.wait(0.1)
-        addIconsToDropdown()
-        OrionLib:MakeNotification({
-            Name = "Refreshed",
-            Content = "Player list updated!",
-            Time = 2
-        })
-    end
-})
-
--- リセットボタン
-KillTab:AddButton({
-    Name = "Reset Selection",
-    Callback = function()
-        SelectedPlayer = nil
-        PlayerDropdown:Set("")
-        OrionLib:MakeNotification({
-            Name = "Reset",
-            Content = "Selection cleared",
-            Time = 2
-        })
-    end
-})
-
-KillTab:AddSection({Name = "Kill Options"})
-
--- Loop Kill トグル
-KillTab:AddToggle({
-    Name = "Loop Kill (Selected Player)",
-    Default = false,
-    Callback = function(value)
-        AttackState.LoopKill.Enabled = value
-        if value then
-            -- Kill Allが動いていたら止める
-            if AttackState.KillAll.Connection then
-                AttackState.KillAll.Connection:Disconnect()
-                AttackState.KillAll.Connection = nil
-            end
-            AttackState.LoopKill.Connection = startLoop(AttackState.LoopKill)
-        else
-            stopLoop(AttackState.LoopKill.Connection, AttackState.LoopKill)
-        end
-    end
-})
-
--- Kill All トグル
-KillTab:AddToggle({
-    Name = "Kill All Players",
-    Default = false,
-    Callback = function(value)
-        if value then
-            -- 単体Loop Killが動いていたら止める
-            stopLoop(AttackState.LoopKill.Connection, AttackState.LoopKill)
-            
-            AttackState.KillAll.Connection = RunService.Heartbeat:Connect(function()
-                savePosition(AttackState.LoopKill)
-                for _, player in ipairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer then
-                        attackPlayer(player, AttackState.LoopKill, true) 
-                    end
-                end
-            end)
-        else
-            if AttackState.KillAll.Connection then
-                AttackState.KillAll.Connection:Disconnect()
-                AttackState.KillAll.Connection = nil
-            end
-        end
-    end
-})
 
 
 --==============================
