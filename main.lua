@@ -4972,7 +4972,665 @@ local function gbg_release(obj)
     if obj.Part and obj.Part.Parent then obj.Part.Anchored = true end
 end
 
+--==============================
+-- タブ：Formation Hub (GlassBoxGray拡張)
+-- 既存コードのOrionLib:Init()の前に挿入
+-- 既存タブは一切変更しない・新規タブのみ
+--==============================
 
+--==================================================
+-- 共通ユーティリティ（fmプレフィックスで独立）
+--==================================================
+local fm_RunService  = game:GetService("RunService")
+local fm_Players     = game:GetService("Players")
+local fm_LocalPlayer = fm_Players.LocalPlayer
+
+local function fm_findByName(name)
+    local found = {}
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if (item:IsA("BasePart") or item:IsA("Model")) and item.Name == name then
+            table.insert(found, item)
+        end
+    end
+    return found
+end
+
+local function fm_getBase(obj)
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+    elseif obj:IsA("BasePart") then
+        return obj
+    end
+    return nil
+end
+
+local function fm_setupMovers(part)
+    if not part then return nil, nil end
+    local eP = part:FindFirstChildOfClass("BodyPosition")
+    local eG = part:FindFirstChildOfClass("BodyGyro")
+    if eP then eP:Destroy() end
+    if eG then eG:Destroy() end
+    local BP = Instance.new("BodyPosition")
+    BP.P = 25000; BP.D = 800
+    BP.MaxForce = Vector3.new(1,1,1) * 1e10
+    BP.Parent = part
+    local BG = Instance.new("BodyGyro")
+    BG.P = 25000; BG.D = 800
+    BG.MaxTorque = Vector3.new(1,1,1) * 1e10
+    BG.Parent = part
+    return BP, BG
+end
+
+local function fm_setupObj(obj)
+    local base = fm_getBase(obj)
+    if not base then return nil end
+    if obj:IsA("Model") then
+        for _, c in ipairs(obj:GetDescendants()) do
+            if c:IsA("BasePart") then
+                c.CanCollide = false; c.CanTouch = false; c.Anchored = false
+            end
+        end
+    else
+        base.CanCollide = false; base.CanTouch = false; base.Anchored = false
+    end
+    local BP, BG = fm_setupMovers(base)
+    return { BP = BP, BG = BG, Part = base, Original = obj }
+end
+
+local function fm_release(obj)
+    if obj.BP and obj.BP.Parent then obj.BP:Destroy() end
+    if obj.BG and obj.BG.Parent then obj.BG:Destroy() end
+    if obj.Part and obj.Part.Parent then obj.Part.Anchored = true end
+end
+
+--==================================================
+-- 設定テーブル
+--==================================================
+local fmConfig = {
+    enabled     = false,
+    partName    = "GlassBoxGray",
+    mode        = "Robot",
+    count       = 20,
+    useAllFound = false,
+    speed       = 1.0,
+    smoothness  = 0.12,
+
+    -----------------------------------------------
+    -- Robot（完全人体型）
+    -- アイデア：頭・首・胸・腹・腰・肩L/R・上腕L/R・前腕L/R・
+    --           手L/R・太ももL/R・すねL/R・足L/R の18部位に対応
+    -----------------------------------------------
+    robotScale      = 1.2,  -- 全体スケール（自分の体より一回り大きく）
+    robotBobAmp     = 0.15, -- 呼吸のような上下揺れ幅
+    robotBobSpeed   = 1.0,  -- 揺れ速度
+    robotArmSwing   = 25,   -- 腕の振り角度（度）
+    robotLegSwing   = 20,   -- 脚の振り角度（度）
+
+    -----------------------------------------------
+    -- Sphere（球状に囲まれる）
+    -----------------------------------------------
+    sphereRadius    = 5,
+    sphereRotSpeed  = 1.2,  -- 球全体の回転速度
+    sphereLayers    = 3,    -- 球の層数
+    sphereAltSpin   = true, -- 層ごとに逆回転
+
+    -----------------------------------------------
+    -- Monster（化け物型：巨大な爪・牙・背びれ・尾）
+    -----------------------------------------------
+    monsterScale    = 1.5,
+    monsterClawFlare= 30,   -- 爪の広がり角度
+    monsterSpineAmp = 0.8,  -- 背びれの波打ち振幅
+    monsterTailLen  = 6,    -- 尾のパーツ数（総数から割り当て）
+
+    -----------------------------------------------
+    -- Giant（巨人体型：自分がその胴体の中に入る）
+    -- 自分のHRPを中心として、そこに大きな体が構成される
+    -----------------------------------------------
+    giantScale      = 2.5,  -- 巨人のスケール（自分の2.5倍）
+    giantBobAmp     = 0.2,
+    giantBobSpeed   = 0.8,
+    giantArmSwing   = 30,
+    giantLegSwing   = 25,
+}
+
+local fmObjs   = {}
+local fmTime   = 0
+local fmConn   = nil
+
+--==================================================
+-- 位置計算：Robot（完全18部位人体型）
+-- キャラの向きに完全追従・歩行アニメ付き
+--==================================================
+local function fm_robotPos(i, total, t, cPos, cCF, scale, bobAmp, bobSpeed, armSwing, legSwing)
+    local s = scale
+    local bob = math.sin(t * bobSpeed) * bobAmp
+
+    -- Y回転（キャラ向き）
+    local _, cYR, _ = cCF:ToOrientation()
+    local cosY = math.cos(cYR)
+    local sinY = math.sin(cYR)
+    local function rotXZ(x, z)
+        return x * cosY - z * sinY, x * sinY + z * cosY
+    end
+
+    -- 歩行サイクル
+    local walkCycle = math.sin(t * 3)
+    local armR  =  math.rad(armSwing) * walkCycle   -- 右腕は前
+    local armL  = -math.rad(armSwing) * walkCycle   -- 左腕は後ろ
+    local legR  = -math.rad(legSwing) * walkCycle   -- 右脚は後ろ
+    local legL  =  math.rad(legSwing) * walkCycle   -- 左脚は前
+
+    -- 18部位の定義（x=左右、y=高さ、z=前後）
+    -- キャラ中心をHRPとして相対的に配置
+    -- HRPは腰あたりなので、頭は+3程度
+    local parts = {
+        -- 頭部・首
+        { 0,      3.2*s+bob,  0    },  -- 1: 頭
+        { 0,      2.5*s+bob,  0    },  -- 2: 首
+
+        -- 胴体
+        { 0,      1.8*s+bob,  0    },  -- 3: 胸（上）
+        { 0,      1.2*s+bob,  0    },  -- 4: 胸（下）
+        { 0,      0.6*s+bob,  0    },  -- 5: 腹
+        { 0,      0.0*s+bob,  0    },  -- 6: 腰
+
+        -- 肩
+        { -1.0*s, 1.9*s+bob,  0    },  -- 7: 左肩
+        {  1.0*s, 1.9*s+bob,  0    },  -- 8: 右肩
+
+        -- 腕（振り：肩を支点にZ方向へ回転）
+        { -1.3*s, 1.2*s+bob + math.sin(armL)*0.8*s, math.cos(armL)*0.4*s - 0.4*s }, -- 9: 左上腕
+        {  1.3*s, 1.2*s+bob + math.sin(armR)*0.8*s, math.cos(armR)*0.4*s - 0.4*s }, -- 10: 右上腕
+        { -1.4*s, 0.4*s+bob + math.sin(armL)*1.4*s, math.cos(armL)*0.7*s - 0.7*s }, -- 11: 左前腕
+        {  1.4*s, 0.4*s+bob + math.sin(armR)*1.4*s, math.cos(armR)*0.7*s - 0.7*s }, -- 12: 右前腕
+        { -1.4*s,-0.3*s+bob + math.sin(armL)*1.8*s, math.cos(armL)*1.0*s - 1.0*s }, -- 13: 左手
+        {  1.4*s,-0.3*s+bob + math.sin(armR)*1.8*s, math.cos(armR)*1.0*s - 1.0*s }, -- 14: 右手
+
+        -- 脚（振り：腰を支点にZ方向へ回転）
+        { -0.5*s,-0.6*s + math.sin(legL)*0.6*s, math.cos(legL)*0.5*s - 0.5*s }, -- 15: 左太もも
+        {  0.5*s,-0.6*s + math.sin(legR)*0.6*s, math.cos(legR)*0.5*s - 0.5*s }, -- 16: 右太もも
+        { -0.55*s,-1.5*s + math.sin(legL)*1.2*s, math.cos(legL)*1.0*s - 1.0*s}, -- 17: 左すね
+        {  0.55*s,-1.5*s + math.sin(legR)*1.2*s, math.cos(legR)*1.0*s - 1.0*s}, -- 18: 右すね
+    }
+
+    -- 19個以上は頭上にアクセサリとして浮かせる
+    if i > #parts then
+        local extra = i - #parts
+        local a = (extra-1) / math.max(1, total-#parts) * math.pi * 2 + t * fmConfig.speed
+        local rx_e, rz_e = rotXZ(math.cos(a)*0.6*s, math.sin(a)*0.6*s)
+        return cPos + Vector3.new(rx_e, 4.0*s + extra*0.3*s + bob, rz_e)
+    end
+
+    local p  = parts[i]
+    local rx, rz = rotXZ(p[1], p[3])
+    return cPos + Vector3.new(rx, p[2], rz)
+end
+
+-- Robot用向き計算（部位ごとに向きを変える）
+local function fm_robotCF(i, pos, cCF, t, scale, armSwing, legSwing)
+    local walkCycle = math.sin(t * 3)
+    local _, cYR, _ = cCF:ToOrientation()
+    local base = CFrame.new(pos) * CFrame.Angles(0, cYR, 0)
+
+    -- 腕（9-14）は振り角度を加える
+    local armL_r = -math.rad(armSwing) * walkCycle
+    local armR_r =  math.rad(armSwing) * walkCycle
+    local legL_r =  math.rad(legSwing) * walkCycle
+    local legR_r = -math.rad(legSwing) * walkCycle
+
+    if i == 9  or i == 11 or i == 13 then -- 左腕系
+        return base * CFrame.Angles(armL_r, 0, 0)
+    elseif i == 10 or i == 12 or i == 14 then -- 右腕系
+        return base * CFrame.Angles(armR_r, 0, 0)
+    elseif i == 15 or i == 17 then -- 左脚系
+        return base * CFrame.Angles(legL_r, 0, 0)
+    elseif i == 16 or i == 18 then -- 右脚系
+        return base * CFrame.Angles(legR_r, 0, 0)
+    end
+
+    return base
+end
+
+--==================================================
+-- 位置計算：Sphere（球状に全周を囲む）
+-- フィボナッチ球面分布で均等に配置し全体回転
+--==================================================
+local function fm_spherePos(i, total, t, cPos, cCF)
+    local r   = fmConfig.sphereRadius
+    local phi = math.acos(1 - 2*i/total)  -- フィボナッチ球面
+    local theta = math.pi * (1 + math.sqrt(5)) * i  -- 黄金角
+
+    -- 球面上の基本座標
+    local x = r * math.sin(phi) * math.cos(theta)
+    local y = r * math.cos(phi)
+    local z = r * math.sin(phi) * math.sin(theta)
+
+    -- 層を判定して逆回転をつける
+    local layer = math.floor(i / (total / fmConfig.sphereLayers))
+    local spinDir = (fmConfig.sphereAltSpin and layer % 2 == 0) and 1 or -1
+    local spin = t * fmConfig.sphereRotSpeed * spinDir
+
+    -- Y軸周りに時間回転
+    local rx = x * math.cos(spin) - z * math.sin(spin)
+    local rz = x * math.sin(spin) + z * math.cos(spin)
+
+    -- キャラの向きに追従
+    local _, cYR, _ = cCF:ToOrientation()
+    local fx = rx * math.cos(cYR) - rz * math.sin(cYR)
+    local fz = rx * math.sin(cYR) + rz * math.cos(cYR)
+
+    return cPos + Vector3.new(fx, y, fz)
+end
+
+--==================================================
+-- 位置計算：Monster（化け物型）
+-- 爪×4、牙×2、背びれ×N、尾×N、角×2 で構成
+--==================================================
+local function fm_monsterPos(i, total, t, cPos, cCF)
+    local s   = fmConfig.monsterScale
+    local _, cYR, _ = cCF:ToOrientation()
+    local cosY = math.cos(cYR)
+    local sinY = math.sin(cYR)
+    local function rotXZ(x, z)
+        return x * cosY - z * sinY, x * sinY + z * cosY
+    end
+
+    -- 総数に応じて部位を割り振る
+    -- 前爪 4個、牙 2個、角 2個、背びれ (total//3)個、尾 残り
+    local clawCount  = 4
+    local fangCount  = 2
+    local hornCount  = 2
+    local spineCount = math.floor((total - clawCount - fangCount - hornCount) * 0.4)
+    local tailCount  = total - clawCount - fangCount - hornCount - spineCount
+
+    local function clampedSpine(k, count)
+        return count > 0 and k or 1
+    end
+
+    local x, y, z = 0, 0, 0
+
+    -- 前爪（1-4）：前方左右に大きく広がる
+    if i <= clawCount then
+        local side  = (i <= 2) and -1 or 1
+        local upIdx = (i % 2 == 1) and 0 or 1
+        local flare = math.rad(fmConfig.monsterClawFlare)
+        local clawT = t * fmConfig.speed
+        -- ハサミのように開閉
+        local openAng = math.sin(clawT) * 0.3 + flare
+        local baseX   = side * (1.8 + upIdx * 0.6) * s
+        local baseZ   = -(0.5 + upIdx * 0.5) * s
+        x = baseX + side * math.cos(openAng) * 1.2 * s
+        y = (0.5 - upIdx * 0.8) * s + math.sin(clawT + i) * 0.2 * s
+        z = baseZ + math.sin(openAng) * (-0.8) * s
+
+    -- 牙（5-6）：口元の下側に鋭く伸びる
+    elseif i <= clawCount + fangCount then
+        local fIdx = i - clawCount
+        local side = fIdx == 1 and -0.4 or 0.4
+        y = 2.5 * s + math.sin(t * fmConfig.speed * 0.5) * 0.1 * s
+        x = side * s
+        z = -1.0 * s + math.sin(t * fmConfig.speed) * 0.05 * s
+
+    -- 角（7-8）：頭頂から斜め上に伸びる
+    elseif i <= clawCount + fangCount + hornCount then
+        local hIdx = i - clawCount - fangCount
+        local side  = hIdx == 1 and -0.5 or 0.5
+        y = 3.8 * s + (hIdx - 1) * 0.6 * s
+        x = side * (0.4 + (hIdx-1) * 0.2) * s
+        z = -0.2 * s
+
+    -- 背びれ（spine）：背中に波打ちながら並ぶ
+    elseif i <= clawCount + fangCount + hornCount + spineCount then
+        local sIdx = i - clawCount - fangCount - hornCount
+        local prog  = (sIdx - 1) / math.max(spineCount - 1, 1)
+        -- 背中の中央ラインに沿って並ぶ（前→後）
+        z = (-1.0 + prog * 2.0) * s
+        y = (2.5 - prog * 1.5) * s + math.sin(t * fmConfig.speed * 2 + prog * math.pi * 3) * fmConfig.monsterSpineAmp * s
+        x = math.sin(t * fmConfig.speed + prog * 1.5) * 0.15 * s  -- わずかに左右に揺れる
+
+    -- 尾（残り）：後方から弧を描いて伸びる
+    else
+        local tIdx  = i - clawCount - fangCount - hornCount - spineCount
+        local prog  = tIdx / math.max(tailCount, 1)
+        -- 尾は後方＋下方向に蛇行
+        z = (0.8 + prog * fmConfig.monsterTailLen * 0.5) * s
+        y = (-0.2 - prog * 1.5) * s + math.sin(t * fmConfig.speed * 1.5 + prog * math.pi * 4) * (0.5 + prog) * s
+        x = math.sin(t * fmConfig.speed * 0.8 + prog * math.pi * 2) * (0.3 + prog * 0.4) * s
+    end
+
+    local rx, rz = rotXZ(x, z)
+    return cPos + Vector3.new(rx, y, rz)
+end
+
+--==================================================
+-- 位置計算：Giant（巨人体型）
+-- 自分がその胴体の「中」に入る巨大な人型
+-- giantScaleで全体を大きくし、自分（HRP）は胴体中央に位置
+-- → 胴体パーツは自分を囲むように配置
+--==================================================
+local function fm_giantPos(i, total, t, cPos, cCF, head)
+    local s = fmConfig.giantScale
+    local bob = math.sin(t * fmConfig.giantBobSpeed) * fmConfig.giantBobAmp
+
+    local _, cYR, _ = cCF:ToOrientation()
+    local cosY = math.cos(cYR)
+    local sinY = math.sin(cYR)
+    local function rotXZ(x, z)
+        return x * cosY - z * sinY, x * sinY + z * cosY
+    end
+
+    local walkCycle = math.sin(t * 2)
+    local armR =  math.rad(fmConfig.giantArmSwing) * walkCycle
+    local armL = -math.rad(fmConfig.giantArmSwing) * walkCycle
+    local legR = -math.rad(fmConfig.giantLegSwing) * walkCycle
+    local legL =  math.rad(fmConfig.giantLegSwing) * walkCycle
+
+    -- 自分のHRPが巨人の「腰」にあたる位置
+    -- 巨人の胴体中央 = HRP位置
+    -- 頭は 4*s 上、脚は 3*s 下
+    local parts = {
+        -- 頭・首
+        { 0,      4.5*s+bob,   0   },  -- 1: 頭
+        { 0,      3.5*s+bob,   0   },  -- 2: 首
+
+        -- 胴体（自分を囲む＝x方向に厚み、正面と背面に2枚）
+        { 0,      2.5*s+bob,   0.9*s },  -- 3: 胸前
+        { 0,      2.5*s+bob,  -0.9*s },  -- 4: 背中
+        { 1.5*s,  2.0*s+bob,   0   },  -- 5: 右脇
+        {-1.5*s,  2.0*s+bob,   0   },  -- 6: 左脇
+        { 0,      1.5*s+bob,   0.9*s },  -- 7: 腹前
+        { 0,      1.5*s+bob,  -0.9*s },  -- 8: 腹後
+        { 0,      0.6*s+bob,   0.9*s },  -- 9: 腰前
+        { 0,      0.6*s+bob,  -0.9*s },  -- 10: 腰後
+
+        -- 肩
+        {-2.2*s,  3.0*s+bob,   0   },  -- 11: 左肩
+        { 2.2*s,  3.0*s+bob,   0   },  -- 12: 右肩
+
+        -- 腕
+        {-2.5*s, 2.2*s+bob + math.sin(armL)*0.9*s, math.cos(armL)*0.5*s-0.5*s }, -- 13: 左上腕
+        { 2.5*s, 2.2*s+bob + math.sin(armR)*0.9*s, math.cos(armR)*0.5*s-0.5*s }, -- 14: 右上腕
+        {-2.7*s, 1.2*s+bob + math.sin(armL)*1.8*s, math.cos(armL)*1.0*s-1.0*s }, -- 15: 左前腕
+        { 2.7*s, 1.2*s+bob + math.sin(armR)*1.8*s, math.cos(armR)*1.0*s-1.0*s }, -- 16: 右前腕
+        {-2.7*s, 0.2*s+bob + math.sin(armL)*2.5*s, math.cos(armL)*1.4*s-1.4*s }, -- 17: 左手
+        { 2.7*s, 0.2*s+bob + math.sin(armR)*2.5*s, math.cos(armR)*1.4*s-1.4*s }, -- 18: 右手
+
+        -- 脚（膝まで）
+        {-0.9*s,-0.5*s + math.sin(legL)*0.8*s, math.cos(legL)*0.6*s-0.6*s }, -- 19: 左太もも
+        { 0.9*s,-0.5*s + math.sin(legR)*0.8*s, math.cos(legR)*0.6*s-0.6*s }, -- 20: 右太もも
+        {-1.0*s,-2.0*s + math.sin(legL)*1.5*s, math.cos(legL)*1.2*s-1.2*s }, -- 21: 左すね
+        { 1.0*s,-2.0*s + math.sin(legR)*1.5*s, math.cos(legR)*1.2*s-1.2*s }, -- 22: 右すね
+        {-1.0*s,-3.2*s + math.sin(legL)*1.8*s, math.cos(legL)*1.5*s-1.5*s }, -- 23: 左足
+        { 1.0*s,-3.2*s + math.sin(legR)*1.8*s, math.cos(legR)*1.5*s-1.5*s }, -- 24: 右足
+    }
+
+    if i > #parts then
+        -- 余りは頭上にアクセサリ
+        local extra = i - #parts
+        local a = (extra-1) / math.max(1, total-#parts) * math.pi * 2 + t * fmConfig.speed
+        local rx_e, rz_e = rotXZ(math.cos(a)*0.8*s, math.sin(a)*0.8*s)
+        return cPos + Vector3.new(rx_e, 5.5*s + extra*0.4*s + bob, rz_e)
+    end
+
+    local p = parts[i]
+    local rx, rz = rotXZ(p[1], p[3])
+    return cPos + Vector3.new(rx, p[2], rz)
+end
+
+-- Giant用向きCF
+local function fm_giantCF(i, pos, cCF, t)
+    local _, cYR, _ = cCF:ToOrientation()
+    local base = CFrame.new(pos) * CFrame.Angles(0, cYR, 0)
+    local walkCycle = math.sin(t * 2)
+    local armL_r = -math.rad(fmConfig.giantArmSwing) * walkCycle
+    local armR_r =  math.rad(fmConfig.giantArmSwing) * walkCycle
+    local legL_r =  math.rad(fmConfig.giantLegSwing) * walkCycle
+    local legR_r = -math.rad(fmConfig.giantLegSwing) * walkCycle
+    if i == 13 or i == 15 or i == 17 then return base * CFrame.Angles(armL_r, 0, 0)
+    elseif i == 14 or i == 16 or i == 18 then return base * CFrame.Angles(armR_r, 0, 0)
+    elseif i == 19 or i == 21 or i == 23 then return base * CFrame.Angles(legL_r, 0, 0)
+    elseif i == 20 or i == 22 or i == 24 then return base * CFrame.Angles(legR_r, 0, 0)
+    end
+    return base
+end
+
+--==================================================
+-- 起動/停止
+--==================================================
+local function fm_stop()
+    if fmConn then fmConn:Disconnect(); fmConn = nil end
+    for _, obj in ipairs(fmObjs) do fm_release(obj) end
+    fmObjs = {}
+end
+
+local function fm_start()
+    fm_stop()
+    local found = fm_findByName(fmConfig.partName)
+    if #found == 0 then
+        OrionLib:MakeNotification({ Name = "エラー", Content = "'" .. fmConfig.partName .. "' が見つかりません", Time = 3 })
+        return
+    end
+    local useCount = fmConfig.useAllFound and #found or math.min(fmConfig.count, #found)
+    for i = 1, useCount do
+        local obj = fm_setupObj(found[i])
+        if obj then table.insert(fmObjs, obj) end
+    end
+    OrionLib:MakeNotification({
+        Name = "Formation 起動",
+        Content = "モード: " .. fmConfig.mode .. " / 数: " .. #fmObjs,
+        Time = 2,
+    })
+    fmTime = 0
+
+    fmConn = fm_RunService.RenderStepped:Connect(function(dt)
+        if not fmConfig.enabled then return end
+        local char = fm_LocalPlayer.Character
+        if not char then return end
+        local hrp  = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        if not hrp then return end
+
+        fmTime += dt
+        local cPos  = hrp.Position
+        local cCF   = hrp.CFrame
+        local total = #fmObjs
+        local sm    = fmConfig.smoothness
+        local mode  = fmConfig.mode
+
+        -- ===== Robot =====
+        if mode == "Robot" then
+            for i, obj in ipairs(fmObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = fm_robotPos(i, total, fmTime, cPos, cCF,
+                        fmConfig.robotScale, fmConfig.robotBobAmp, fmConfig.robotBobSpeed,
+                        fmConfig.robotArmSwing, fmConfig.robotLegSwing)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    if obj.BG and obj.BG.Parent then
+                        local cf = fm_robotCF(i, pos, cCF, fmTime,
+                            fmConfig.robotScale, fmConfig.robotArmSwing, fmConfig.robotLegSwing)
+                        obj.BG.CFrame = obj.BG.CFrame:Lerp(cf, sm)
+                    end
+                end
+            end
+
+        -- ===== Sphere =====
+        elseif mode == "Sphere" then
+            for i, obj in ipairs(fmObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = fm_spherePos(i, total, fmTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    if obj.BG and obj.BG.Parent then
+                        -- 球体は常に中心を向く
+                        local lookCF = CFrame.lookAt(pos, cPos)
+                        obj.BG.CFrame = obj.BG.CFrame:Lerp(lookCF, 0.15)
+                    end
+                end
+            end
+
+        -- ===== Monster =====
+        elseif mode == "Monster" then
+            for i, obj in ipairs(fmObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = fm_monsterPos(i, total, fmTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    if obj.BG and obj.BG.Parent then
+                        local _, cYR, _ = cCF:ToOrientation()
+                        local cf = CFrame.new(pos) * CFrame.Angles(0, cYR, 0)
+                        obj.BG.CFrame = obj.BG.CFrame:Lerp(cf, sm)
+                    end
+                end
+            end
+
+        -- ===== Giant =====
+        elseif mode == "Giant" then
+            for i, obj in ipairs(fmObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = fm_giantPos(i, total, fmTime, cPos, cCF, head)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    if obj.BG and obj.BG.Parent then
+                        local cf = fm_giantCF(i, pos, cCF, fmTime)
+                        obj.BG.CFrame = obj.BG.CFrame:Lerp(cf, sm)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+--==================================================
+-- ORION UI タブ
+--==================================================
+local FmTab = Window:MakeTab({
+    Name = "Formation",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false,
+})
+
+-- ============================================
+-- 制御セクション
+-- ============================================
+FmTab:AddSection({ Name = "⚙️ Formation 制御" })
+
+FmTab:AddToggle({
+    Name = "有効化",
+    Default = false,
+    Flag = "FmEnabled",
+    Callback = function(v)
+        fmConfig.enabled = v
+        if v then fm_start()
+        else fm_stop(); OrionLib:MakeNotification({ Name = "停止", Content = "停止しました", Time = 2 }) end
+    end,
+})
+
+FmTab:AddTextbox({
+    Name = "対象Part名",
+    Default = "GlassBoxGray",
+    TextDisappear = false,
+    Callback = function(v) fmConfig.partName = v end,
+})
+
+FmTab:AddDropdown({
+    Name = "モード",
+    Default = "Robot",
+    Options = { "Robot", "Sphere", "Monster", "Giant" },
+    Callback = function(v)
+        fmConfig.mode = v
+        if fmConfig.enabled then fm_start() end
+    end,
+})
+
+FmTab:AddToggle({ Name = "全Part使用", Default = false, Flag = "FmUseAll",
+    Callback = function(v) fmConfig.useAllFound = v end })
+
+FmTab:AddSlider({ Name = "使用数", Min = 1, Max = 60, Default = 20, Increment = 1, ValueName = "個",
+    Callback = function(v) fmConfig.count = v end })
+
+FmTab:AddSlider({ Name = "速度 (アニメ)", Min = 0, Max = 5, Default = 1.0, Increment = 0.1, ValueName = "",
+    Callback = function(v) fmConfig.speed = v end })
+
+FmTab:AddSlider({ Name = "滑らかさ", Min = 0.01, Max = 1, Default = 0.12, Increment = 0.01, ValueName = "",
+    Callback = function(v) fmConfig.smoothness = v end })
+
+FmTab:AddButton({
+    Name = "再検索 & 再起動",
+    Callback = function()
+        if fmConfig.enabled then fm_start()
+        else
+            local f = fm_findByName(fmConfig.partName)
+            OrionLib:MakeNotification({ Name = "検索", Content = #f .. "個発見", Time = 3 })
+        end
+    end,
+})
+
+-- ============================================
+-- 🤖 Robot 設定
+-- ============================================
+FmTab:AddSection({ Name = "🤖 Robot 設定（完全人体型・18部位）" })
+FmTab:AddLabel("頭・首・胸×2・腹・腰・肩×2・上腕×2")
+FmTab:AddLabel("前腕×2・手×2・太もも×2・すね×2")
+FmTab:AddLabel("19個以上は頭上にアクセサリとして追加")
+
+FmTab:AddSlider({ Name = "Robot: スケール", Min = 0.3, Max = 4, Default = 1.2, Increment = 0.1, ValueName = "x",
+    Callback = function(v) fmConfig.robotScale = v end })
+FmTab:AddSlider({ Name = "Robot: 呼吸の揺れ幅", Min = 0, Max = 1, Default = 0.15, Increment = 0.05, ValueName = "",
+    Callback = function(v) fmConfig.robotBobAmp = v end })
+FmTab:AddSlider({ Name = "Robot: 呼吸の速度", Min = 0, Max = 5, Default = 1.0, Increment = 0.1, ValueName = "",
+    Callback = function(v) fmConfig.robotBobSpeed = v end })
+FmTab:AddSlider({ Name = "Robot: 腕の振り角度", Min = 0, Max = 90, Default = 25, Increment = 1, ValueName = "°",
+    Callback = function(v) fmConfig.robotArmSwing = v end })
+FmTab:AddSlider({ Name = "Robot: 脚の振り角度", Min = 0, Max = 60, Default = 20, Increment = 1, ValueName = "°",
+    Callback = function(v) fmConfig.robotLegSwing = v end })
+
+-- ============================================
+-- 🔮 Sphere 設定
+-- ============================================
+FmTab:AddSection({ Name = "🔮 Sphere 設定（球状に囲まれる）" })
+FmTab:AddLabel("フィボナッチ球面分布で均等配置")
+FmTab:AddLabel("層ごとに逆回転して複雑な動きに")
+
+FmTab:AddSlider({ Name = "Sphere: 半径", Min = 1, Max = 20, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) fmConfig.sphereRadius = v end })
+FmTab:AddSlider({ Name = "Sphere: 回転速度", Min = -5, Max = 5, Default = 1.2, Increment = 0.1, ValueName = "",
+    Callback = function(v) fmConfig.sphereRotSpeed = v end })
+FmTab:AddSlider({ Name = "Sphere: 層数", Min = 1, Max = 5, Default = 3, Increment = 1, ValueName = "層",
+    Callback = function(v) fmConfig.sphereLayers = v end })
+FmTab:AddToggle({ Name = "Sphere: 層ごとに逆回転", Default = true, Flag = "FmSphereAlt",
+    Callback = function(v) fmConfig.sphereAltSpin = v end })
+
+-- ============================================
+-- 👹 Monster 設定
+-- ============================================
+FmTab:AddSection({ Name = "👹 Monster 設定（化け物型）" })
+FmTab:AddLabel("前爪×4・牙×2・角×2・背びれ・尾")
+FmTab:AddLabel("爪は開閉アニメ、尾は蛇行アニメ付き")
+
+FmTab:AddSlider({ Name = "Monster: スケール", Min = 0.3, Max = 4, Default = 1.5, Increment = 0.1, ValueName = "x",
+    Callback = function(v) fmConfig.monsterScale = v end })
+FmTab:AddSlider({ Name = "Monster: 爪の広がり角度", Min = 5, Max = 80, Default = 30, Increment = 1, ValueName = "°",
+    Callback = function(v) fmConfig.monsterClawFlare = v end })
+FmTab:AddSlider({ Name = "Monster: 背びれの波打ち幅", Min = 0, Max = 3, Default = 0.8, Increment = 0.1, ValueName = "",
+    Callback = function(v) fmConfig.monsterSpineAmp = v end })
+FmTab:AddSlider({ Name = "Monster: 尾の長さ係数", Min = 1, Max = 15, Default = 6, Increment = 0.5, ValueName = "",
+    Callback = function(v) fmConfig.monsterTailLen = v end })
+
+-- ============================================
+-- 🏔️ Giant 設定
+-- ============================================
+FmTab:AddSection({ Name = "🏔️ Giant 設定（自分が胴体の中に入る巨人）" })
+FmTab:AddLabel("胴体の正面・背面・左右にPartが配置")
+FmTab:AddLabel("自分はその胴体の中央にいる状態になる")
+FmTab:AddLabel("頭4.5s上・脚3.2s下の巨大人型（24部位）")
+
+FmTab:AddSlider({ Name = "Giant: スケール", Min = 0.5, Max = 6, Default = 2.5, Increment = 0.1, ValueName = "x",
+    Callback = function(v) fmConfig.giantScale = v end })
+FmTab:AddSlider({ Name = "Giant: 呼吸の揺れ幅", Min = 0, Max = 1, Default = 0.2, Increment = 0.05, ValueName = "",
+    Callback = function(v) fmConfig.giantBobAmp = v end })
+FmTab:AddSlider({ Name = "Giant: 呼吸の速度", Min = 0, Max = 5, Default = 0.8, Increment = 0.1, ValueName = "",
+    Callback = function(v) fmConfig.giantBobSpeed = v end })
+FmTab:AddSlider({ Name = "Giant: 腕の振り角度", Min = 0, Max = 90, Default = 30, Increment = 1, ValueName = "°",
+    Callback = function(v) fmConfig.giantArmSwing = v end })
+FmTab:AddSlider({ Name = "Giant: 脚の振り角度", Min = 0, Max = 60, Default = 25, Increment = 1, ValueName = "°",
+    Callback = function(v) fmConfig.giantLegSwing = v end })
 
 --==============================
 -- 初期化
