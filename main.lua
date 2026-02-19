@@ -4418,6 +4418,22 @@ local gbgConfig = {
     headHeight   = 4,
     headBobAmp   = 0.35,
     headBobSpeed = 1.8,
+
+    -- FerrisWheel (観覧車)
+    ferrisRadius     = 5,    -- 観覧車の半径
+    ferrisHeight     = 5,    -- 観覧車の中心高さ（地面から）
+    ferrisAxisAngle  = 0,    -- 観覧車の傾き角度（Y軸回転）
+    ferrisSelfSpin   = true, -- ゴンドラ自身が自転するか
+
+    -- Robot (ロボット隊形)
+    robotFormation  = "Humanoid", -- Humanoid / Surround / March
+    robotScale      = 1,
+    robotHeadH      = 5,     -- 頭パーツの高さ
+    robotBodyH      = 3,     -- 胴体パーツの高さ
+    robotArmSpread  = 2.5,   -- 腕の広がり
+    robotLegSpread  = 1.2,   -- 脚の広がり
+    robotLegH       = 1,     -- 脚の高さ
+    robotMarchAmp   = 1.2,   -- 行進振幅
 }
 
 local gbgObjs  = {}
@@ -4573,6 +4589,97 @@ local function gbg_headFloatPos(t, cPos, head)
     local headY = head and head.Position.Y or cPos.Y + 2
     local bob = math.sin(t * gbgConfig.headBobSpeed) * gbgConfig.headBobAmp
     return Vector3.new(cPos.X, headY + gbgConfig.headHeight + bob, cPos.Z)
+end
+
+-- FerrisWheel (観覧車)
+-- 観覧車のイメージ：垂直に立った輪の上をゴンドラが回る
+local function gbg_ferrisPos(i, total, t, cPos, cCF)
+    local angle = (i-1)/total * math.pi * 2 + t * gbgConfig.speed
+    local r = gbgConfig.ferrisRadius
+
+    -- 観覧車は垂直面を回るのでXZ平面ではなくXY or ZY平面
+    -- axisAngleで向きを変えられる
+    local ax = math.rad(gbgConfig.ferrisAxisAngle)
+    local x_raw = math.cos(angle) * r
+    local y_raw = math.sin(angle) * r + gbgConfig.ferrisHeight
+
+    -- 観覧車の向きをキャラの前方に合わせる
+    local _, cYR, _ = cCF:ToOrientation()
+    local totalAngle = cYR + ax
+    -- 観覧車は前後方向に立つ（look方向がZ軸）
+    local x = x_raw * math.cos(totalAngle)
+    local z = x_raw * math.sin(totalAngle)
+    local y = y_raw
+
+    return cPos + Vector3.new(x, y, z)
+end
+
+-- Robot (ロボット隊形)
+-- パーツをロボットの体の各部位に割り当てる
+local function gbg_robotPos(i, total, t, cPos, cCF)
+    local s  = gbgConfig.robotScale
+    local mode = gbgConfig.robotFormation
+    local _, cYR, _ = cCF:ToOrientation()
+    local cosY = math.cos(cYR)
+    local sinY = math.sin(cYR)
+
+    local function rotXZ(x, z)
+        return x*cosY - z*sinY, x*sinY + z*cosY
+    end
+
+    if mode == "Humanoid" then
+        -- ロボット体型：部位ごとに位置を固定割り当て
+        -- 1=頭, 2=胴, 3=左腕, 4=右腕, 5=左脚, 6=右脚, 7以降=装飾（頭上に積む）
+        local parts = {
+            {0,   gbgConfig.robotHeadH,              0   },  -- 1: 頭
+            {0,   gbgConfig.robotBodyH,              0   },  -- 2: 胴体
+            {-gbgConfig.robotArmSpread*s, gbgConfig.robotBodyH+0.5, 0}, -- 3: 左腕
+            { gbgConfig.robotArmSpread*s, gbgConfig.robotBodyH+0.5, 0}, -- 4: 右腕
+            {-gbgConfig.robotLegSpread*s, gbgConfig.robotLegH,      0}, -- 5: 左脚
+            { gbgConfig.robotLegSpread*s, gbgConfig.robotLegH,      0}, -- 6: 右脚
+        }
+        if i <= #parts then
+            local p = parts[i]
+            local rx, rz = rotXZ(p[1], p[3])
+            return cPos + Vector3.new(rx, p[2], rz)
+        else
+            -- 7個以上は頭上に積む
+            local extra = i - #parts
+            local ax = math.cos((extra-1)/(total-#parts+0.001)*math.pi*2 + t*gbgConfig.speed) * 0.5 * s
+            local az = math.sin((extra-1)/(total-#parts+0.001)*math.pi*2 + t*gbgConfig.speed) * 0.5 * s
+            local rx, rz = rotXZ(ax, az)
+            return cPos + Vector3.new(rx, gbgConfig.robotHeadH + extra*0.6*s, rz)
+        end
+
+    elseif mode == "Surround" then
+        -- 自分の周りをロボット部隊が囲む（等間隔配置＋上下の揺れ）
+        local angle = (i-1)/total * math.pi*2 + t * gbgConfig.speed * 0.3
+        local r = gbgConfig.robotArmSpread * 2 * s
+        local x = math.cos(angle) * r
+        local z = math.sin(angle) * r
+        local y = gbgConfig.robotBodyH + math.sin(t * gbgConfig.speed + i) * gbgConfig.robotMarchAmp
+        local rx, rz = rotXZ(x, z)
+        return cPos + Vector3.new(rx, y, rz)
+
+    elseif mode == "March" then
+        -- 行進隊形：縦一列で前後に並び、足踏み動作
+        local row    = math.ceil(i / 2)
+        local side   = (i % 2 == 0) and 1 or -1
+        local fwdOff = -(row - 1) * 2 * s  -- 後ろに並ぶ
+        local sideOff = side * gbgConfig.robotLegSpread * s
+        -- 足踏みのY振動（左右で逆位相）
+        local marchY = math.sin(t * gbgConfig.speed * 2 + i * math.pi) * gbgConfig.robotMarchAmp
+        local x = sideOff
+        local z = fwdOff
+        local y = gbgConfig.robotBodyH + marchY
+        -- 前進方向に向けて回転
+        local rx = x*cosY - z*sinY
+        local rz = x*sinY + z*cosY
+        return cPos + Vector3.new(rx, y, rz)
+    end
+
+    -- fallback
+    return cPos + Vector3.new(0, 3, 0)
 end
 
 -- Wings用RowPoints
@@ -4738,6 +4845,37 @@ local function gbg_start()
                     obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
                 end
             end
+
+        -- FerrisWheel (観覧車)
+        elseif mode == "FerrisWheel" then
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = gbg_ferrisPos(i, total, gbgTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    -- ゴンドラが常に下を向くように自転
+                    if gbgConfig.ferrisSelfSpin and obj.BG and obj.BG.Parent then
+                        local angle = (i-1)/total * math.pi*2 + gbgTime * gbgConfig.speed
+                        -- ゴンドラは重力方向を向く（垂直面で自転）
+                        local spinCF = CFrame.new(pos) * CFrame.Angles(angle, 0, 0)
+                        obj.BG.CFrame = obj.BG.CFrame:Lerp(spinCF, sm)
+                    end
+                end
+            end
+
+        -- Robot (ロボット隊形)
+        elseif mode == "Robot" then
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = gbg_robotPos(i, total, gbgTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    -- ロボットはキャラと同じ方向を向く
+                    if obj.BG and obj.BG.Parent then
+                        local _, pYR, _ = cCF:ToOrientation()
+                        local faceCF = CFrame.new(pos) * CFrame.Angles(0, pYR, 0)
+                        obj.BG.CFrame = obj.BG.CFrame:Lerp(faceCF, sm)
+                    end
+                end
+            end
         end
     end)
 end
@@ -4775,7 +4913,7 @@ GlassTab:AddTextbox({
 GlassTab:AddDropdown({
     Name = "モード",
     Default = "Orbit",
-    Options = { "Wings", "Orbit", "Shield", "Dome", "Spiral", "Crown", "HeadFloat" },
+    Options = { "Wings", "Orbit", "Shield", "Dome", "Spiral", "Crown", "HeadFloat", "FerrisWheel", "Robot" },
     Callback = function(v)
         gbgConfig.mode = v
         if gbgConfig.enabled then gbg_start() end
@@ -4904,6 +5042,37 @@ GlassTab:AddSlider({ Name = "HeadFloat: ふわふわ速度", Min = 0, Max = 5, D
     Callback = function(v) gbgConfig.headBobSpeed = v end })
 GlassTab:AddSlider({ Name = "HeadFloat: ふわふわ幅", Min = 0, Max = 2, Default = 0.35, Increment = 0.05, ValueName = "",
     Callback = function(v) gbgConfig.headBobAmp = v end })
+
+-- FerrisWheel設定
+GlassTab:AddSection({ Name = "🎡 FerrisWheel 設定" })
+GlassTab:AddSlider({ Name = "FerrisWheel: 半径", Min = 1, Max = 20, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.ferrisRadius = v end })
+GlassTab:AddSlider({ Name = "FerrisWheel: 中心高さ", Min = 0, Max = 15, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.ferrisHeight = v end })
+GlassTab:AddSlider({ Name = "FerrisWheel: 向き角度", Min = -180, Max = 180, Default = 0, Increment = 1, ValueName = "°",
+    Callback = function(v) gbgConfig.ferrisAxisAngle = v end })
+GlassTab:AddToggle({ Name = "FerrisWheel: ゴンドラ自転", Default = true, Flag = "GBGFerrisSpin",
+    Callback = function(v) gbgConfig.ferrisSelfSpin = v end })
+
+-- Robot設定
+GlassTab:AddSection({ Name = "🤖 Robot 設定" })
+GlassTab:AddDropdown({ Name = "Robot: 隊形", Default = "Humanoid",
+    Options = { "Humanoid", "Surround", "March" },
+    Callback = function(v) gbgConfig.robotFormation = v end })
+GlassTab:AddSlider({ Name = "Robot: スケール", Min = 0.3, Max = 3, Default = 1, Increment = 0.1, ValueName = "x",
+    Callback = function(v) gbgConfig.robotScale = v end })
+GlassTab:AddSlider({ Name = "Robot: 頭の高さ (Humanoid)", Min = 2, Max = 12, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.robotHeadH = v end })
+GlassTab:AddSlider({ Name = "Robot: 胴体の高さ (Humanoid)", Min = 1, Max = 8, Default = 3, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.robotBodyH = v end })
+GlassTab:AddSlider({ Name = "Robot: 腕の広がり", Min = 0.5, Max = 8, Default = 2.5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.robotArmSpread = v end })
+GlassTab:AddSlider({ Name = "Robot: 脚の広がり", Min = 0.3, Max = 5, Default = 1.2, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.robotLegSpread = v end })
+GlassTab:AddSlider({ Name = "Robot: 脚の高さ", Min = 0, Max = 5, Default = 1, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.robotLegH = v end })
+GlassTab:AddSlider({ Name = "Robot: 行進振幅 (March/Surround)", Min = 0, Max = 5, Default = 1.2, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.robotMarchAmp = v end })
 --==============================
 -- 初期化
 --==============================
