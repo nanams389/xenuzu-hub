@@ -1320,83 +1320,75 @@ task.spawn(function()
 end)
 
 --==============================
--- Auraタブ内に追加：ターゲット抹殺セクション
+-- 既存の AuraTab 内に直接追加
 --==============================
 AuraTab:AddSection({
-    Name = "Target Individual Kill (ターゲット個別抹殺)"
+    Name = "Target Kill (個別抹殺)"
 })
 
-local selectedTarget = nil
-local allPlayersData = {}
+local targetData = {}
 
--- プレイヤーリスト取得
-local function getNames()
-    local n = {}
-    allPlayersData = {}
-    for _, p in pairs(game.Players:GetPlayers()) do
+-- プレイヤー名のリストを取得する関数
+local function updateNames()
+    local names = {}
+    targetData = {}
+    for _, p in ipairs(game.Players:GetPlayers()) do
         if p ~= game.Players.LocalPlayer then
-            table.insert(n, p.Name)
-            allPlayersData[p.Name] = p
+            table.insert(names, p.Name)
+            targetData[p.Name] = p
         end
     end
-    return n
+    return names
 end
 
--- ターゲット選択
+-- ターゲット選択ドロップダウン
+local selectedName = ""
 local TargetDrop = AuraTab:AddDropdown({
     Name = "ターゲットを選択",
     Default = "",
-    Options = getNames(),
+    Options = updateNames(),
     Callback = function(v)
-        selectedTarget = allPlayersData[v]
+        selectedName = v
     end
 })
 
--- リスト更新ボタン
+-- リスト更新
 AuraTab:AddButton({
-    Name = "プレイヤーリスト更新",
+    Name = "プレイヤーリストを更新",
     Callback = function()
-        TargetDrop:Refresh(getNames(), true)
+        TargetDrop:Refresh(updateNames(), true)
     end
 })
 
 -- 【抹殺実行ボタン】
 AuraTab:AddButton({
-    Name = "選択したターゲットを抹殺 (TP & Kill)",
+    Name = "選択した相手を即死させる",
     Callback = function()
-        if not selectedTarget or not selectedTarget.Character then 
-            return OrionLib:MakeNotification({Name = "Error", Content = "ターゲットを選んでください", Time = 2}) 
-        end
-
-        local lp = game.Players.LocalPlayer
-        local targetChar = selectedTarget.Character
-        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
-        local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
-        local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-
-        if targetHRP and targetHum and myHRP then
-            -- 1. 相手にTP（接触判定を出すため）
-            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 2)
-            task.wait(0.1)
-
-            -- 2. GrabEventsのSetNetworkOwnerで操作権を奪う（既存のロジック流用）
+        local targetPlayer = targetData[selectedName]
+        if not targetPlayer or not targetPlayer.Character then return end
+        
+        local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local hum = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+        
+        if hrp and hum then
+            -- あなたのスクリプトで動いてる GrabEvents を直接叩く
             local rs = game:GetService("ReplicatedStorage")
-            local SetNetworkOwner = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("SetNetworkOwner")
-            if SetNetworkOwner then
-                SetNetworkOwner:FireServer(targetHRP, targetHRP.CFrame)
-            end
-
-            -- 3. 強制キル処理
-            pcall(function()
-                targetHum.Health = 0
-                targetHum:ChangeState(Enum.HumanoidStateType.Dead)
-                
-                -- グラブ解除
-                local destroyGrab = rs:FindFirstChild("GrabEvents") and rs.GrabEvents:FindFirstChild("DestroyGrabLine")
-                if destroyGrab then destroyGrab:FireServer(targetHRP) end
-            end)
+            local events = rs:FindFirstChild("GrabEvents")
             
-            OrionLib:MakeNotification({Name = "Success", Content = selectedTarget.Name .. " を抹殺しました", Time = 3})
+            if events then
+                -- 権限奪取
+                if events:FindFirstChild("SetNetworkOwner") then
+                    events.SetNetworkOwner:FireServer(hrp, hrp.CFrame)
+                end
+                
+                -- ダメージ処理（既存のKill Auraと同じ仕組み）
+                hum.Health = 0
+                
+                -- 後処理
+                if events:FindFirstChild("DestroyGrabLine") then
+                    events.DestroyGrabLine:FireServer(hrp)
+                end
+            end
         end
     end
 })
