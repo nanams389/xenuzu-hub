@@ -4902,7 +4902,119 @@ AntiGucciTab:AddLabel("ONにするとCreatureBlobmanを自動生成し")
 AntiGucciTab:AddLabel("グッチキックを防御します。")
 AntiGucciTab:AddLabel("ブロブが消えた場合は自動で再生成されます。")
 
+-- ========================================
+-- KILL タブの作成
+-- ========================================
+local KillTab = Window:MakeTab({
+    Name = "KILL", 
+    Icon = "rbxassetid://6031094674", 
+    PremiumOnly = false
+})
 
+-- 初期リストの更新
+UpdatePlayerList()
+
+KillTab:AddSection({Name = "Player Selection"})
+
+-- プレイヤー選択ドロップダウン
+local PlayerDropdown = KillTab:AddDropdown({
+    Name = "Select Target Player",
+    Default = "",
+    Options = playerNames,
+    Callback = function(selectedName)
+        SelectedPlayer = playerData[selectedName]
+        
+        if SelectedPlayer then
+            OrionLib:MakeNotification({
+                Name = "Player Selected",
+                Content = SelectedPlayer.Name .. " has been selected!",
+                Image = "rbxassetid://4483345875",
+                Time = 3
+            })
+            print("Selected Target: " .. SelectedPlayer.Name)
+        end
+    end    
+})
+
+-- アイコン追加処理の呼び出し
+task.spawn(addIconsToDropdown)
+
+-- リフレッシュボタン
+KillTab:AddButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        local newList = UpdatePlayerList()
+        PlayerDropdown:Refresh(newList, true)
+        task.wait(0.1)
+        addIconsToDropdown()
+        OrionLib:MakeNotification({
+            Name = "Refreshed",
+            Content = "Player list updated!",
+            Time = 2
+        })
+    end
+})
+
+-- リセットボタン
+KillTab:AddButton({
+    Name = "Reset Selection",
+    Callback = function()
+        SelectedPlayer = nil
+        PlayerDropdown:Set("")
+        OrionLib:MakeNotification({
+            Name = "Reset",
+            Content = "Selection cleared",
+            Time = 2
+        })
+    end
+})
+
+KillTab:AddSection({Name = "Kill Options"})
+
+-- Loop Kill トグル
+KillTab:AddToggle({
+    Name = "Loop Kill (Selected Player)",
+    Default = false,
+    Callback = function(value)
+        AttackState.LoopKill.Enabled = value
+        if value then
+            -- Kill Allが動いていたら止める
+            if AttackState.KillAll.Connection then
+                AttackState.KillAll.Connection:Disconnect()
+                AttackState.KillAll.Connection = nil
+            end
+            AttackState.LoopKill.Connection = startLoop(AttackState.LoopKill)
+        else
+            stopLoop(AttackState.LoopKill.Connection, AttackState.LoopKill)
+        end
+    end
+})
+
+-- Kill All トグル
+KillTab:AddToggle({
+    Name = "Kill All Players",
+    Default = false,
+    Callback = function(value)
+        if value then
+            -- 単体Loop Killが動いていたら止める
+            stopLoop(AttackState.LoopKill.Connection, AttackState.LoopKill)
+            
+            AttackState.KillAll.Connection = RunService.Heartbeat:Connect(function()
+                savePosition(AttackState.LoopKill)
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer then
+                        attackPlayer(player, AttackState.LoopKill, true) 
+                    end
+                end
+            end)
+        else
+            if AttackState.KillAll.Connection then
+                AttackState.KillAll.Connection:Disconnect()
+                AttackState.KillAll.Connection = nil
+            end
+        end
+    end
+})
 
 
 --==============================
