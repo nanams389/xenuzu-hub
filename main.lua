@@ -4285,6 +4285,625 @@ AntiGucciTab:AddSection({ Name = "説明" })
 AntiGucciTab:AddLabel("ONにするとCreatureBlobmanを自動生成し")
 AntiGucciTab:AddLabel("グッチキックを防御します。")
 AntiGucciTab:AddLabel("ブロブが消えた場合は自動で再生成されます。")
+
+--==============================
+-- タブ：GlassBoxGray Hub
+-- ※ OrionLib:Init() の前に挿入
+--==============================
+
+local RunService = game:GetService("RunService")
+local Players    = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
+-- 共通ユーティリティ
+--==================================================
+local function gbg_findByName(name)
+    local found = {}
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if (item:IsA("BasePart") or item:IsA("Model")) and item.Name == name then
+            table.insert(found, item)
+        end
+    end
+    return found
+end
+
+local function gbg_getBase(obj)
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+    elseif obj:IsA("BasePart") then
+        return obj
+    end
+    return nil
+end
+
+local function gbg_setupMovers(part)
+    if not part then return nil, nil end
+    local eP = part:FindFirstChildOfClass("BodyPosition")
+    local eG = part:FindFirstChildOfClass("BodyGyro")
+    if eP then eP:Destroy() end
+    if eG then eG:Destroy() end
+    local BP = Instance.new("BodyPosition")
+    BP.P = 25000; BP.D = 800
+    BP.MaxForce = Vector3.new(1,1,1) * 1e10
+    BP.Parent = part
+    local BG = Instance.new("BodyGyro")
+    BG.P = 25000; BG.D = 800
+    BG.MaxTorque = Vector3.new(1,1,1) * 1e10
+    BG.Parent = part
+    return BP, BG
+end
+
+local function gbg_setupObj(obj)
+    local base = gbg_getBase(obj)
+    if not base then return nil end
+    if obj:IsA("Model") then
+        for _, c in ipairs(obj:GetDescendants()) do
+            if c:IsA("BasePart") then
+                c.CanCollide = false; c.CanTouch = false; c.Anchored = false
+            end
+        end
+    else
+        base.CanCollide = false; base.CanTouch = false; base.Anchored = false
+    end
+    local BP, BG = gbg_setupMovers(base)
+    return { BP = BP, BG = BG, Part = base, Original = obj }
+end
+
+local function gbg_release(obj)
+    if obj.BP and obj.BP.Parent then obj.BP:Destroy() end
+    if obj.BG and obj.BG.Parent then obj.BG:Destroy() end
+    if obj.Part and obj.Part.Parent then obj.Part.Anchored = true end
+end
+
+--==================================================
+-- GlassBoxGray 設定
+--==================================================
+local gbgConfig = {
+    enabled      = false,
+    partName     = "GlassBoxGray",
+    mode         = "Orbit",   -- Wings / Orbit / Shield / Dome / Spiral / Crown / HeadFloat
+    count        = 8,
+    useAllFound  = false,
+    speed        = 1.5,
+    smoothness   = 0.15,
+
+    -- Wings
+    wingsSpacing        = 1.3,
+    wingsAmplitude      = 2.5,
+    wingsPhaseOffset    = 0.3,
+    wingsDistMult       = 0.4,
+    wingsHorizAmount    = 0.5,
+    wingsForward        = 3,
+    wingsHeight         = 1,
+    wingsXRot           = -45,
+    wingsYRot           = 0,
+    wingsZRot           = 90,
+
+    -- Orbit (円周回転)
+    orbitRadius  = 5,
+    orbitHeight  = 0,
+    orbitShape   = "Circle", -- Circle / Wave / Figure8 / Star / DNA
+    waveAmp      = 1.5,
+    waveFreq     = 2,
+    starPoints   = 5,
+    starInner    = 2,
+    helixH       = 5,
+    faceCenter   = false,
+    yRotOffset   = 0,
+
+    -- Shield (自分を囲む盾状の壁)
+    shieldRadius = 3.5,
+    shieldHeight = 0,
+    shieldLayers = 1,       -- 層数 1〜3
+    shieldLayerGap = 1.2,   -- 層間距離
+    shieldSpin   = true,    -- 回転するか
+
+    -- Dome (半球状に頭上を覆う)
+    domeRadius   = 4,
+    domeLayers   = 3,       -- 半球の段数
+
+    -- Spiral (螺旋状に上昇)
+    spiralRadius = 3,
+    spiralHeight = 6,
+    spiralLoops  = 2,
+
+    -- Crown (頭上に王冠状)
+    crownRadius  = 2.5,
+    crownHeight  = 3.5,
+    crownBobAmp  = 0.3,
+    crownBobSpeed = 1.5,
+
+    -- HeadFloat (頭上に1個浮く)
+    headHeight   = 4,
+    headBobAmp   = 0.35,
+    headBobSpeed = 1.8,
+}
+
+local gbgObjs  = {}
+local gbgTime  = 0
+local gbgConn  = nil
+
+--==================================================
+-- 位置計算関数
+--==================================================
+
+-- Orbit
+local function gbg_orbitPos(i, total, t, cPos, cCF)
+    local angle = (i-1)/total * math.pi * 2
+    local r = gbgConfig.orbitRadius
+    local x, y, z = 0, gbgConfig.orbitHeight, 0
+    local shape = gbgConfig.orbitShape
+
+    if shape == "Circle" then
+        local a = angle + t * gbgConfig.speed
+        x = math.cos(a)*r; z = math.sin(a)*r
+
+    elseif shape == "Wave" then
+        local a = angle + t * gbgConfig.speed
+        x = math.cos(a)*r; z = math.sin(a)*r
+        y = gbgConfig.orbitHeight + math.sin(a * gbgConfig.waveFreq + t * gbgConfig.speed) * gbgConfig.waveAmp
+
+    elseif shape == "Figure8" then
+        local a = t * gbgConfig.speed + angle
+        x = math.sin(a)*r; z = math.sin(a*2)*r*0.5
+
+    elseif shape == "Star" then
+        local pts = gbgConfig.starPoints
+        local iR  = gbgConfig.starInner
+        local a   = angle + t * gbgConfig.speed
+        local pA  = (math.pi*2)/pts
+        local blend = (a % pA)/pA
+        local dist = iR + (r-iR)*math.abs(math.sin(blend*math.pi))
+        x = math.cos(a)*dist; z = math.sin(a)*dist
+
+    elseif shape == "DNA" then
+        local a = angle + t * gbgConfig.speed
+        local strand = (i%2==0) and 1 or -1
+        x = math.cos(a + strand*math.pi)*r
+        z = math.sin(a + strand*math.pi)*r*0.3
+        y = gbgConfig.orbitHeight + (a/(math.pi*2))*gbgConfig.helixH*0.5
+    end
+
+    local yOff = math.rad(gbgConfig.yRotOffset)
+    local rx = x*math.cos(yOff) - z*math.sin(yOff)
+    local rz = x*math.sin(yOff) + z*math.cos(yOff)
+    x, z = rx, rz
+    local _, cYR, _ = cCF:ToOrientation()
+    return cPos + Vector3.new(
+        x*math.cos(cYR) - z*math.sin(cYR),
+        y,
+        x*math.sin(cYR) + z*math.cos(cYR)
+    )
+end
+
+-- Shield (円盤状の壁・多層対応)
+local function gbg_shieldPos(i, total, t, cPos, cCF)
+    -- 層と位置を計算
+    local perLayer = math.ceil(total / gbgConfig.shieldLayers)
+    local layer    = math.floor((i-1) / perLayer)
+    local idxInLayer = ((i-1) % perLayer)
+    local angle = idxInLayer / perLayer * math.pi * 2
+    local r = gbgConfig.shieldRadius + layer * gbgConfig.shieldLayerGap
+
+    local spin = gbgConfig.shieldSpin and (t * gbgConfig.speed) or 0
+    local a = angle + spin + (layer * math.pi / gbgConfig.shieldLayers) -- 層ごとにずらす
+
+    local x = math.cos(a) * r
+    local z = math.sin(a) * r
+    local y = gbgConfig.shieldHeight
+
+    local _, cYR, _ = cCF:ToOrientation()
+    return cPos + Vector3.new(
+        x*math.cos(cYR) - z*math.sin(cYR),
+        y,
+        x*math.sin(cYR) + z*math.cos(cYR)
+    )
+end
+
+-- Dome (半球状)
+local function gbg_domePos(i, total, t, cPos, cCF)
+    local layers = gbgConfig.domeLayers
+    local perLayer = math.ceil(total / layers)
+    local layer    = math.floor((i-1) / perLayer) + 1
+    local idxInLayer = ((i-1) % perLayer)
+    local r = gbgConfig.domeRadius
+
+    -- 緯度 (0=水平〜pi/2=頂点)
+    local lat = (layer / layers) * (math.pi / 2)
+    local layerR = r * math.cos(lat)
+    local y = r * math.sin(lat)
+
+    local countInLayer = math.min(perLayer, total - (layer-1)*perLayer)
+    local angle = (idxInLayer / math.max(countInLayer,1)) * math.pi * 2
+    local spin  = t * gbgConfig.speed * (layer % 2 == 0 and 1 or -1) -- 交互に逆回転
+    local a = angle + spin
+
+    local x = math.cos(a) * layerR
+    local z = math.sin(a) * layerR
+
+    local _, cYR, _ = cCF:ToOrientation()
+    return cPos + Vector3.new(
+        x*math.cos(cYR) - z*math.sin(cYR),
+        y + 1, -- 少し上に
+        x*math.sin(cYR) + z*math.cos(cYR)
+    )
+end
+
+-- Spiral (螺旋)
+local function gbg_spiralPos(i, total, t, cPos, cCF)
+    local prog = (i-1) / math.max(total-1, 1)
+    local loops = gbgConfig.spiralLoops
+    local angle = prog * math.pi * 2 * loops + t * gbgConfig.speed
+    local r = gbgConfig.spiralRadius
+    local x = math.cos(angle) * r
+    local z = math.sin(angle) * r
+    local y = prog * gbgConfig.spiralHeight - gbgConfig.spiralHeight * 0.3
+
+    local _, cYR, _ = cCF:ToOrientation()
+    return cPos + Vector3.new(
+        x*math.cos(cYR) - z*math.sin(cYR),
+        y,
+        x*math.sin(cYR) + z*math.cos(cYR)
+    )
+end
+
+-- Crown (王冠)
+local function gbg_crownPos(i, total, t, cPos, cCF, head)
+    local angle = (i-1)/total * math.pi * 2 + t * gbgConfig.speed
+    local r = gbgConfig.crownRadius
+    local x = math.cos(angle) * r
+    local z = math.sin(angle) * r
+    -- 交互に高低をつける王冠の歯
+    local yOscillate = (i % 2 == 0) and 0.6 or 0
+    local headY = head and head.Position.Y or cPos.Y + 2
+    local bob = math.sin(t * gbgConfig.crownBobSpeed) * gbgConfig.crownBobAmp
+    local y = headY + gbgConfig.crownHeight + yOscillate + bob
+
+    local _, cYR, _ = cCF:ToOrientation()
+    return Vector3.new(cPos.X, 0, cPos.Z) + Vector3.new(
+        x*math.cos(cYR) - z*math.sin(cYR),
+        y,
+        x*math.sin(cYR) + z*math.cos(cYR)
+    )
+end
+
+-- HeadFloat (頭上1個)
+local function gbg_headFloatPos(t, cPos, head)
+    local headY = head and head.Position.Y or cPos.Y + 2
+    local bob = math.sin(t * gbgConfig.headBobSpeed) * gbgConfig.headBobAmp
+    return Vector3.new(cPos.X, headY + gbgConfig.headHeight + bob, cPos.Z)
+end
+
+-- Wings用RowPoints
+local function gbg_createWingsPoints(count)
+    local pts = {}
+    if count == 0 then return pts end
+    local half = math.floor(count/2)
+    local isOdd = count%2 == 1
+    local idx = 1
+    if isOdd then table.insert(pts, {baseOffsetX=0, index=idx}); idx+=1 end
+    for i = 1, half do
+        local off = i * gbgConfig.wingsSpacing
+        table.insert(pts, {baseOffsetX=off,  index=idx}); idx+=1
+        table.insert(pts, {baseOffsetX=-off, index=idx}); idx+=1
+    end
+    return pts
+end
+
+--==================================================
+-- 起動/停止
+--==================================================
+local gbgRowPoints = {}
+
+local function gbg_stop()
+    if gbgConn then gbgConn:Disconnect(); gbgConn = nil end
+    for _, obj in ipairs(gbgObjs) do gbg_release(obj) end
+    gbgObjs = {}; gbgRowPoints = {}
+end
+
+local function gbg_start()
+    gbg_stop()
+    local found = gbg_findByName(gbgConfig.partName)
+    if #found == 0 then
+        OrionLib:MakeNotification({ Name = "エラー", Content = "'" .. gbgConfig.partName .. "' が見つかりません", Time = 3 })
+        return
+    end
+    local useCount = gbgConfig.useAllFound and #found or math.min(gbgConfig.count, #found)
+    for i = 1, useCount do
+        local obj = gbg_setupObj(found[i])
+        if obj then table.insert(gbgObjs, obj) end
+    end
+    if gbgConfig.mode == "Wings" then
+        gbgRowPoints = gbg_createWingsPoints(#gbgObjs)
+    end
+    OrionLib:MakeNotification({
+        Name = "GlassBoxGray 起動",
+        Content = "モード: " .. gbgConfig.mode .. " / 数: " .. #gbgObjs,
+        Time = 2,
+    })
+    gbgTime = 0
+
+    gbgConn = RunService.RenderStepped:Connect(function(dt)
+        if not gbgConfig.enabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp  = char:FindFirstChild("HumanoidRootPart")
+        local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+        local head  = char:FindFirstChild("Head")
+        if not hrp then return end
+
+        gbgTime += dt
+        local cPos  = hrp.Position
+        local cCF   = hrp.CFrame
+        local total = #gbgObjs
+        local mode  = gbgConfig.mode
+        local sm    = gbgConfig.smoothness
+
+        -- Wings
+        if mode == "Wings" then
+            local basePos = (torso and torso.Position or cPos)
+                + Vector3.new(0, gbgConfig.wingsHeight, 0)
+                + cCF.LookVector * gbgConfig.wingsForward
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent and obj.BG and obj.BG.Parent then
+                    local pt = gbgRowPoints[i]
+                    if not pt then continue end
+                    local dist = math.abs(pt.baseOffsetX)
+                    local amp  = gbgConfig.wingsAmplitude + dist * gbgConfig.wingsDistMult
+                    local wave = math.sin(gbgTime * gbgConfig.speed + pt.index * gbgConfig.wingsPhaseOffset)
+                    local hOff = pt.baseOffsetX
+                    if pt.baseOffsetX ~= 0 then
+                        local sign = pt.baseOffsetX > 0 and 1 or -1
+                        hOff = pt.baseOffsetX - sign * math.abs(pt.baseOffsetX) * wave * gbgConfig.wingsHorizAmount
+                    end
+                    local pos = basePos + cCF.RightVector * hOff + Vector3.new(0, wave*amp, 0)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    local cf = CFrame.new(pos)
+                    local _, pYR, _ = cCF:ToOrientation()
+                    cf = cf * CFrame.Angles(0, pYR + math.rad(gbgConfig.wingsYRot), 0)
+                       * CFrame.Angles(math.rad(gbgConfig.wingsXRot), 0, 0)
+                       * CFrame.Angles(0, 0, math.rad(gbgConfig.wingsZRot))
+                    obj.BG.CFrame = obj.BG.CFrame:Lerp(cf, sm)
+                end
+            end
+
+        -- Orbit
+        elseif mode == "Orbit" then
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = gbg_orbitPos(i, total, gbgTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    if gbgConfig.faceCenter and obj.BG and obj.BG.Parent then
+                        obj.BG.CFrame = obj.BG.CFrame:Lerp(CFrame.lookAt(pos, cPos), 0.2)
+                    end
+                end
+            end
+
+        -- Shield
+        elseif mode == "Shield" then
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = gbg_shieldPos(i, total, gbgTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                    if obj.BG and obj.BG.Parent then
+                        -- 盾は常に外側を向く
+                        local outDir = (pos - cPos)
+                        if outDir.Magnitude > 0.01 then
+                            local lookCF = CFrame.lookAt(pos, cPos + outDir * 2)
+                            obj.BG.CFrame = obj.BG.CFrame:Lerp(lookCF, 0.15)
+                        end
+                    end
+                end
+            end
+
+        -- Dome
+        elseif mode == "Dome" then
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = gbg_domePos(i, total, gbgTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                end
+            end
+
+        -- Spiral
+        elseif mode == "Spiral" then
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = gbg_spiralPos(i, total, gbgTime, cPos, cCF)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                end
+            end
+
+        -- Crown
+        elseif mode == "Crown" then
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local pos = gbg_crownPos(i, total, gbgTime, cPos, cCF, head)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                end
+            end
+
+        -- HeadFloat
+        elseif mode == "HeadFloat" then
+            -- 全部頭上に重ねて浮かべる（ランダムな微小オフセットで分散）
+            for i, obj in ipairs(gbgObjs) do
+                if obj.BP and obj.BP.Parent then
+                    local spread = 0.3
+                    local angle  = (i-1)/total * math.pi*2
+                    local ox = math.cos(angle + gbgTime * gbgConfig.speed * 0.3) * spread * ((i-1) % 3)
+                    local oz = math.sin(angle + gbgTime * gbgConfig.speed * 0.3) * spread * ((i-1) % 3)
+                    local basePos = gbg_headFloatPos(gbgTime, cPos, head)
+                    local pos = basePos + Vector3.new(ox, (i-1)*0.15, oz)
+                    obj.BP.Position = obj.BP.Position + (pos - obj.BP.Position) * sm
+                end
+            end
+        end
+    end)
+end
+
+--==================================================
+-- ORION UI タブ
+--==================================================
+local GlassTab = Window:MakeTab({
+    Name = "GlassBoxGray",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false,
+})
+
+-- 制御
+GlassTab:AddSection({ Name = "⬜ GlassBoxGray 制御" })
+
+GlassTab:AddToggle({
+    Name = "有効化",
+    Default = false,
+    Flag = "GBGEnabled",
+    Callback = function(v)
+        gbgConfig.enabled = v
+        if v then gbg_start()
+        else gbg_stop(); OrionLib:MakeNotification({ Name = "GBG停止", Content = "停止しました", Time = 2 }) end
+    end,
+})
+
+GlassTab:AddTextbox({
+    Name = "対象Part名",
+    Default = "GlassBoxGray",
+    TextDisappear = false,
+    Callback = function(v) gbgConfig.partName = v end,
+})
+
+GlassTab:AddDropdown({
+    Name = "モード",
+    Default = "Orbit",
+    Options = { "Wings", "Orbit", "Shield", "Dome", "Spiral", "Crown", "HeadFloat" },
+    Callback = function(v)
+        gbgConfig.mode = v
+        if gbgConfig.enabled then gbg_start() end
+    end,
+})
+
+GlassTab:AddToggle({ Name = "全Part使用", Default = false, Flag = "GBGUseAll",
+    Callback = function(v) gbgConfig.useAllFound = v end })
+
+GlassTab:AddSlider({ Name = "使用数", Min = 1, Max = 60, Default = 8, Increment = 1, ValueName = "個",
+    Callback = function(v) gbgConfig.count = v end })
+
+GlassTab:AddSlider({ Name = "速度", Min = -10, Max = 10, Default = 1.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.speed = v end })
+
+GlassTab:AddSlider({ Name = "滑らかさ", Min = 0.01, Max = 1, Default = 0.15, Increment = 0.01, ValueName = "",
+    Callback = function(v) gbgConfig.smoothness = v end })
+
+GlassTab:AddButton({
+    Name = "再検索 & 再起動",
+    Callback = function()
+        if gbgConfig.enabled then gbg_start()
+        else
+            local f = gbg_findByName(gbgConfig.partName)
+            OrionLib:MakeNotification({ Name = "検索", Content = #f .. "個発見", Time = 3 })
+        end
+    end,
+})
+
+-- Wings設定
+GlassTab:AddSection({ Name = "🪶 Wings 設定" })
+GlassTab:AddSlider({ Name = "Wings: 間隔", Min = 0.3, Max = 5, Default = 1.3, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.wingsSpacing = v; if gbgConfig.enabled and gbgConfig.mode=="Wings" then gbgRowPoints = gbg_createWingsPoints(#gbgObjs) end end })
+GlassTab:AddSlider({ Name = "Wings: 振幅", Min = 0, Max = 10, Default = 2.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.wingsAmplitude = v end })
+GlassTab:AddSlider({ Name = "Wings: 位相差", Min = 0, Max = 2, Default = 0.3, Increment = 0.05, ValueName = "",
+    Callback = function(v) gbgConfig.wingsPhaseOffset = v end })
+GlassTab:AddSlider({ Name = "Wings: 距離振幅増加", Min = 0, Max = 2, Default = 0.4, Increment = 0.05, ValueName = "",
+    Callback = function(v) gbgConfig.wingsDistMult = v end })
+GlassTab:AddSlider({ Name = "Wings: 内側寄り", Min = 0, Max = 2, Default = 0.5, Increment = 0.05, ValueName = "",
+    Callback = function(v) gbgConfig.wingsHorizAmount = v end })
+GlassTab:AddSlider({ Name = "Wings: 前方オフセット", Min = 0, Max = 15, Default = 3, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.wingsForward = v end })
+GlassTab:AddSlider({ Name = "Wings: 高さ", Min = -5, Max = 10, Default = 1, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.wingsHeight = v end })
+GlassTab:AddSlider({ Name = "Wings: X軸回転", Min = -180, Max = 180, Default = -45, Increment = 1, ValueName = "°",
+    Callback = function(v) gbgConfig.wingsXRot = v end })
+GlassTab:AddSlider({ Name = "Wings: Y軸回転", Min = -180, Max = 180, Default = 0, Increment = 1, ValueName = "°",
+    Callback = function(v) gbgConfig.wingsYRot = v end })
+GlassTab:AddSlider({ Name = "Wings: Z軸回転", Min = -180, Max = 180, Default = 90, Increment = 1, ValueName = "°",
+    Callback = function(v) gbgConfig.wingsZRot = v end })
+GlassTab:AddButton({ Name = "Wings: 回転リセット", Callback = function()
+    gbgConfig.wingsXRot=-45; gbgConfig.wingsYRot=0; gbgConfig.wingsZRot=90
+    OrionLib:MakeNotification({ Name = "リセット", Content = "Wings回転をリセット", Time = 2 })
+end })
+
+-- Orbit設定
+GlassTab:AddSection({ Name = "🌀 Orbit 設定" })
+GlassTab:AddDropdown({ Name = "Orbit: 形状", Default = "Circle",
+    Options = { "Circle", "Wave", "Figure8", "Star", "DNA" },
+    Callback = function(v) gbgConfig.orbitShape = v end })
+GlassTab:AddSlider({ Name = "Orbit: 半径", Min = 1, Max = 30, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.orbitRadius = v end })
+GlassTab:AddSlider({ Name = "Orbit: 高さ", Min = -5, Max = 10, Default = 0, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.orbitHeight = v end })
+GlassTab:AddSlider({ Name = "Orbit: Y軸オフセット", Min = -180, Max = 180, Default = 0, Increment = 1, ValueName = "°",
+    Callback = function(v) gbgConfig.yRotOffset = v end })
+GlassTab:AddSlider({ Name = "Orbit: 波振幅 (Wave)", Min = 0, Max = 5, Default = 1.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.waveAmp = v end })
+GlassTab:AddSlider({ Name = "Orbit: 波周波数 (Wave)", Min = 1, Max = 10, Default = 2, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.waveFreq = v end })
+GlassTab:AddSlider({ Name = "Orbit: 螺旋高さ (DNA)", Min = 1, Max = 20, Default = 5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.helixH = v end })
+GlassTab:AddSlider({ Name = "Orbit: 星頂点数 (Star)", Min = 3, Max = 12, Default = 5, Increment = 1, ValueName = "点",
+    Callback = function(v) gbgConfig.starPoints = v end })
+GlassTab:AddSlider({ Name = "Orbit: 星内半径 (Star)", Min = 0.5, Max = 10, Default = 2, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.starInner = v end })
+GlassTab:AddToggle({ Name = "Orbit: 中心を向く", Default = false, Flag = "GBGFace",
+    Callback = function(v) gbgConfig.faceCenter = v end })
+
+-- Shield設定
+GlassTab:AddSection({ Name = "🛡️ Shield 設定" })
+GlassTab:AddSlider({ Name = "Shield: 半径", Min = 1, Max = 15, Default = 3.5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.shieldRadius = v end })
+GlassTab:AddSlider({ Name = "Shield: 高さ", Min = -5, Max = 8, Default = 0, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.shieldHeight = v end })
+GlassTab:AddSlider({ Name = "Shield: 層数", Min = 1, Max = 3, Default = 1, Increment = 1, ValueName = "層",
+    Callback = function(v) gbgConfig.shieldLayers = v end })
+GlassTab:AddSlider({ Name = "Shield: 層間距離", Min = 0.5, Max = 5, Default = 1.2, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.shieldLayerGap = v end })
+GlassTab:AddToggle({ Name = "Shield: 回転する", Default = true, Flag = "GBGShieldSpin",
+    Callback = function(v) gbgConfig.shieldSpin = v end })
+
+-- Dome設定
+GlassTab:AddSection({ Name = "⛩️ Dome 設定" })
+GlassTab:AddSlider({ Name = "Dome: 半径", Min = 1, Max = 15, Default = 4, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.domeRadius = v end })
+GlassTab:AddSlider({ Name = "Dome: 層数", Min = 1, Max = 5, Default = 3, Increment = 1, ValueName = "層",
+    Callback = function(v) gbgConfig.domeLayers = v end })
+
+-- Spiral設定
+GlassTab:AddSection({ Name = "🌪️ Spiral 設定" })
+GlassTab:AddSlider({ Name = "Spiral: 半径", Min = 1, Max = 15, Default = 3, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.spiralRadius = v end })
+GlassTab:AddSlider({ Name = "Spiral: 高さ範囲", Min = 1, Max = 20, Default = 6, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.spiralHeight = v end })
+GlassTab:AddSlider({ Name = "Spiral: ループ数", Min = 1, Max = 8, Default = 2, Increment = 1, ValueName = "周",
+    Callback = function(v) gbgConfig.spiralLoops = v end })
+
+-- Crown設定
+GlassTab:AddSection({ Name = "👑 Crown 設定" })
+GlassTab:AddSlider({ Name = "Crown: 半径", Min = 0.5, Max = 8, Default = 2.5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.crownRadius = v end })
+GlassTab:AddSlider({ Name = "Crown: 高さ", Min = 1, Max = 10, Default = 3.5, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.crownHeight = v end })
+GlassTab:AddSlider({ Name = "Crown: ふわふわ速度", Min = 0, Max = 5, Default = 1.5, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.crownBobSpeed = v end })
+GlassTab:AddSlider({ Name = "Crown: ふわふわ幅", Min = 0, Max = 2, Default = 0.3, Increment = 0.05, ValueName = "",
+    Callback = function(v) gbgConfig.crownBobAmp = v end })
+
+-- HeadFloat設定
+GlassTab:AddSection({ Name = "🎈 HeadFloat 設定" })
+GlassTab:AddSlider({ Name = "HeadFloat: 高さ", Min = 1, Max = 10, Default = 4, Increment = 0.5, ValueName = "",
+    Callback = function(v) gbgConfig.headHeight = v end })
+GlassTab:AddSlider({ Name = "HeadFloat: ふわふわ速度", Min = 0, Max = 5, Default = 1.8, Increment = 0.1, ValueName = "",
+    Callback = function(v) gbgConfig.headBobSpeed = v end })
+GlassTab:AddSlider({ Name = "HeadFloat: ふわふわ幅", Min = 0, Max = 2, Default = 0.35, Increment = 0.05, ValueName = "",
+    Callback = function(v) gbgConfig.headBobAmp = v end })
 --==============================
 -- 初期化
 --==============================
