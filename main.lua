@@ -1835,6 +1835,75 @@ do
     })
 end
 
+-- ============================================================
+-- Anti Loop (Auto Plot Stay)
+-- ============================================================
+
+local antiLoopActive = false
+
+invulnerabilitySection:AddToggle({
+    Name = "Anti-Loop (Auto Plot Stay)",
+    Default = false,
+    Callback = function(Value)
+        antiLoopActive = Value
+        
+        if Value then
+            task.spawn(function()
+                local lp = game.Players.LocalPlayer
+                
+                -- 自分のプロット（Plot1~5）を特定する関数
+                local function GetMyPlot()
+                    for i = 1, 5 do
+                        local plotName = "Plot" .. i
+                        local plot = workspace.Plots:FindFirstChild(plotName)
+                        if plot then
+                            local sign = plot:FindFirstChild("PlotSign")
+                            local owners = sign and sign:FindFirstChild("ThisPlotsOwners")
+                            if owners then
+                                for _, owner in pairs(owners:GetChildren()) do
+                                    if owner.Value == lp.Name then
+                                        return plot
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    return nil
+                end
+
+                while antiLoopActive do
+                    task.wait(0.1)
+                    pcall(function()
+                        local char = lp.Character
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        local hum = char and char:FindFirstChild("Humanoid")
+
+                        if hrp then
+                            local myPlot = GetMyPlot()
+                            if myPlot then
+                                -- プロットの中心座標を取得（HouseLoadModelなどを基準にする）
+                                -- 画像の構造上、HouseLoadModelのHouseLoadButtonの位置を基準点にします
+                                local targetPart = myPlot:FindFirstChild("HouseLoadModel", true) 
+                                                and myPlot.HouseLoadModel:FindFirstChild("HouseLoadButton", true)
+                                
+                                if targetPart then
+                                    local plotPos = targetPart.Position
+                                    local dist = (hrp.Position - plotPos).Magnitude
+
+                                    -- 距離が離れすぎている（プロット外）、または死んでいる場合
+                                    if dist > 50 or (hum and hum.Health <= 0) then
+                                        -- 一瞬でテレポート（少し上に配置してスタック防止）
+                                        hrp.CFrame = CFrame.new(plotPos + Vector3.new(0, 5, 0))
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
+    end
+})
 --==============================
 -- タブ：究極オーラ (Ultimate)
 --==============================
