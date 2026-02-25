@@ -1836,13 +1836,14 @@ do
 end
 
 -- ============================================================
--- Anti Loop (Auto Plot Stay)
+-- Anti Loop (Auto Plot Cycle) - プロット間移動版
 -- ============================================================
 
 local antiLoopActive = false
+local currentTargetIndex = 1 -- 現在狙っているプロット番号
 
 invulnerabilitySection:AddToggle({
-    Name = "Anti-Loop (Auto Plot Stay)",
+    Name = "Enable Anti-Loop (Plot Cycler)",
     Default = false,
     Callback = function(Value)
         antiLoopActive = Value
@@ -1851,20 +1852,15 @@ invulnerabilitySection:AddToggle({
             task.spawn(function()
                 local lp = game.Players.LocalPlayer
                 
-                -- 自分のプロット（Plot1~5）を特定する関数
-                local function GetMyPlot()
-                    for i = 1, 5 do
-                        local plotName = "Plot" .. i
-                        local plot = workspace.Plots:FindFirstChild(plotName)
-                        if plot then
-                            local sign = plot:FindFirstChild("PlotSign")
-                            local owners = sign and sign:FindFirstChild("ThisPlotsOwners")
-                            if owners then
-                                for _, owner in pairs(owners:GetChildren()) do
-                                    if owner.Value == lp.Name then
-                                        return plot
-                                    end
-                                end
+                -- 特定の番号のプロットからCFrameを取得する関数
+                local function GetPlotCFrameByIndex(index)
+                    local plot = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild("Plot" .. index)
+                    if plot then
+                        local house = plot:FindFirstChild("House")
+                        if house then
+                            local primary = house:IsA("Model") and (house.PrimaryPart or house:FindFirstChildWhichIsA("BasePart", true))
+                            if primary then
+                                return primary.CFrame
                             end
                         end
                     end
@@ -1875,26 +1871,40 @@ invulnerabilitySection:AddToggle({
                     task.wait(0.1)
                     pcall(function()
                         local char = lp.Character
-                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                        local hum = char and char:FindFirstChild("Humanoid")
-
-                        if hrp then
-                            local myPlot = GetMyPlot()
-                            if myPlot then
-                                -- プロットの中心座標を取得（HouseLoadModelなどを基準にする）
-                                -- 画像の構造上、HouseLoadModelのHouseLoadButtonの位置を基準点にします
-                                local targetPart = myPlot:FindFirstChild("HouseLoadModel", true) 
-                                                and myPlot.HouseLoadModel:FindFirstChild("HouseLoadButton", true)
+                        if not char then return end
+                        
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        local hum = char:FindFirstChild("Humanoid")
+                        
+                        -- 現在のターゲットプロットの座標を取得
+                        local targetCFrame = GetPlotCFrameByIndex(currentTargetIndex)
+                        
+                        if hrp and targetCFrame then
+                            local dist = (hrp.Position - targetCFrame.Position).Magnitude
+                            
+                            -- 【判定】死んだか、または現在のプロットから外に出たか
+                            if (hum and hum.Health <= 0) or dist > 70 then
                                 
-                                if targetPart then
-                                    local plotPos = targetPart.Position
-                                    local dist = (hrp.Position - plotPos).Magnitude
-
-                                    -- 距離が離れすぎている（プロット外）、または死んでいる場合
-                                    if dist > 50 or (hum and hum.Health <= 0) then
-                                        -- 一瞬でテレポート（少し上に配置してスタック防止）
-                                        hrp.CFrame = CFrame.new(plotPos + Vector3.new(0, 5, 0))
+                                -- 外に出た場合のみ、次のプロット番号へ更新（1→2→3→4→5→1...）
+                                if hum and hum.Health > 0 then
+                                    currentTargetIndex = currentTargetIndex + 1
+                                    if currentTargetIndex > 5 then
+                                        currentTargetIndex = 1
                                     end
+                                    -- 更新した番号の座標を再取得
+                                    targetCFrame = GetPlotCFrameByIndex(currentTargetIndex)
+                                end
+                                
+                                -- テレポート実行
+                                if targetCFrame then
+                                    hrp.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+                                    
+                                    -- 通知（任意）
+                                    OrionLib:MakeNotification({
+                                        Name = "Anti-Loop",
+                                        Content = "Plot " .. currentTargetIndex .. " へ移動しました",
+                                        Time = 1
+                                    })
                                 end
                             end
                         end
