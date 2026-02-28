@@ -3392,6 +3392,308 @@ AntiGucciInfoBox:AddLabel("ONにするとCreatureBlobmanを自動生成し")
 AntiGucciInfoBox:AddLabel("グッチキックを防御します。")
 AntiGucciInfoBox:AddLabel("ブロブが消えた場合は自動で再生成されます。")
 
+-- ========================================
+-- KILL Tab (Speed & Precision MAX + 3rd Person Lock)
+-- ========================================
 
+local SelectedPlayerName = nil
+local LoopKillEnabled = false
+local OriginalPosition = nil
+
+-- UI構成
+local KillTab = Window:AddTab("KILL", "skull")
+local SelectionBox = KillTab:AddLeftGroupbox("Player Selection")
+local KillOptionsBox = KillTab:AddLeftGroupbox("Kill Options")
+
+-- プレイヤーリスト
+local function GetPlayerNames()
+    local names = {}
+    for _, v in ipairs(game:GetService("Players"):GetPlayers()) do
+        if v ~= game.Players.LocalPlayer then table.insert(names, v.Name) end
+    end
+    return names
+end
+
+SelectionBox:AddDropdown("PlayerSelectDropdown", {
+    Text = "Target Player", Default = 1, Values = GetPlayerNames(),
+    Callback = function(Value) SelectedPlayerName = Value end
+})
+
+SelectionBox:AddButton({
+    Text = "Refresh Player List",
+    Func = function() Options.PlayerSelectDropdown:SetValues(GetPlayerNames()) end
+})
+
+-- ============================================
+-- ユーティリティ
+-- ============================================
+
+local function CleanPhysics(char)
+    if not char then return end
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("BodyVelocity") or v:IsA("BodyAngularVelocity") or v:IsA("BodyGyro") or v:IsA("BodyForce") then
+            pcall(function() v:Destroy() end)
+        end
+    end
+end
+
+local function ResetSelfPhysics()
+    local lp = game.Players.LocalPlayer
+    local myChar = lp.Character
+    if not myChar then return end
+    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+    local myHum  = myChar:FindFirstChildOfClass("Humanoid")
+
+    CleanPhysics(myChar)
+
+    if myRoot then
+        pcall(function()
+            myRoot.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+            myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        end)
+        local bv = Instance.new("BodyVelocity")
+        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+        bv.Velocity  = Vector3.new(0, 0, 0)
+        bv.Parent    = myRoot
+        task.wait(0.03)
+        pcall(function() bv:Destroy() end)
+    end
+
+    if myHum then
+        pcall(function() myHum:ChangeState(Enum.HumanoidStateType.Running) end)
+    end
+
+    for _, p in ipairs(myChar:GetDescendants()) do
+        if p:IsA("BasePart") then
+            pcall(function() p.CanCollide = true end)
+        end
+    end
+end
+
+-- 三人称に切り替え（以降オフにしても維持）
+local function SwitchToThirdPerson()
+    local lp = game.Players.LocalPlayer
+    pcall(function()
+        lp.CameraMode = Enum.CameraMode.Classic
+        lp.CameraMaxZoomDistance = 20
+        lp.CameraMinZoomDistance = 5
+        local cam = workspace.CurrentCamera
+        if cam then cam.CameraType = Enum.CameraType.Custom end
+    end)
+end
+
+-- ============================================
+-- 1回分のキル処理（速度・精度MAX）
+-- ============================================
+local function ExecuteKill(target, myRoot, myChar)
+    local lp = game.Players.LocalPlayer
+    local rs = game:GetService("ReplicatedStorage")
+
+    local grabFolder   = rs:FindFirstChild("GrabEvents")
+    local setOwner     = grabFolder and grabFolder:FindFirstChild("SetNetworkOwner")
+    local createGrab   = grabFolder and grabFolder:FindFirstChild("CreateGrabLine")
+    local destroyGrab  = grabFolder and grabFolder:FindFirstChild("DestroyGrabLine")
+    local combatEvent  = rs:FindFirstChild("Events") and rs.Events:FindFirstChild("Combat")
+    local ragdollEvent = rs:FindFirstChild("PlayerEvents") and rs.PlayerEvents:FindFirstChild("RagdollPlayer")
+
+    local targetChar = target.Character
+    if not targetChar then return false end
+    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+    local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+    if not (targetHRP and targetHum and targetHum.Health > 0) then return false end
+
+    -- Step 1: 密着TP
+    myRoot.CFrame = targetHRP.CFrame * CFrame.new(1.2, 0, 0)
+
+    -- Step 2: SetNetworkOwner を5回高速連打で確実に所有権奪取
+    for i = 1, 5 do
+        if setOwner then
+            pcall(function() setOwner:FireServer(targetHRP, targetHRP.CFrame) end)
+        end
+        task.wait(0.01)
+    end
+
+    -- Step 3: ラグドール & グラブライン同時発火
+    if ragdollEvent then
+        pcall(function() ragdollEvent:FireServer(targetChar) end)
+    end
+    if createGrab then
+        pcall(function() createGrab:FireServer(targetHRP, Vector3.zero, targetHRP.Position, false) end)
+    end
+
+    -- Step 4: 当たり判定オフ
+    for _, p in ipairs(myChar:GetDescendants()) do
+        if p:IsA("BasePart") then pcall(function() p.CanCollide = false end) end
+    end
+
+    -- Step 5: 相手を上空に打ち上げ
+    pcall(function()
+        targetHRP.CFrame = targetHRP.CFrame + Vector3.new(0, 50, 0)
+        targetHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    end)
+
+    -- Fling最大出力
+    pcall(function()
+        local old = targetHRP:FindFirstChild("KillFling")
+        if old then old:Destroy() end
+        local f = Instance.new("BodyVelocity")
+        f.Name     = "KillFling"
+        f.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+        f.Velocity = Vector3.new(0, 1200, 0)
+        f.Parent   = targetHRP
+        game:GetService("Debris"):AddItem(f, 0.15)
+    end)
+
+    -- Step 6: ダメージ5連射
+    for i = 1, 5 do
+        if combatEvent then
+            pcall(function() combatEvent:FireServer(targetChar, "Punch") end)
+        end
+        task.wait(0.01)
+    end
+
+    -- 死亡ステート強制
+    pcall(function() targetHum:ChangeState(Enum.HumanoidStateType.Dead) end)
+
+    -- Step 7: 死亡確認ループ（高速版・最大1.5秒）
+    local timeout = 0
+    local killed = false
+    repeat
+        task.wait(0.03)
+        timeout = timeout + 0.03
+
+        -- 所有権を維持しながら追加ダメージ連打
+        if setOwner then
+            pcall(function() setOwner:FireServer(targetHRP, targetHRP.CFrame) end)
+        end
+        if combatEvent then
+            pcall(function() combatEvent:FireServer(targetChar, "Punch") end)
+        end
+        -- 死亡ステートも継続して強制
+        pcall(function() targetHum:ChangeState(Enum.HumanoidStateType.Dead) end)
+
+        if not target.Character
+        or not target.Character:FindFirstChildOfClass("Humanoid")
+        or target.Character.Humanoid.Health <= 0 then
+            killed = true
+            break
+        end
+    until not LoopKillEnabled or timeout > 1.5
+
+    -- Step 8: クリーンアップ
+    if destroyGrab then
+        pcall(function() destroyGrab:FireServer(targetHRP) end)
+    end
+    if target.Character then CleanPhysics(target.Character) end
+
+    return killed
+end
+
+-- ============================================
+-- メインループ
+-- ============================================
+local function DoLoopKill()
+    local lp = game.Players.LocalPlayer
+
+    while LoopKillEnabled do
+        local myChar = lp.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then task.wait(0.3) continue end
+
+        local target = game.Players:FindFirstChild(SelectedPlayerName)
+        if not (target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")) then
+            task.wait(0.2)
+            continue
+        end
+
+        local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
+        if not targetHum or targetHum.Health <= 0 then
+            task.wait(0.1)
+            continue
+        end
+
+        -- 出発前の位置を保存
+        OriginalPosition = myRoot.CFrame
+
+        -- キル実行
+        ExecuteKill(target, myRoot, myChar)
+
+        -- キル後: 元の位置に即帰還
+        local myRoot2 = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+        if myRoot2 and OriginalPosition then
+            myRoot2.CFrame = OriginalPosition
+        end
+
+        -- 速度リセット
+        ResetSelfPhysics()
+
+        -- リスポーン待機（高速ポーリング 0.1秒ごと）
+        local waitTime = 0
+        repeat
+            task.wait(0.1)
+            waitTime = waitTime + 0.1
+            local t2 = game.Players:FindFirstChild(SelectedPlayerName)
+            if t2 and t2.Character then
+                local h = t2.Character:FindFirstChildOfClass("Humanoid")
+                if h and h.Health > 0 then break end
+            end
+        until not LoopKillEnabled or waitTime > 30
+
+        task.wait(0.1)
+    end
+
+    -- ループ終了クリーンアップ
+    local myChar = lp.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    CleanPhysics(myChar)
+    if myRoot and OriginalPosition then
+        myRoot.CFrame = OriginalPosition
+    end
+    ResetSelfPhysics()
+end
+
+-- ============================================
+-- トグル
+-- ============================================
+KillOptionsBox:AddToggle("LoopKillToggle", {
+    Text = "Loop Kill (Auto TP + Respawn Chase)",
+    Default = false,
+    Callback = function(state)
+        LoopKillEnabled = state
+        if state then
+            if not SelectedPlayerName then
+                Notify("Error", "ターゲットを選んでください", 3)
+                Toggles.LoopKillToggle:SetValue(false)
+                return
+            end
+            -- 三人称に切替（以降ずっと維持）
+            SwitchToThirdPerson()
+            Notify("KILL", SelectedPlayerName .. " を標的にしました", 2)
+            task.spawn(DoLoopKill)
+        else
+            LoopKillEnabled = false
+
+            -- 三人称はそのまま維持（RestoreCameraを呼ばない）
+
+            -- 物理リセット & 元位置復帰
+            local lp     = game.Players.LocalPlayer
+            local myChar = lp.Character
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+            CleanPhysics(myChar)
+
+            if myRoot and OriginalPosition then
+                myRoot.CFrame = OriginalPosition
+            end
+
+            task.spawn(function()
+                task.wait(0.1)
+                ResetSelfPhysics()
+            end)
+
+            Notify("KILL", "Loop Kill 停止", 2)
+        end
+    end
+})
 -- 初期化
 Library:ShowUI()
